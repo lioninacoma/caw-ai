@@ -34,7 +34,8 @@ agent of its own: runs you start are attached to you (`--attach`, topic `attach`
    a `free` option (close, later, discard, test again, record red, ask the agent) when it fits what the person asked for; a
    `human` option changes the standard of the test, so caw asks the person through your client (a form only they can
    confirm). If your client cannot, caw refuses and you tell the person to answer in the window. Never answer a decision the
-   person did not ask you to; the first answer wins, the window's or yours.
+   person did not ask you to; the first answer wins, the window's or yours. Only `caw_decide` answers: a file you write into
+   the run folder yourself is ignored and reported as an invalid answer.
 
 **Rights.** As the agent of a run, the rules of topic `rules` apply, including "do not change application code" (attached, the person may ask you to: topic `attach`). Outside of a
 run you change application code only if the person explicitly asks. Recordings are written only by caw. After a code change

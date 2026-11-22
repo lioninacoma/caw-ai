@@ -15,6 +15,7 @@ import { PROJECT_DIR, REF_PATTERN, RUN_DIR, SELECTION_FILE } from '../shared/nam
 import { listenerOf, newKey, registerListener } from '../shared/attach.mjs';
 import { findSessionAgent } from '../shared/session-agent.mjs';
 import { answerRefusal, readDecision, writeAnswer } from './decision-desk.mjs';
+import { fingerprint, isPublicKey, newKeyPair, signAnswer, spawnerHandover } from './decision-proof.mjs';
 import { cawCommand } from '../shared/invocation.mjs';
 import { cawTool, createMcpHandler } from '../sandbox/mcp.mjs';
 import { SESSION_INSTRUCTIONS, activeExtensions, guideIndex, guideTopic, listedTopics } from './guide.mjs';
@@ -123,8 +124,12 @@ export const runningRun = (root) => {
     return Number.isInteger(pid) && pid > 0 && isAlive(pid) ? { pid, log } : undefined;
 };
 
-/** Starts the CLI detached; output to .caw/session-<time>.log, next to it .pid and .json (command, args, start). */
-const spawnDetached = ({ root, command, args, spawnRun = spawn }) => {
+/**
+ * Starts the CLI detached; output to .caw/session-<time>.log, next to it .pid and .json (command, args, start).
+ * @param handover what the run gets on stdin and in its environment (decision-proof.mjs spawnerHandover); stdin stays closed
+ *                 otherwise
+ */
+const spawnDetached = ({ root, command, args, spawnRun = spawn, handover }) => {
     mkdirSync(join(root, RUN_DIR), { recursive: true });
     const startedAt = new Date().toISOString();
     const log = join(root, RUN_DIR, `${LOG_PREFIX}${startedAt.replace(/[:.]/g, '-')}.log`);
@@ -132,11 +137,16 @@ const spawnDetached = ({ root, command, args, spawnRun = spawn }) => {
     try {
         const child = spawnRun(process.execPath, [BIN, command, ...args], {
             cwd: root,
-            env: { ...process.env, INIT_CWD: root },
-            stdio: ['ignore', out, out],
+            env: { ...process.env, INIT_CWD: root, ...(handover?.env ?? {}) },
+            stdio: [handover === undefined ? 'ignore' : 'pipe', out, out],
             detached: true,
             windowsHide: false,
         });
+        // The key goes through the pipe, never through a file or the command line, and the pipe closes at once.
+        if (handover !== undefined) {
+            child.stdin?.on?.('error', () => {});
+            child.stdin?.end?.(handover.line);
+        }
         child.unref?.();
         if (child.pid !== undefined) writeFileSync(`${log}.pid`, String(child.pid));
         writeFileSync(`${log}.json`, JSON.stringify({ command, args, pid: child.pid, startedAt }, null, 2));
@@ -146,12 +156,15 @@ const spawnDetached = ({ root, command, args, spawnRun = spawn }) => {
     }
 };
 
-/** A background run attached to this session (--attach=<key>). Its output goes to .caw/session-<time>.log. */
-export const startRun = ({ root, command, args, attach, spawnRun = spawn }) => {
+/**
+ * A background run attached to this session (--attach=<key>). Its output goes to .caw/session-<time>.log.
+ * @param keys this MCP server's key pair: the run takes answers to its decisions only with its proof (decision-proof.mjs)
+ */
+export const startRun = ({ root, command, args, attach, spawnRun = spawn, keys }) => {
     if (!START_COMMANDS.includes(command)) throw new Error(t('run.mcp.commandInvalid', { list: START_COMMANDS.join(', ') }));
     if (!Array.isArray(args) || !args.every((arg) => typeof arg === 'string')) throw new Error(t('run.mcp.argsInvalid'));
     if (args.some((arg) => ['--agent', '--attach'].some((flag) => arg === flag || arg.startsWith(`${flag}=`)))) throw new Error(t('run.mcp.agentFlag'));
-    return spawnDetached({ root, command, args: [...args, `--attach=${attach}`], spawnRun });
+    return spawnDetached({ root, command, args: [...args, `--attach=${attach}`], spawnRun, ...(keys === undefined ? {} : { handover: spawnerHandover(keys) }) });
 };
 
 /** A value of --overlay after a space on the command line: build, dev or a dev server URL (parts only with =). */
@@ -328,7 +341,8 @@ const statusData = (root, { waiting, running, log, fixState }) => {
     const data = { state };
     if (waiting !== undefined) data.waiting = { runId: waiting.runId, mode: waiting.mode, hint: waiting.hint, guide: Array.isArray(waiting.guide) ? waiting.guide : [] };
     // A card waits for an answer: what it is, what it offers and which answers need the person (gate human).
-    if (decision !== undefined) data.waiting = { ...(data.waiting ?? { runId: run.runId }), decision };
+    // The run's key and whose answers it takes are the channel's business (decision-desk.mjs), not the session's.
+    if (decision !== undefined) data.waiting = { ...(data.waiting ?? { runId: run.runId }), decision: Object.fromEntries(Object.entries(decision).filter(([key]) => key !== 'answers')) };
     if (log !== undefined) data.log = shown(root, log);
     if (meta !== undefined) data.started = { command: meta.command, args: meta.args, pid: meta.pid, startedAt: meta.startedAt };
     if (run !== undefined) {
@@ -391,10 +405,13 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
     // This session as a listener (attach.mjs): one key for the life of this MCP server, registered on first use. Runs started
     // here are bound to it; a run started with --attach in a terminal binds to it too.
     let ownKey = null;
+    // This server's key pair: its answers to a run's decisions carry a proof only it can make (decision-proof.mjs). The private
+    // half stays in this process; the public one goes into the listener file and to the runs started here.
+    const keys = newKeyPair();
     const attach = () => {
         if (ownKey !== null && listenerOf(root, ownKey, listener.env) !== undefined) return ownKey;
         ownKey = newKey(root);
-        registerListener(root, { key: ownKey, sessionId: (listener.env ?? process.env).CLAUDE_CODE_SESSION_ID, agent: AGENT_NAME, ...(listener.pid === undefined ? {} : { pid: listener.pid }), ...(listener.env === undefined ? {} : { env: listener.env }) });
+        registerListener(root, { key: ownKey, sessionId: (listener.env ?? process.env).CLAUDE_CODE_SESSION_ID, agent: AGENT_NAME, publicKey: keys.publicKey, ...(listener.pid === undefined ? {} : { pid: listener.pid }), ...(listener.env === undefined ? {} : { env: listener.env }) });
         return ownKey;
     };
     // Forward slashes: the Monitor runs the command in a POSIX shell, also on Windows (Git Bash).
@@ -501,7 +518,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                     }
                 }
             }
-            const { log, pid } = startRun({ root, command: input.command, args: runArgs, attach: own, spawnRun });
+            const { log, pid } = startRun({ root, command: input.command, args: runArgs, attach: own, spawnRun, keys });
             const started = t('run.mcp.started', { pid, log });
             if (moved === undefined) return answer(started, { state: 'started', command: input.command, args: runArgs, pid, log: shown(root, log) });
             const note = t('run.mcp.startedMoved', { found: moved.foundUrl, url: moved.url ?? '', app: moved.part });
@@ -589,6 +606,12 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             const about = { runId: target.runId, decision: waiting.id, option: offered.id, gate: offered.gate };
             // The way to decide by hand when the client cannot ask the person: the window, or a run with one.
             const byHand = waiting.window === false ? t('run.mcp.decideByHandHeadless', { command: `${cawCommand()} record ${target.test ?? '<test>'}` }) : t('run.mcp.decideByHandWindow');
+            // Whose answers the run takes (decision-desk.mjs): the session that started it, or any listening one. Then this
+            // server listens, so the run finds its key.
+            const answers = waiting.answers ?? {};
+            const untrusted = !isPublicKey(answers.key) || answers.from === 'none' || (answers.from === 'starter' && answers.starter !== fingerprint(keys.publicKey));
+            if (untrusted) return answer(t(answers.from === 'starter' ? 'run.mcp.decideOtherSession' : 'run.mcp.decideNoProof', { runId: target.runId, way: byHand }), { state: 'refused', reason: 'not-trusted', ...about, byHand }, true);
+            if (answers.from !== 'starter') attach();
             let who = by;
             if (refusal === 'needs-human') {
                 if (elicit === undefined) return answer(t('run.mcp.decideHuman', { option: offered.id, way: byHand }), { state: 'refused', reason: 'needs-human', ...about, byHand }, true);
@@ -601,7 +624,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                 who = 'elicitation';
             }
             // The person may have answered in the window meanwhile: the run takes only an answer to the decision still waiting.
-            writeAnswer(target.runDir, { seq: waiting.seq, id: waiting.id, option: offered.id, ...(input.message === undefined ? {} : { message: input.message }), by: who });
+            writeAnswer(target.runDir, signAnswer(keys, answers.key, { seq: waiting.seq, id: waiting.id, option: offered.id, ...(input.message === undefined ? {} : { message: input.message }), by: who }));
             const until = Date.now() + (windowWait.decideMs ?? 10_000);
             for (;;) {
                 const now = readDecision(target.runDir);

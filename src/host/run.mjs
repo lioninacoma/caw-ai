@@ -27,6 +27,8 @@ import { readReproduction, draftId, draftTestPlan, draftHint, coverageIn } from 
 import { createHeadlessChat, openChat, parseClaudeLog, tailLines } from './chat.mjs';
 import { decide } from './decisions.mjs';
 import { createDesk } from './decision-desk.mjs';
+import { isPublicKey, spawnerKey } from './decision-proof.mjs';
+import { liveListeners } from '../shared/attach.mjs';
 import { describeCode } from './code-source.mjs';
 import { CONFIG_FILE, CONTEXT_FILE, DRAFT_DIR, ENV_FILE, PROJECT_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
 import { humanFields, redStep, renderPlan, renderTest, retryProblems, writeTest } from './test-file.mjs';
@@ -580,7 +582,9 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     // The decisions of this run and who took them (decision-desk.mjs); a run without a window names the one it left open.
     const decisionLog = [];
     let undecided = null;
-    const decisionsOf = () => ({ ...(decisionLog.length === 0 ? {} : { decisions: [...decisionLog] }), ...(undecided === null ? {} : { openDecision: undecided }) });
+    // Answer files without a valid proof: written by something other than a session's MCP server the run trusts.
+    const ignoredAnswers = [];
+    const decisionsOf = () => ({ ...(decisionLog.length === 0 ? {} : { decisions: [...decisionLog] }), ...(undecided === null ? {} : { openDecision: undecided }), ...(ignoredAnswers.length === 0 ? {} : { ignoredAnswers: [...ignoredAnswers] }) });
     // If Claude gives advice while repairing and then submits a verdict, the advice stays in the report.
     const writeResult = (outcome) => {
         // Redacted as for Claude: the role password and secret remembered values never end up in result.json or report.md.
@@ -708,9 +712,19 @@ ${text}`) ?? 0;
     // Every decision of the run waits in its folder too (decision.json): caw_status shows it, caw_decide answers it. Without a
     // window caw takes only the provably harmless itself; what needs a person stops the run, unless an attached session may
     // still bring the person's consent for a while.
+    // Answers from a session count only with a proof (decision-proof.mjs): from the MCP server that started this run, if one did,
+    // otherwise from any session listening in this project (attach.mjs).
+    const starter = await spawnerKey();
     const desk = createDesk({
         dir: runDir,
         auto: headless,
+        starter,
+        trusted: () => liveListeners(root).map(({ publicKey }) => publicKey).filter(isPublicKey),
+        onIgnored: (ignored) => {
+            ignoredAnswers.push(ignored);
+            ui.warn(t('run.decision.ignored', { id: ignored.id, option: ignored.option }));
+            noteDecisions();
+        },
         waitMs: headless && sandbox?.kind === 'session' ? DECISION_WAIT_MS : 0,
         onSettled: (entry) => {
             decisionLog.push(entry);

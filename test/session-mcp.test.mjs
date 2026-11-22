@@ -37,7 +37,11 @@ const project = (t, { config = TEMPLATE } = {}) => {
 /** The handler with fake spawn and stubs; `call` returns the MCP result. */
 const session = (root, deps = {}) => {
     const spawned = [];
-    const spawnRun = (file, args, options) => { spawned.push({ args, options }); return { pid: 2 ** 22 + 4321, unref: () => {} }; };
+    const spawnRun = (file, args, options) => {
+        const entry = { args, options };
+        spawned.push(entry);
+        return { pid: 2 ** 22 + 4321, unref: () => {}, stdin: { on: () => {}, end: (text) => { entry.stdin = text; } } };
+    };
     const handler = sessionMcpHandler({ root, spawnRun, probes: PROBES, ...deps });
     const call = async (name, args = {}) => (await handler({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } })).result;
     return { call, spawned };
@@ -317,6 +321,12 @@ test('caw_start: typed fields build the command line, mixing with args and wrong
     assert.ok(started.content[0].text.startsWith('Gestartet'));
     const meta = JSON.parse(readFileSync(join(root, started.structuredContent.log.replace(/\.log$/, '.log.json')), 'utf8'));
     assert.equal(meta.command, 'open');
+    // The run gets this server's public key through its stdin, never in a file or on the command line (decision-proof.mjs).
+    assert.equal(spawned[0].options.stdio[0], 'pipe');
+    assert.equal(spawned[0].options.env.CAW_ANSWER_KEY, 'stdin');
+    const listener = JSON.parse(readFileSync(join(root, '.caw', 'attach', `${spawned[0].args.at(-1).slice('--attach='.length)}.json`), 'utf8'));
+    assert.equal(spawned[0].stdin, `${listener.publicKey}\n`);
+    assert.ok(!spawned[0].args.some((arg) => arg.includes(listener.publicKey)));
 });
 
 test('caw_start: open is allowed, config problems come back with their code', async (t) => {

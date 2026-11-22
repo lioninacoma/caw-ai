@@ -10,14 +10,16 @@ import { test } from 'node:test';
 
 import { createChat } from '../src/host/chat.mjs';
 import { decide } from '../src/host/decisions.mjs';
-import { createDesk, readDecision } from '../src/host/decision-desk.mjs';
+import { ANSWER_FILE, createDesk, readDecision, writeAnswer } from '../src/host/decision-desk.mjs';
+import { isPublicKey, newKeyPair } from '../src/host/decision-proof.mjs';
+import { liveListeners } from '../src/shared/attach.mjs';
 import { sessionMcpHandler } from '../src/host/session-mcp.mjs';
 import { createMcpHandler, unknownFields } from '../src/sandbox/mcp.mjs';
 
 const RUN_ID = '2026-11-22T11-00-00-000Z-kauf';
 
 /** A project whose last run is alive (this process) and waits through its desk. */
-const project = (t, { window = true } = {}) => {
+const project = (t, { window = true, starter } = {}) => {
     const root = mkdtempSync(join(tmpdir(), 'caw-decide-'));
     // The desk's polling does not hold a process open; the test does.
     const alive = setInterval(() => {}, 1000);
@@ -26,7 +28,9 @@ const project = (t, { window = true } = {}) => {
     mkdirSync(runDir, { recursive: true });
     writeFileSync(join(root, '.caw', 'last-run.json'), JSON.stringify({ runId: RUN_ID, runDir, pid: process.pid, command: 'record', test: 'kauf', target: 'dev', startedAt: new Date().toISOString() }));
     const settled = [];
-    const desk = createDesk({ dir: runDir, pollMs: 5, auto: !window, onSettled: (entry) => settled.push(entry), waitMs: window ? 0 : 60_000 });
+    const ignored = [];
+    // As run.mjs: answers count from a session listening in the project, or only from the one that started the run.
+    const desk = createDesk({ dir: runDir, pollMs: 5, auto: !window, onSettled: (entry) => settled.push(entry), waitMs: window ? 0 : 60_000, starter, trusted: () => liveListeners(root).map(({ publicKey }) => publicKey).filter(isPublicKey), onIgnored: (entry) => ignored.push(entry) });
     const shown = [];
     const chat = createChat({ show: (who, text) => shown.push([who, text]), desk });
     t.after(() => {
@@ -34,7 +38,7 @@ const project = (t, { window = true } = {}) => {
         clearInterval(alive);
         rmSync(root, { recursive: true, force: true });
     });
-    return { root, runDir, chat, settled, shown };
+    return { root, runDir, chat, settled, shown, ignored };
 };
 
 /** The MCP client: initialize (with or without elicitation), tool calls, and the forms the server sends it. */
@@ -139,6 +143,38 @@ test('caw_decide on a run without a window: a human decision waits for the perso
     const person = await client(p.root, { elicitation: true, form: () => ({ action: 'accept', content: { confirm: true } }) });
     assert.equal((await person.call('caw_decide', { decision: 'fix.green', option: 'promote' })).structuredContent.by, 'elicitation');
     assert.equal(await green, 'promote');
+});
+
+test('caw_decide: the session\'s answer carries the MCP server\'s proof; one it writes with its own file tools is ignored', async (t) => {
+    const p = project(t);
+    const { call } = await client(p.root);
+    const asked = failure(p.chat);
+    const waiting = readDecision(p.runDir);
+    // What a session could write itself: the human option, claimed as the person's consent.
+    writeAnswer(p.runDir, { seq: waiting.seq, id: 'step.failed', option: 'fix', by: 'elicitation' });
+    for (let i = 0; i < 200 && p.ignored.length === 0; i += 1) await new Promise((done) => { setTimeout(done, 10); });
+    assert.deepEqual(p.ignored.map(({ id, option, by }) => [id, option, by]), [['step.failed', 'fix', 'elicitation']]);
+    assert.equal(readDecision(p.runDir).state, 'waiting');
+    // caw_status shows the decision, not the run's key.
+    assert.equal((await call('caw_status', {})).structuredContent.waiting.decision.answers, undefined);
+    const answered = await call('caw_decide', { decision: 'step.failed', option: 'close' });
+    assert.equal(answered.structuredContent.state, 'answered');
+    assert.deepEqual(await asked, { choice: 'close' });
+    assert.equal(p.ignored.length, 1);
+    assert.equal(readDecision(p.runDir).state, 'answered');
+    assert.equal(ANSWER_FILE, 'decision-answer.json');
+});
+
+test('caw_decide: a run another session started takes only that session\'s answers', async (t) => {
+    const p = project(t, { starter: newKeyPair().publicKey });
+    const { call } = await client(p.root);
+    const asked = failure(p.chat);
+    const refused = await call('caw_decide', { decision: 'step.failed', option: 'close' });
+    assert.equal(refused.isError, true);
+    assert.equal(refused.structuredContent.reason, 'not-trusted');
+    assert.match(refused.content[0].text, /hat eine andere Session gestartet, und er nimmt nur ihre Antworten\. Stattdessen antwortet der Mensch im caw-Fenster\./);
+    p.chat.human.choose('close');
+    assert.deepEqual(await asked, { choice: 'close' });
 });
 
 test('MCP: unknown fields are refused for every tool with a closed schema; the client\'s answer to a form settles it', async (t) => {

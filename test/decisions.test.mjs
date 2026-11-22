@@ -10,6 +10,7 @@ import { test } from 'node:test';
 import { createChat } from '../src/host/chat.mjs';
 import { DECISIONS, FREE, HUMAN, PHASE_DECISIONS, autoOption, decide, decisionOf, endOption, harmlessAdopt, notedOf } from '../src/host/decisions.mjs';
 import { ANSWER_FILE, DECISION_FILE, answerRefusal, createDesk, readDecision, writeAnswer } from '../src/host/decision-desk.mjs';
+import { fingerprint, forgetSpawnerKey, newKeyPair, signAnswer, spawnerHandover, spawnerKey, verifyAnswer } from '../src/host/decision-proof.mjs';
 import { fixPhase } from '../src/host/bugfix.mjs';
 import { offerRecordRed, runFlow } from '../src/host/flows.mjs';
 import { sessionMcpHandler } from '../src/host/session-mcp.mjs';
@@ -28,6 +29,11 @@ const tempDir = (t) => {
     return dir;
 };
 const option = (id) => ({ id, label: id });
+// The run's key pair and that of the session's MCP server it trusts: answers carry the server's proof (decision-proof.mjs).
+const runKeys = newKeyPair();
+const sessionKeys = newKeyPair();
+const trust = { keys: runKeys, trusted: () => [sessionKeys.publicKey] };
+const answerAs = (dir, answer, keys = sessionKeys) => writeAnswer(dir, signAnswer(keys, runKeys.publicKey, answer));
 const tick = () => new Promise((done) => { setImmediate(done); });
 const until = async (check) => {
     for (let i = 0; i < 200 && !check(); i += 1) await new Promise((done) => { setTimeout(done, 10); });
@@ -109,7 +115,7 @@ test('A run without a window takes only the harmless: the unchanged plan, a harm
 test('Desk: the waiting decision in the run folder; the session answers a free option, a human one only with consent', async (t) => {
     const dir = tempDir(t);
     const settled = [];
-    const desk = createDesk({ dir, pollMs: 5, onSettled: (entry) => settled.push(entry) });
+    const desk = createDesk({ ...trust, dir, pollMs: 5, onSettled: (entry) => settled.push(entry) });
     const shown = [];
     const chat = createChat({ show: (who, text) => shown.push([who, text]), desk });
     const options = [{ id: 'fix', label: 'Schritt reparieren' }, { id: 'close', label: 'Schließen' }];
@@ -125,12 +131,12 @@ test('Desk: the waiting decision in the run folder; the session answers a free o
     assert.equal(answerRefusal(waiting, { option: 'fix', by: 'session' }), 'needs-human');
     assert.equal(answerRefusal(waiting, { option: 'fix', by: 'elicitation' }), undefined);
     assert.equal(answerRefusal(waiting, { option: 'gone', by: 'session' }), 'unknown-option');
-    writeAnswer(dir, { seq: waiting.seq, id: waiting.id, option: 'fix', by: 'session' });
+    answerAs(dir, { seq: waiting.seq, id: waiting.id, option: 'fix', by: 'session' });
     await until(() => !readdirSync(dir).includes(ANSWER_FILE));
-    writeAnswer(dir, { seq: waiting.seq + 1, id: waiting.id, option: 'close', by: 'session' });
+    answerAs(dir, { seq: waiting.seq + 1, id: waiting.id, option: 'close', by: 'session' });
     await until(() => !readdirSync(dir).includes(ANSWER_FILE));
     assert.equal(readDecision(dir).state, 'waiting');
-    writeAnswer(dir, { seq: waiting.seq, id: waiting.id, option: 'close', by: 'session' });
+    answerAs(dir, { seq: waiting.seq, id: waiting.id, option: 'close', by: 'session' });
     assert.equal(await asked, 'close');
     assert.deepEqual(shown.at(-1), ['notice', 'Schließen: von der Session beantwortet.']);
     assert.equal(readDecision(dir).state, 'answered');
@@ -142,7 +148,7 @@ test('Desk: the waiting decision in the run folder; the session answers a free o
     assert.equal(await next, 'adopt');
     assert.deepEqual(settled.at(-1).by, 'window');
     const late = readDecision(dir);
-    writeAnswer(dir, { seq: late.seq, id: 'red.proof', option: 'discard', by: 'session' });
+    answerAs(dir, { seq: late.seq, id: 'red.proof', option: 'discard', by: 'session' });
     await until(() => !readdirSync(dir).includes(ANSWER_FILE));
     assert.equal(settled.length, 2);
     desk.close();
@@ -150,12 +156,12 @@ test('Desk: the waiting decision in the run folder; the session answers a free o
 
 test('Desk: the plan card approved through the session; a question in between a conversation comes back to it', async (t) => {
     const dir = tempDir(t);
-    const desk = createDesk({ dir, pollMs: 5 });
+    const desk = createDesk({ ...trust, dir, pollMs: 5 });
     const chat = createChat({ desk });
     const planned = decide(chat, { id: 'plan.approve', via: 'plan', context: { changed: false, writes: false }, card: { steps: [{ id: 'S1', name: 'a', expect: 'b' }] }, options: [{ id: 'approve', label: 'Plan freigeben' }, { id: 'revise', label: 'Änderung erbitten' }] });
     const waiting = readDecision(dir);
     assert.equal(waiting.id, 'plan.approve');
-    writeAnswer(dir, { seq: waiting.seq, id: 'plan.approve', option: 'revise', message: 'S1 genauer', by: 'session' });
+    answerAs(dir, { seq: waiting.seq, id: 'plan.approve', option: 'revise', message: 'S1 genauer', by: 'session' });
     assert.deepEqual(await planned, { approved: false, feedback: 'S1 genauer' });
 
     // A failure under discussion, the token notice in between: the desk shows the notice, then the failure again.
@@ -166,7 +172,7 @@ test('Desk: the plan card approved through the session; a question in between a 
     chat.human.choose('stop');
     assert.equal(await tokens, 'stop');
     assert.equal(readDecision(dir).seq, failureSeq);
-    writeAnswer(dir, { seq: failureSeq, id: 'step.failed', option: 'close', by: 'session' });
+    answerAs(dir, { seq: failureSeq, id: 'step.failed', option: 'close', by: 'session' });
     assert.deepEqual(await talk, { choice: 'close' });
     desk.close();
 });
@@ -176,7 +182,7 @@ test('Desk without a window: the harmless taken at once, what needs a person end
     const stopped = [];
     const stuck = [];
     const settled = [];
-    const desk = createDesk({ dir, auto: true, onSettled: (entry) => settled.push(entry), onStop: (entry) => stopped.push(entry.id), onStuck: (entry) => stuck.push(entry.id) });
+    const desk = createDesk({ ...trust, dir, auto: true, onSettled: (entry) => settled.push(entry), onStop: (entry) => stopped.push(entry.id), onStuck: (entry) => stuck.push(entry.id) });
     const chat = createChat({ desk });
     const same = { samePlan: true, expectChange: [], known: [], removed: [], fixed: [], stale: [], seen: [] };
     const adopt = [{ id: 'adopt', label: 'Übernehmen' }, { id: 'discard', label: 'Verwerfen' }];
@@ -198,15 +204,98 @@ test('Desk without a window: the harmless taken at once, what needs a person end
 
     // An attached session may still bring the person's consent: the decision waits, then the person's answer is taken.
     const later = tempDir(t);
-    const waitingDesk = createDesk({ dir: later, auto: true, waitMs: 60_000, pollMs: 5, onStop: (entry) => stopped.push(entry.id) });
+    const waitingDesk = createDesk({ ...trust, dir: later, auto: true, waitMs: 60_000, pollMs: 5, onStop: (entry) => stopped.push(entry.id) });
     const waitingChat = createChat({ desk: waitingDesk });
     const green = decide(waitingChat, { id: 'fix.green', context: { test: 'bug' }, card: { title: 'grün' }, options: [{ id: 'promote', label: 'Übernehmen' }, { id: 'later', label: 'Später' }] });
     await tick();
     const entry = readDecision(later);
-    writeAnswer(later, { seq: entry.seq, id: 'fix.green', option: 'promote', by: 'elicitation' });
+    answerAs(later, { seq: entry.seq, id: 'fix.green', option: 'promote', by: 'elicitation' });
     assert.equal(await green, 'promote');
     assert.deepEqual(stopped, ['recording.adopt', 'plan.approve']);
     waitingDesk.close();
+});
+
+test('Answer proof: only an MCP server the run trusts can answer; a file the session writes itself is ignored and reported', async (t) => {
+    const dir = tempDir(t);
+    const ignored = [];
+    const settled = [];
+    const desk = createDesk({ ...trust, dir, pollMs: 5, onIgnored: (entry) => ignored.push(entry), onSettled: (entry) => settled.push(entry) });
+    const chat = createChat({ desk });
+    const asked = decide(chat, { id: 'step.failed', context: { test: 'kauf', step: 'S2', diagnosis: { side: 'app', strength: 'clear' } }, card: { kind: 'result', title: 'S2' }, options: [{ id: 'fix', label: 'Reparieren' }, { id: 'close', label: 'Schließen' }] });
+    const waiting = readDecision(dir);
+    // decision.json names the run's public key and whose answers it takes; no secret.
+    assert.deepEqual(waiting.answers, { key: runKeys.publicKey, from: 'listeners' });
+    const gone = () => until(() => !readdirSync(dir).includes(ANSWER_FILE));
+    // Forged by the session's own file tools: no proof, a made-up one, a key the run does not trust, an answer changed after signing.
+    writeAnswer(dir, { seq: waiting.seq, id: 'step.failed', option: 'fix', by: 'elicitation' });
+    await gone();
+    writeAnswer(dir, { seq: waiting.seq, id: 'step.failed', option: 'fix', by: 'elicitation', from: sessionKeys.publicKey, proof: '0'.repeat(64) });
+    await gone();
+    answerAs(dir, { seq: waiting.seq, id: 'step.failed', option: 'fix', by: 'elicitation' }, newKeyPair());
+    await gone();
+    writeAnswer(dir, { ...signAnswer(sessionKeys, runKeys.publicKey, { seq: waiting.seq, id: 'step.failed', option: 'close', by: 'session' }), option: 'fix', by: 'elicitation' });
+    await gone();
+    writeFileSync(join(dir, ANSWER_FILE), 'not json');
+    await gone();
+    assert.equal(readDecision(dir).state, 'waiting');
+    assert.deepEqual(ignored.map(({ id, option: chosen, by }) => [id, chosen, by]), [['step.failed', 'fix', 'elicitation'], ['step.failed', 'fix', 'elicitation'], ['step.failed', 'fix', 'elicitation'], ['step.failed', 'fix', 'elicitation'], ['?', '?', '?']]);
+    assert.equal(settled.length, 0);
+    // With the trusted server's proof it is taken.
+    answerAs(dir, { seq: waiting.seq, id: 'step.failed', option: 'fix', by: 'elicitation' });
+    assert.equal(await asked, 'fix');
+    assert.equal(settled[0].by, 'elicitation');
+    desk.close();
+
+    // Started by an MCP server: only that one may answer; started by one whose key never came: nobody.
+    const started = tempDir(t);
+    const other = newKeyPair();
+    const onlyStarter = createDesk({ ...trust, dir: started, pollMs: 5, starter: other.publicKey, onIgnored: (entry) => ignored.push(entry) });
+    const startedChat = createChat({ desk: onlyStarter });
+    const closing = decide(startedChat, { id: 'run.result', card: { kind: 'result', title: 'x' }, options: [option('close')] });
+    const first = readDecision(started);
+    assert.deepEqual(first.answers, { key: runKeys.publicKey, from: 'starter', starter: fingerprint(other.publicKey) });
+    answerAs(started, { seq: first.seq, id: 'run.result', option: 'close', by: 'session' });
+    await until(() => !readdirSync(started).includes(ANSWER_FILE));
+    assert.equal(ignored.length, 6);
+    answerAs(started, { seq: first.seq, id: 'run.result', option: 'close', by: 'session' }, other);
+    assert.equal(await closing, 'close');
+    onlyStarter.close();
+    const none = tempDir(t);
+    const nobody = createDesk({ ...trust, dir: none, starter: null });
+    decide(createChat({ desk: nobody }), { id: 'run.result', card: { kind: 'result', title: 'x' }, options: [option('close')] });
+    assert.equal(readDecision(none).answers.from, 'none');
+    nobody.close();
+
+    // The proof itself: bound to the run's key and the whole answer.
+    const signed = signAnswer(sessionKeys, runKeys.publicKey, { seq: 1, id: 'a', option: 'b', by: 'session' });
+    assert.equal(verifyAnswer(runKeys, [sessionKeys.publicKey], signed), true);
+    assert.equal(verifyAnswer(runKeys, [], signed), false);
+    assert.equal(verifyAnswer(newKeyPair(), [sessionKeys.publicKey], signed), false);
+    assert.equal(verifyAnswer(runKeys, [sessionKeys.publicKey], { ...signed, seq: 2 }), false);
+    assert.equal(verifyAnswer(runKeys, [sessionKeys.publicKey], { ...signed, message: 'x' }), false);
+});
+
+test('Answer proof: a run started by the MCP server reads its key once from stdin, never from a file', async () => {
+    const { PassThrough } = await import('node:stream');
+    forgetSpawnerKey();
+    assert.equal(await spawnerKey({ env: {} }), undefined);
+    forgetSpawnerKey();
+    const { env, line } = spawnerHandover(sessionKeys);
+    const input = new PassThrough();
+    const own = { ...env };
+    const reading = spawnerKey({ env: own, input });
+    input.write(line);
+    assert.equal(await reading, sessionKeys.publicKey);
+    assert.equal(own.CAW_ANSWER_KEY, undefined, 'nothing the run starts reads it again');
+    assert.equal(await spawnerKey({ env: { ...env }, input: new PassThrough() }), sessionKeys.publicKey, 'read once');
+    forgetSpawnerKey();
+    const broken = new PassThrough();
+    const nothing = spawnerKey({ env: { ...env }, input: broken });
+    broken.end('not a key\n');
+    assert.equal(await nothing, null);
+    forgetSpawnerKey();
+    assert.equal(await spawnerKey({ env: { ...env }, input: new PassThrough(), timeoutMs: 20 }), null);
+    forgetSpawnerKey();
 });
 
 test('The bug fix phases and the window\'s cards follow one model: next.decision is the card the window shows then', async () => {
@@ -259,6 +348,8 @@ test('report.md lists the decisions and who took them, and the one left open', (
     const text = renderReport({ status: 'pass', testId: 'kauf', target: 'dev', testedCode: 'x', decisions: [{ id: 'plan.approve', option: 'approve', by: 'auto' }, { id: 'recording.adopt', option: 'discard', by: 'window' }], openDecision: { id: 'recording.adopt', options: [{ id: 'adopt', gate: HUMAN }, { id: 'discard', gate: FREE }] } });
     assert.match(text, /## Entscheidungen\n\n- plan\.approve: approve \(von caw, nichts ändert sich, was der Test prüft\)\n- recording\.adopt: discard \(im Fenster\)/);
     const first = renderReport({ status: 'pass', testId: 'kauf', target: 'dev', testedCode: 'x', decisions: [{ id: 'recording.adopt', option: 'adopt', by: 'auto', known: ['Gespeichert', 'a|b'] }] });
+    const forged = renderReport({ status: 'pass', testId: 'kauf', target: 'dev', testedCode: 'x', ignoredAnswers: [{ id: 'step.failed', option: 'fix', by: 'elicitation' }] });
+    assert.match(forged, /## Entscheidungen\n\n- ungültige Antwort ignoriert: step\.failed: fix, eine Antwortdatei ohne gültigen Nachweis/);
     assert.match(first, /- recording\.adopt: adopt \(von caw, nichts ändert sich, was der Test prüft\); als bekannt übernommen, die Basis der ersten Aufnahme: "Gespeichert"; "a\\\|b"/);
     assert.match(text, /## Offene Entscheidung\n\nDer Lauf hat bei recording\.adopt angehalten und nichts geschrieben: Das entscheidet ein Mensch\. Optionen: adopt \(human\), discard \(free\)\./);
 });

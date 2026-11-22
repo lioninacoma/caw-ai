@@ -168,22 +168,24 @@ export const isErrorCode = (value) => typeof value === 'string' && /^[a-z][a-z0-
  * The decisions the run waited for and who took them (window, session, the person in the session, caw itself), and the one a
  * run without a window left open for a person.
  */
-const decisionLines = (decisions, openDecision) => {
+const decisionLines = (decisions, openDecision, ignoredAnswers = []) => {
     const lines = [];
-    if (decisions.length > 0) {
+    if (decisions.length > 0 || ignoredAnswers.length > 0) {
         lines.push('', `## ${t('config.report.decisions')}`, '');
         for (const { id, option, by, known = [] } of decisions) {
             // A first recording's known messages: its baseline, named so the reader sees what counts as known from now on.
             const noted = known.length === 0 ? '' : `; ${t('config.report.decisions.known', { list: known.map((text) => `"${cell(text)}"`).join('; ') })}`;
             lines.push(`- ${id}: ${option} (${t(`config.report.decisions.by.${by}`)})${noted}`);
         }
+        // An answer file without a valid proof: not an answer, but someone tried.
+        for (const { id, option } of ignoredAnswers) lines.push(`- ${t('config.report.decisions.ignored', { id: cell(id), option: cell(option) })}`);
     }
     if (openDecision !== undefined) {
         lines.push('', `## ${t('config.report.openDecision')}`, '', t('config.report.openDecision.text', { id: openDecision.id, options: openDecision.options.map(({ id, gate }) => `${id} (${gate})`).join(', ') }));
     }
     return lines;
 };
-export const renderReport = ({ status, reason, note, testId, target, testedCode, expectations = [], results = [], failures = [], warnings = [], writes = [], thirdParty = [], dropped = [], effectsDropped = [], advice, diagnosis, overlay, personalContext, afterHandover = [], pending = [], steps = [], decisions = [], openDecision }) => {
+export const renderReport = ({ status, reason, note, testId, target, testedCode, expectations = [], results = [], failures = [], warnings = [], writes = [], thirdParty = [], dropped = [], effectsDropped = [], advice, diagnosis, overlay, personalContext, afterHandover = [], pending = [], steps = [], decisions = [], openDecision, ignoredAnswers = [] }) => {
     const lines = [
         t('config.report.title', { testId: String(testId), target: String(target), status: String(status) }),
         '',
@@ -242,7 +244,7 @@ export const renderReport = ({ status, reason, note, testId, target, testedCode,
         lines.push('', `## ${t('config.report.afterHandover')}`, '', t('config.report.afterHandover.intro'), '');
         for (const { type, text, origin, url, count } of afterHandover) lines.push(`- ${warningLabel(type)}: ${text}${origin || url ? ` (${origin ?? url})` : ''}${count > 1 ? ` (${count}x)` : ''}`);
     }
-    lines.push(...decisionLines(decisions, openDecision));
+    lines.push(...decisionLines(decisions, openDecision, ignoredAnswers));
     return `${lines.join('\n')}\n`;
 };
 

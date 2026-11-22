@@ -2,16 +2,21 @@
 // what was answered last and by whom. caw_decide writes decision-answer.json for the waiting one; the run takes it if the
 // decision is still the same (its `seq`), and only an answer the gate allows. The first answer wins, window or session: the
 // other side then sees the decision answered. A run without a window answers the provably harmless itself (decisions.mjs).
+// The session's file tools reach the run folder too: an answer counts only with its proof (decision-proof.mjs), made by an MCP
+// server the run trusts. Anything else in that file is ignored and reported.
 
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { HUMAN, answerOption, autoOption, endOption, notedOf } from './decisions.mjs';
+import { fingerprint, newKeyPair, verifyAnswer } from './decision-proof.mjs';
 
 export const DECISION_FILE = 'decision.json';
 export const ANSWER_FILE = 'decision-answer.json';
 /** Who answered: the window's button, the session (caw_decide), the person in the session (elicitation), or caw itself. */
 export const ANSWERED_BY = ['window', 'session', 'elicitation', 'auto'];
+/** Who may take a `human` option: a person, in the window or confirming in the session. */
+const PERSON = ['window', 'elicitation'];
 
 const readJson = (file) => {
     try {
@@ -40,8 +45,14 @@ export const answerRefusal = (entry, { option, message, by }) => {
     const offered = entry.options.find((candidate) => candidate.id === option);
     if (offered === undefined) return 'unknown-option';
     if (option === 'revise' && (typeof message !== 'string' || message.trim() === '')) return 'message-not-taken';
-    if (offered.gate === HUMAN && by !== 'window' && by !== 'elicitation') return 'needs-human';
+    if (offered.gate === HUMAN && !PERSON.includes(by)) return 'needs-human';
     return undefined;
+};
+
+/** An ignored answer as the report names it: only plain ids, whatever the file held. */
+const ignoredOf = (answer) => {
+    const plain = (value) => (typeof value === 'string' && /^[\w.@-]{1,60}$/.test(value) ? value : '?');
+    return { id: plain(answer?.id), option: plain(answer?.option), by: plain(answer?.by), at: new Date().toISOString() };
 };
 
 /**
@@ -53,12 +64,26 @@ export const answerRefusal = (entry, { option, message, by }) => {
  *                  attached session, caw_decide with their consent); 0 stops at once
  * @param onStop    (entry) without a window, a decision stayed open: the run names it and writes nothing
  * @param onStuck   (entry) such a decision has no answer that ends it (the plan): the run ends
+ * @param trusted   () => the public keys of the MCP servers whose answers count (decision-proof.mjs)
+ * @param starter   the key of the MCP server that started the run, which then alone may answer; null: one started it, but no
+ *                  key came, so no answer counts; undefined: the `trusted` keys
+ * @param onIgnored ({ id, option, by, at }) an answer file without a valid proof was ignored
+ * @param keys      the run's key pair; a new one by default
  * @returns { open(decision, inject), settle(decision, answer, by), close() }; `inject({ option, message?, picked?, by })`
  *          answers the decision in the chat and says whether it was still waiting
  */
-export const createDesk = ({ dir, onSettled = () => {}, auto = false, waitMs = 0, onStop = () => {}, onStuck = () => {}, pollMs = 250 }) => {
+export const createDesk = ({ dir, onSettled = () => {}, auto = false, waitMs = 0, onStop = () => {}, onStuck = () => {}, pollMs = 250, trusted = () => [], starter, onIgnored = () => {}, keys = newKeyPair() }) => {
     const file = join(dir, DECISION_FILE);
     const answerFile = join(dir, ANSWER_FILE);
+    // Where caw_decide finds the run's key, and whose answers the run takes: the session that started it, or any listening one.
+    let from = { from: 'listeners' };
+    if (starter === null) from = { from: 'none' };
+    else if (starter !== undefined) from = { from: 'starter', starter: fingerprint(starter) };
+    const answers = { key: keys.publicKey, ...from };
+    const trustedNow = () => {
+        if (starter === null) return [];
+        return starter === undefined ? trusted() : [starter];
+    };
     let seq = 0;
     // The decisions waiting, innermost last: a token notice or an advice card can come in between a conversation.
     const stack = [];
@@ -67,13 +92,18 @@ export const createDesk = ({ dir, onSettled = () => {}, auto = false, waitMs = 0
     let last;
     const show = () => {
         const top = stack.at(-1);
-        if (top !== undefined) writeJson(file, { state: 'waiting', ...top.entry, ...(last === undefined ? {} : { answered: last }) });
+        if (top !== undefined) writeJson(file, { state: 'waiting', ...top.entry, answers, ...(last === undefined ? {} : { answered: last }) });
     };
     const take = () => {
         const top = stack.at(-1);
         if (top === undefined || !existsSync(answerFile)) return;
         const answer = readJson(answerFile);
         rmSync(answerFile, { force: true });
+        // Written by anything but an MCP server the run trusts: not an answer.
+        if (!verifyAnswer(keys, trustedNow(), answer)) {
+            onIgnored(ignoredOf(answer));
+            return;
+        }
         if (answer?.seq !== top.entry.seq || answer.id !== top.entry.id || !['session', 'elicitation'].includes(answer.by)) return;
         if (answerRefusal(top.entry, answer) !== undefined) return;
         top.inject({ option: answer.option, by: answer.by, ...(answer.message === undefined ? {} : { message: answer.message }), ...(answer.picked === undefined ? {} : { picked: answer.picked }) });

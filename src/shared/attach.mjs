@@ -44,8 +44,10 @@ export const newKey = (root, random = () => randomBytes(4)) => {
 /**
  * Registers a listener: the session behind the process `pid` (its MCP server) answers runs bound to `key`.
  * @param sessionId  the coding agent's session id, if known (CLAUDE_CODE_SESSION_ID); --attach may name its start
+ * @param publicKey  the MCP server's public key: a run takes its answers to decisions only with a proof made with the
+ *                   private half, which never leaves that process (host/decision-proof.mjs)
  */
-export const registerListener = (root, { key, sessionId, agent, pid = process.pid, env = process.env }) => {
+export const registerListener = (root, { key, sessionId, agent, publicKey, pid = process.pid, env = process.env }) => {
     mkdirSync(listenersDir(root), { recursive: true });
     const token = randomBytes(16).toString('hex');
     const kept = tokenFile(root, key, env);
@@ -53,7 +55,7 @@ export const registerListener = (root, { key, sessionId, agent, pid = process.pi
     writeFileSync(`${kept}.${pid}.tmp`, JSON.stringify({ key, token }), { mode: 0o600 });
     renameSync(`${kept}.${pid}.tmp`, kept);
     const file = listenerFile(root, key);
-    writeFileSync(`${file}.${pid}.tmp`, JSON.stringify({ key, pid, token, ...(sessionId ? { sessionId } : {}), ...(agent ? { agent } : {}), startedAt: new Date().toISOString() }, null, 2));
+    writeFileSync(`${file}.${pid}.tmp`, JSON.stringify({ key, pid, token, ...(sessionId ? { sessionId } : {}), ...(agent ? { agent } : {}), ...(publicKey ? { publicKey } : {}), startedAt: new Date().toISOString() }, null, 2));
     renameSync(`${file}.${pid}.tmp`, file);
     if (!existsSync(eventsFile(root, key))) writeFileSync(eventsFile(root, key), '');
     return { key };
