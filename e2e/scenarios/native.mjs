@@ -1475,7 +1475,8 @@ $A plan --file /tmp/p.yaml > /dev/null
 ${S1_COMMANDS}
 ${finishOf(['S1'])}`;
     rmSync(join(native, 'caw/recordings', `${HEADLESS}.yaml`), { force: true });
-    writeFileSync(join(native, 'caw/tests', `${HEADLESS}.yaml`), `id: ${HEADLESS}\nenvironments: [test]\nwrites: false\n${HEADLESS_PLAN}\n`);
+    // S1 creates an errand: the file says so, else the recorded plan differs in writes and adopting it is the person's.
+    writeFileSync(join(native, 'caw/tests', `${HEADLESS}.yaml`), `id: ${HEADLESS}\nenvironments: [test]\nwrites: true\n${HEADLESS_PLAN}\n`);
     try {
         // Nobody at a window: no humans, the CI variable may even be set.
         const code = await record(native, [HEADLESS, ...recordArgs, '--headless'], { interactive: false, containerCommand: ['bash', '-c', agent(HEADLESS_PLAN)] });

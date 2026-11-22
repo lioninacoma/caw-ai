@@ -17,6 +17,7 @@ const NEEDS_RECORDING = new Set(['replay-missing', 'replay-stale', 'replay-pendi
 /** The exit code for an error code; anything that is neither input nor recording is an environment error. */
 export const exitOf = (code) => {
     if (NEEDS_RECORDING.has(code)) return EXIT.needsRecording;
+    if (code === 'decision-needed') return EXIT.decision;
     return REJECTED.has(code) ? EXIT.rejected : EXIT.error;
 };
 
