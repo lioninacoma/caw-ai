@@ -132,6 +132,18 @@ test('in a terminal: the format of a run, passed and failed', () => {
     assert.deepEqual(shown.lines.map(plain).slice(2), ['  ✓ S1  Aufgabe anlegen', '  ✓ S2  Finden', '', 'Bis S2 abgespielt, um sein Zielbild zu zeigen; weder der Test noch das Zielbild wird hier bewertet. · 5.0s', 'Bericht  r.md']);
 });
 
+test('in a terminal: a passed step that met its target design says so after its time, one that did not stays plain', () => {
+    const steps = [{ id: 'S1', text: 'Liste da.' }, { id: 'S2', text: 'Notiz da.' }, { id: 'S3', text: 'Gespeichert.' }];
+    const names = { S1: 'Öffnen', S2: 'Notiz schreiben', S3: 'Speichern' };
+    const { lines, ui } = capture(true, true);
+    ui.verdict({
+        status: 'pass', testId: 'erste', target: 'local', expectations: steps,
+        results: steps.map(({ id }) => ({ id, status: 'pass' })),
+        steps: [{ id: 'S1', status: 'pass' }, { id: 'S2', status: 'pass', design: { file: 'design/note.html', verdict: 'met' } }, { id: 'S3', status: 'pass', design: { file: 'design/save.html', verdict: 'not-met' } }],
+    }, { report: 'r.md', elapsed: 5, names, durations: { S1: 1.2, S2: 2.6 } });
+    assert.deepEqual(lines.map(plain).slice(2, 5), ['  ✓ S1  Öffnen             1.2s', '  ✓ S2  Notiz schreiben    2.6s · Zielbild erfüllt', '  ✓ S3  Speichern']);
+});
+
 test('in a terminal: the run header, the head once with the version, the next commands in the accent colour', () => {
     const { lines, ui } = capture(true, true);
     ui.header({ mode: 'Wiedergabe ohne Claude', test: 'erste', target: 'local', role: 'user', code: 'Dev-Server localhost:4174', language: 'de' });

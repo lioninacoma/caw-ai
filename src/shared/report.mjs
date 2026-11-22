@@ -202,7 +202,10 @@ export const renderReport = ({ status, reason, note, testId, target, testedCode,
         for (const { id, text } of expectations) {
             const item = results.find((candidate) => candidate.id === id);
             const skipped = item !== undefined && isSkipped(item, results);
-            lines.push(`| ${id} | ${cell(text)} | ${skipped ? 'skipped' : item?.status ?? '-'} | ${skipped ? '-' : evidenceCell(item?.evidence)} | ${cell(item?.note)} |`);
+            // A passed step whose screen met its target design says so in its note.
+            const design = steps.find((step) => step.id === id)?.design;
+            const met = item?.status === 'pass' && design?.verdict === 'met' ? t('config.report.designMet', { file: String(design.file) }) : undefined;
+            lines.push(`| ${id} | ${cell(text)} | ${skipped ? 'skipped' : item?.status ?? '-'} | ${skipped ? '-' : evidenceCell(item?.evidence)} | ${cell([item?.note, met].filter(Boolean).join(' · '))} |`);
         }
     }
     // Not part of the verdict: the steps still to be recorded did not run.

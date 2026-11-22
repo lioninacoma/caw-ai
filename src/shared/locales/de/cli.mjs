@@ -587,6 +587,7 @@ Browser:
     'cli.uiStatus.pass': 'Bestanden.',
     'cli.uiStatus.fail': 'Fehlgeschlagen.',
     'cli.uiReplayedTo': 'Bis {step} abgespielt, um sein Zielbild zu zeigen; weder der Test noch das Zielbild wird hier bewertet.',
+    'cli.uiDesignMet': 'Zielbild erfüllt',
     'cli.uiStatus.error': 'Fehler.',
     'cli.uiStepsPassed': ({ passed, total }) => `${passed} von ${total} ${total === 1 ? 'Schritt' : 'Schritten'} bestanden.`,
     'cli.uiWarningCount': ({ count }) => `${count} ${count === 1 ? 'Warnung' : 'Warnungen'}`,

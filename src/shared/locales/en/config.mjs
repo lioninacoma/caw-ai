@@ -210,6 +210,7 @@ export default {
     'config.report.note': 'Note: {note}',
     'config.report.pending': ({ ids, count }) => `Pending, not recorded yet: ${ids}. ${count === 1 ? 'This step' : 'These steps'} did not run.`,
     'config.report.results.header': '| Step | Expectation | Status | Evidence | Note |',
+    'config.report.designMet': 'Design met: {file}',
     'config.report.failures': 'Hard errors',
     'config.report.failures.at': ' at {at}',
     'config.report.warnings': 'Warnings',

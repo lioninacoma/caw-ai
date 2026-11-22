@@ -210,6 +210,7 @@ export default {
     'config.report.note': 'Hinweis: {note}',
     'config.report.pending': ({ ids, count }) => `Offen, noch nicht aufgenommen: ${ids}. ${count === 1 ? 'Dieser Schritt lief' : 'Diese Schritte liefen'} nicht.`,
     'config.report.results.header': '| Schritt | Erwartung | Status | Nachweis | Notiz |',
+    'config.report.designMet': 'Zielbild erfüllt: {file}',
     'config.report.failures': 'Harte Fehler',
     'config.report.failures.at': ' bei {at}',
     'config.report.warnings': 'Warnungen',

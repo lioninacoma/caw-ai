@@ -210,6 +210,17 @@ test('Report: lists writing calls, not their parameters', () => {
     assert.doesNotMatch(renderReport({ status: 'pass', testId: 'r', target: 'a/dev', testedCode: 'deployed' }), /Schreibende/);
 });
 
+test('Report: a passed step that met its target design says so in its note, one not met does not', () => {
+    const report = renderReport({
+        status: 'pass', testId: 'r', target: 'a/dev', testedCode: 'deployed',
+        expectations: [{ id: 'S1', text: 'Notiz da' }, { id: 'S2', text: 'Gespeichert' }],
+        results: [{ id: 'S1', status: 'pass', evidence: { type: 'eval', value: 'true' } }, { id: 'S2', status: 'pass', evidence: { type: 'eval', value: 'true' } }],
+        steps: [{ id: 'S1', status: 'pass', design: { file: 'design/note.html', verdict: 'met' } }, { id: 'S2', status: 'pass', design: { file: 'design/save.html', verdict: 'not-met' } }],
+    });
+    assert.match(report, /^\| S1 \| Notiz da \| pass \| .* \| Zielbild erfüllt: design\/note\.html \|$/m);
+    assert.match(report, /^\| S2 \| Gespeichert \| pass \| [^|]* \| {2}\|$/m);
+});
+
 test('Demonstration: a reload is a hint in the recording; refresh only reloads the page', async (t) => {
     const dir = mkdtempSync(join(tmpdir(), 'caw-reload-'));
     t.after(() => rmSync(dir, { recursive: true, force: true }));

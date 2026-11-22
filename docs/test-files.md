@@ -123,7 +123,7 @@ A step can name the screen it should end on: `design: design/order-form.html`. O
 
 After the step's check passed, caw renders the `.html` design in a separate headless browser without scripts or network, at the step's recorded viewport, and compares its structure with the app's page: controls (role, label, flags), view lines (headings, buttons, links, landmarks) and per control `font-size`, `font-weight`, `color`, `background-color`, `border-radius` and `padding`. List rows, free text, numbers and whether a field is filled are data and are left out. Something missing or a differing style fails the step with kind `design`; controls that only the app has are reported but do not fail. The replay goes on, the step gets no retry and learns no effects in that run. With `design.fail: []` in the config it only warns.
 
-`result.json` holds per judged step `design: { file, verdict, missing, extra, styleDiffs }` under `steps`. With `visual.screenshots` every passed step also gets `screenshot` (`step-S3.png` in the `agent` folder, the step's screen at its recorded viewport), with `look: true` `visual`: `verdict` (`learning`, `same` or `changed`) and the changed style lines as `styles`.
+`result.json` holds per judged step `design: { file, verdict, missing, extra, styleDiffs }` under `steps`. A passed step that met its design says so: in the terminal after its time (`✓ S5  Leave a note  2.6s · design met`), in `report.md` in its note (`Design met: design/note.html`). With `visual.screenshots` every passed step also gets `screenshot` (`step-S3.png` in the `agent` folder, the step's screen at its recorded viewport), with `look: true` `visual`: `verdict` (`learning`, `same` or `changed`) and the changed style lines as `styles`.
 
 ### Visual regression
 

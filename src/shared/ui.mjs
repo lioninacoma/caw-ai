@@ -244,7 +244,7 @@ export const createUi = ({ fancy = colorEnabled(), out: own, err = (text) => con
          * @param durations step id -> seconds
          * @param replayedTo a window that only replayed up to this step to show its design: said instead of a passed test
          */
-        verdict: ({ status, reason, note, code, testId, target, expectations = [], results = [], failures = [], warnings = [], reproduce }, { report, reportUrl, elapsed, names = {}, durations = {}, replayedTo }) => {
+        verdict: ({ status, reason, note, code, testId, target, expectations = [], results = [], failures = [], warnings = [], reproduce, steps = [] }, { report, reportUrl, elapsed, names = {}, durations = {}, replayedTo }) => {
             const { color } = STATUS[status];
             // An error always names its code, as when a command stops (fatal).
             const codeLabel = status === 'error' && isErrorCode(code) ? t('cli.errorCode', { code, exit: exitOf(code) }) : '';
@@ -283,7 +283,9 @@ export const createUi = ({ fancy = colorEnabled(), out: own, err = (text) => con
                 }
                 counts[result.status === 'pass' ? 'pass' : 'fail'] += 1;
                 const took = time(id);
-                out(`  ${tag(STATUS[result.status].kind)} ${paint.muted(id.padEnd(idWidth))}  ${paint.text(name)}${took === '' ? '' : `${gap}${paint.faint(took)}`}`);
+                // A passed step whose screen met its target design says so after its time.
+                const met = result.status === 'pass' && steps.find((step) => step.id === id)?.design?.verdict === 'met' ? ` ${paint.ok(`· ${t('cli.uiDesignMet')}`)}` : '';
+                out(`  ${tag(STATUS[result.status].kind)} ${paint.muted(id.padEnd(idWidth))}  ${paint.text(name)}${took === '' ? (met === '' ? '' : gap.slice(1)) : `${gap}${paint.faint(took)}`}${met}`);
                 if (result.status !== 'pass' && result.note) under(result.note, true, paint.fail);
             }
             const shown = failures.slice(0, MAX_FAILURES);
