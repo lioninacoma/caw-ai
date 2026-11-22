@@ -311,7 +311,7 @@ Mit Test meldet sich `open` mit der Rolle des Tests an und spielt ohne den Agent
 | `--role <rolle>` | Nur ohne Test; nicht nötig, wenn die Config nur eine hat. Ein Test bringt seine mit. |
 | `--start`, `--reset` | Wie bei `run` (`reset` nur mit `--reset`). |
 | `--step-timeout <dauer>` | Zeitgrenze je Schritt beim Abspielen, Standard `30s`. |
-| `--design` | Mit `@S3`: spielt bis einschließlich S3 (bei offenem S3: bis zu seinem Einstieg) und legt sein Zielbild in der aufgenommenen Größe über die App, die Abweichungen darunter; F7 zeigt und verbirgt es. Siehe [gegen ein Zielbild entwickeln](guide.de.md#gegen-ein-zielbild-entwickeln). |
+| `--design` | Mit `@S3`: spielt bis einschließlich S3 (bei offenem S3: bis zu seinem Einstieg) und legt sein Zielbild in der aufgenommenen Größe über die App, die Abweichungen darunter, neu nach F5, einem Neuladen und dem Wiederherstellen des Zustands; F7 zeigt und verbirgt es. Eine fehlende Entwurfsdatei nennt der Chat. Siehe [gegen ein Zielbild entwickeln](guide.de.md#gegen-ein-zielbild-entwickeln). |
 | `--agent local\|docker`, `--attach [<key>]`, `--agent-timeout <dauer>`, `--max-actions <n>` | Wie bei `record`. |
 
 Nach der Übergabe öffnet **F1** (oder ⋯ → Öffnen…, `/open` im Chat) in der Werkbank „Öffnen…“: einen beliebigen Test dieser Umgebung, optional mit Schritt. Ohne Schritt läuft der Test bis zum letzten Schritt, mit Schritt landet er an dessen Einstieg, wie `open <test>@<schritt>`. caw beginnt eine neue Sitzung (Cookies und Speicher der Seite gelöscht), meldet sich mit dem Konto der Rolle des Tests neu an und spielt ihn im selben Fenster ab, ohne den Agenten. Bei Basic-Auth nur Tests der eigenen Rolle.

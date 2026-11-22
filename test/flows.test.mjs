@@ -48,7 +48,8 @@ const harness = ({ outcomes, answers = ['adopt'], ticks = [] }) => {
             decisions.push(decision);
             return { choice: pick(kind, text, options, card), picked: ticks };
         },
-        discuss: async (text, options) => {
+        discuss: async (text, options, card, decision) => {
+            decisions.push(decision);
             const wish = pick('discussing', text, options);
             return typeof wish === 'object' ? wish : { choice: wish };
         },
@@ -638,6 +639,28 @@ test('Test run: a design not met offers to have it built or to close, never to f
     const advised = harness({ outcomes: [{ ...failing('S2', { reason, kind: 'design' }), concluded: { flawed: true, advise: async () => null } }], answers: ['close'] });
     await runFlow({ spec, handover: false, canFix: true, advise: true, openSandbox: async () => 's', ...advised });
     assert.deepEqual(advised.questions[0].options, ['close']);
+});
+
+test('Test run: a design not met offers to open the window at that step with the design over the app, in this process', async () => {
+    const reason = 'S2 entspricht nicht seinem Zielbild: design/s2.html Fehlt: button "Speichern".';
+    const opened = [];
+    const openDesign = async (step) => {
+        opened.push(step);
+        return EXIT.pass;
+    };
+    const h = harness({ outcomes: [failing('S2', { reason, kind: 'design' })], answers: ['open-design'] });
+    assert.equal(await runFlow({ spec, handover: false, canFix: true, openSandbox: async () => assert.fail('no Claude without a click'), openDesign, ...h }), EXIT.fail, 'the run failed; opening only shows it');
+    assert.deepEqual(h.questions[0].options, ['ask', 'open-design', 'close']);
+    assert.equal(h.questions[0].labels[1], 'Mit Entwurf öffnen');
+    assert.equal(h.decisions[0].id, 'design.unmet');
+    assert.equal(h.decisions[0].options.find(({ id }) => id === 'open-design').gate, 'free');
+    assert.deepEqual(opened, ['S2']);
+    assert.deepEqual(h.said, [{ next: 'open' }]);
+
+    // Without asking (--explain advised already): opening comes first.
+    const advised = harness({ outcomes: [{ ...failing('S2', { reason, kind: 'design' }), concluded: { flawed: true, advise: async () => null } }], answers: ['close'] });
+    await runFlow({ spec, handover: false, canFix: true, advise: true, openSandbox: async () => 's', openDesign, ...advised });
+    assert.deepEqual(advised.questions[0].options, ['open-design', 'close']);
 });
 
 test('Test run: a changed look offers "Adopt new look" first; adopting takes the styles of every changed step at once, without Claude', async () => {

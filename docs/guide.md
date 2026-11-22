@@ -71,7 +71,7 @@ Steps you write at the end of a test without recording them yet are pending. `ru
 
 The test plan can be the spec before the screen exists. Write the next steps at the end of the test (they stay [pending](test-files.md#pending-steps)) and give a step the screen it should end on: `design: design/order-form.html`, and `needs:` with the locators that must be there before it can be recorded. The design usually comes from a Claude Design artifact or a Figma export: ask your Claude Code session to fetch it; it writes it with `caw_design` into `caw/design` and links it to the step when you ask. caw never fetches anything itself.
 
-Each run then judges the design without AI, after the step's check passed: the controls, headings, labels and a few styles per control of the rendered design against the app's page ([details](test-files.md#target-design)). Not met, the step fails with kind `design`, and the chat offers to have it built by your attached session or to close, never to fix the step: the test is right, the screen is not built yet. When the first pending step's `needs` are all on the page, the run says it is ready to record: `caw record <test>@S4 --env <env>`.
+Each run then judges the design without AI, after the step's check passed: the controls, headings, labels and a few styles per control of the rendered design against the app's page ([details](test-files.md#target-design)). Not met, the step fails with kind `design`, and the chat offers to have it built by your attached session, to open the step with its design (**Open with design**, the window of `caw open <test>@S4 --design` in the same process) or to close, never to fix the step: the test is right, the screen is not built yet. When the first pending step's `needs` are all on the page, the run says it is ready to record: `caw record <test>@S4 --env <env>`.
 
 To see where the screen is off, open the step with its design over it:
 
@@ -79,7 +79,7 @@ To see where the screen is off, open the step with its design over it:
 caw open <test>@S4 --design --env local
 ```
 
-It plays through S4 (a pending S4: up to its entry) and lays the design over the app at the recorded size, half transparent; **F7** shows and hides it, also across reloads. Below it the deviations are listed: missing controls and differing styles.
+It plays through S4 (a pending S4: up to its entry) and lays the design over the app at the recorded size (a pending step has none of its own: the chat names the step whose size it is), half transparent; **F7** shows and hides it, also across reloads. Below it the deviations are listed: missing controls and differing styles. They are listed anew after F5, a reload of the window and **Open again** (or a state picked with F1), so they always belong to the page you see; a design file that is missing is named in the chat with its step.
 
 ## Plain-language tests: record once, replay without AI
 

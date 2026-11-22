@@ -29,6 +29,8 @@ const CLOSE = button('close', 'run.button.close');
 const ASK = button('ask', 'run.button.ask', { primary: true });
 // A target design not met: asking means having the screen built, the app's code changes, not the test.
 const BUILD_DESIGN = button('ask', 'run.button.buildDesign', { primary: true });
+// Or look at it first: the window opens at that step with the design over the app (open <test>@S<n> --design), in this process.
+const OPEN_DESIGN = button('open-design', 'run.button.openDesign');
 // The learned look changed: if the new one is right, adopting it is the human's decision, without Claude and tokens.
 const ADOPT_LOOK = button('adopt-look', 'run.button.adoptLook', { primary: true });
 // Only the effects deviate, the check is met: forget the learned effects, without Claude and without tokens.
@@ -180,10 +182,12 @@ const createFixer = ({ sandbox, openSandbox }) => {
          * @param spec the test that advice in the conversation refers to
          * @param canAsk the "ask Claude for the cause" button: Claude advises as with --explain, only on click
          * @param proposals the button that adopts a proposed target (failed.proposal from playReplay); only a test run offers it
-         * @returns { advice, target, repaired, ask, forget, adoptTarget }: `advice` from the conversation or null; `forget`: forget the learned effects of this step; `target` is fixed with a warm-up; `repaired`
-         *          is already fixed in the same browser; `ask`: Claude should find the cause and advise; `adoptTarget`: the proposal to write into the recording
+         * @param openDesign a design not met offers to open the window at that step with the design (only a test run can)
+         * @returns { advice, target, repaired, ask, forget, adoptTarget, openDesign }: `advice` from the conversation or null; `forget`: forget the learned effects of this step; `target` is fixed with a warm-up; `repaired`
+         *          is already fixed in the same browser; `ask`: Claude should find the cause and advise; `adoptTarget`: the proposal to write into the recording;
+         *          `openDesign`: the step to open with its design
          */
-        settle: async ({ failed, chat, verdict, talk, repairHere, ignore, cleared }, spec, { canAsk = false, repeated = false, proposals = false } = {}) => {
+        settle: async ({ failed, chat, verdict, talk, repairHere, ignore, cleared }, spec, { canAsk = false, repeated = false, proposals = false, openDesign = false } = {}) => {
             const { diagnosis } = failed;
             const app = diagnosis?.side === 'app';
             let hint = failed.suspect ? t('run.flow.suspect') : '';
@@ -228,7 +232,10 @@ const createFixer = ({ sandbox, openSandbox }) => {
             const proposal = proposals ? failed.proposal : undefined;
             const useTarget = proposal === undefined ? null : { id: 'use-target', primary: true, label: t('run.button.useTarget', { name: locatorText(proposal.to) ?? locatorLabel(proposal.to) }) };
             if (useTarget !== null) options = [useTarget, ...options.map(secondary)];
-            if (design) options = canAsk ? [BUILD_DESIGN, CLOSE] : [ONLY_CLOSE];
+            if (design) {
+                if (canAsk) options = [BUILD_DESIGN, ...(openDesign ? [OPEN_DESIGN] : []), CLOSE];
+                else options = openDesign ? [{ ...OPEN_DESIGN, primary: true }, CLOSE] : [ONLY_CLOSE];
+            }
             const adoptable = (failed.looks?.size ?? 0) > 0;
             if (look) options = [...(adoptable ? [ADOPT_LOOK] : []), ...(canAsk ? [adoptable ? secondary(ASK) : ASK] : []), !adoptable && !canAsk ? ONLY_CLOSE : CLOSE];
             // The same failure as data: the session reads it from caw_status and answers with caw_decide.
@@ -281,6 +288,7 @@ const createFixer = ({ sandbox, openSandbox }) => {
                 if (answer?.choice === ADOPT_LOOK.id) return { advice, target: null, adoptLooks: failed.looks };
                 if (useTarget !== null && answer?.choice === useTarget.id) return { advice, target: null, adoptTarget: proposal };
                 if (answer?.choice === ASK.id) return { advice, target: null, ask: true };
+                if (answer?.choice === OPEN_DESIGN.id) return { advice, target: null, openDesign: failed.id };
                 if (answer?.choice !== FIX.id) return { advice, target: null };
                 if (await open(chat, cannotFix(chat)) === null) return { advice, target: null };
                 // Fixing starts a new Claude: it gets the conversation and the hard failures, so that agreements hold.
@@ -755,9 +763,11 @@ export const recordFlow = async ({ sandbox, execute, adopt, markLooks, log, head
  * @param hint      (failed, { canFix }) after a failed step, if the run ends with it
  * @param guide     a draft with chat (the guided bug fix): { cause, promote }; red, the card offers the fix and testing again;
  *                  green, adopting it runs `promote({ runId })` -> { ok, test, report, others } or { ok: false, reason }
+ * @param openDesign (step) => exit code: opens the window at that step with its design over the app (open <test>@S<n>
+ *                  --design) in this process; a design not met offers it. The run's own exit code stays.
  */
 export const runFlow = async (options) => {
-    const { spec, entry, through, handover, canFix, advise = false, fillBaselines = false, sessionAgent = false, reads = [], openSandbox, execute, adopt, log, hint, head = () => undefined, guide } = options;
+    const { spec, entry, through, handover, canFix, advise = false, fillBaselines = false, sessionAgent = false, reads = [], openSandbox, execute, adopt, log, hint, head = () => undefined, guide, openDesign } = options;
     const fixer = createFixer({ openSandbox });
     // What the run learned (baselines, effects, looks) is written once: before promoting, which moves the draft, or afterwards.
     let learned = false;
@@ -780,6 +790,8 @@ export const runFlow = async (options) => {
     let target = null;
     let repaired = null;
     let rerun = false;
+    // The step a design not met is opened at, with its design, once this run's window has closed.
+    let opening = null;
     let current = spec;
     /** In a test run the file is the yardstick: what the human adopts goes into it immediately. @returns a stale step to fix */
     const keep = async (result, chat, { offer = true } = {}) => {
@@ -790,9 +802,10 @@ export const runFlow = async (options) => {
         noticeFiles(result.files, chat);
         return offer && result.stale.length > 0 ? fixer.offerChanged(result.stale[0], chat) : null;
     };
-    /** Whether a new window comes next: for Claude (fix), the check run or a new test run. */
+    /** Whether a new window comes next: for Claude (fix), the check run, a new test run or the step opened with its design. */
     const windowAfter = () => {
         if (rerun) return { next: 'run' };
+        if (opening !== null) return { next: 'open' };
         if (repaired !== null) return { next: 'check' };
         return target === null ? undefined : { next: 'claude' };
     };
@@ -980,11 +993,17 @@ export const runFlow = async (options) => {
                     return;
                 }
                 // With --explain Claude already advised; otherwise Claude looks for the cause only on click, same as --explain, just on demand.
-                let settled = await fixer.settle(concluded, current, { canAsk: !advise, proposals: true });
+                const designable = openDesign !== undefined;
+                let settled = await fixer.settle(concluded, current, { canAsk: !advise, proposals: true, openDesign: designable });
                 if (settled.ask) {
                     await keep(settled.advice, chat, { offer: false });
                     if (await afterAdvice(await fixer.advise(concluded, current))) return windowAfter();
-                    settled = await fixer.settle(concluded, current, { proposals: true });
+                    settled = await fixer.settle(concluded, current, { proposals: true, openDesign: designable });
+                }
+                if (settled.openDesign !== undefined) {
+                    await keep(settled.advice, chat, { offer: false });
+                    opening = settled.openDesign;
+                    return windowAfter();
                 }
                 // The proven target goes into the recording, nothing else; a new run shows the step green with it.
                 if (settled.adoptTarget !== undefined) {
@@ -1028,6 +1047,11 @@ export const runFlow = async (options) => {
     if (rerun) {
         log(t('run.flow.rerunning'));
         return runFlow({ ...options, spec: current, openSandbox: fixer.sandbox() === undefined ? openSandbox : async () => fixer.sandbox() });
+    }
+    // Opening only shows the step: the run stays failed.
+    if (opening !== null) {
+        await openDesign(opening);
+        return played.exitCode;
     }
     const shared = { discardCode: EXIT.fail, sandbox: fixer.sandbox(), openSandbox, execute, adopt, log, head, previous: spec };
     if (repaired !== null) {

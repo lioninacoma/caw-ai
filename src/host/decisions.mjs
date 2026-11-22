@@ -39,6 +39,8 @@ const STEP = {
     'ignore-errors': HUMAN,
     'use-target': HUMAN,
     'adopt-look': HUMAN,
+    // Opening the step with its design only shows it.
+    'open-design': FREE,
 };
 
 /**

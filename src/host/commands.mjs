@@ -1097,7 +1097,11 @@ export const runOne = async (root, options, deps = {}, loaded = undefined) => {
     if (!quiet) ui.head();
     if (!quiet) ui.info(runMode({ withAgent, noChat, headless, inCi, withAdvice, environments: agentEnvironments(config), env: target, language: teamLanguage(config), learn: learns, opened: handover, file: `${spec.draft === true ? DRAFT_DIR : RECORDING_DIR}/${test}.yaml` }));
     const { runFlow } = await import('./flows.mjs');
-    const { execute } = claudeRuns(root, config, { spec, checked, target, timeoutMin: timeoutMin ?? CLAUDE_TIMEOUT_MIN, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, conversation, headless, withDesign: design });
+    const runs = claudeRuns(root, config, { spec, checked, target, timeoutMin: timeoutMin ?? CLAUDE_TIMEOUT_MIN, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, conversation, headless, withDesign: design });
+    const { execute } = runs;
+    // A design not met: "Open with design" opens the window at that step with the design over the app, as open <test>@S<n>
+    // --design does (the step passed its check, so it is played through), in this process with the chat so far.
+    const openDesign = canFix && !handover ? async (step) => (await runOne(root, { ...options, target, entry: undefined, through: step, design: true, handover: true, learn: false, advise: false, headless: false, noChat: false, quiet: true, guided: false, conversation: runs.conversation }, deps)).code : undefined;
     // A draft in the window: the chat guides through the fix (red: fix it, test again; green: promote). Headless, CI and
     // promoting run it as before.
     const guide = canFix && guided && !handover && entry === undefined && through === undefined && spec.draft === true ? {
@@ -1128,6 +1132,7 @@ export const runOne = async (root, options, deps = {}, loaded = undefined) => {
         head: () => headOf(root, git),
         log: ui.info,
         guide,
+        openDesign,
         onPlayed: (result) => {
             played = result;
             failed = result.failed;
