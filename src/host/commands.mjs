@@ -938,11 +938,14 @@ const startRecording = async (root, config, spec, checked, { exists, conversatio
 const claudeRuns = (root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, conversation: shared, ...rest }) => {
     // The guided bug fix chains reproduce, record and run in one process: the next phase keeps the chat so far.
     const conversation = shared ?? { transcript: [], onChatOpen };
+    // A run without a window that stopped at a decision only a person takes (record --headless): the first such decision.
+    let undecided;
     return {
         conversation,
+        undecided: () => undecided,
         execute: async ({ lazyChat, testing, ...options }) => {
             const { executeRun } = await import('./run.mjs');
-            return executeRun(root, config, options.sandbox ?? null, {
+            const result = await executeRun(root, config, options.sandbox ?? null, {
                 spec,
                 checked,
                 target,
@@ -956,6 +959,8 @@ const claudeRuns = (root, config, { spec, checked, target, timeoutMin, stepTimeo
                 ...options,
                 ...(options.conclude === undefined ? {} : { conversation: { ...conversation, lazy: lazyChat !== undefined, alsoOnWarnings: lazyChat === 'warnings', testing: testing === true } }),
             });
+            undecided ??= result.undecided === undefined ? undefined : { ...result.undecided, report: result.report };
+            return result;
         },
     };
 };
@@ -1485,12 +1490,14 @@ const fixGuide = async (root, options, deps, { spec, target, lifecycle, conversa
  */
 const recordTest = async (root, options, deps = {}) => {
     const { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive } = deps;
-    const { test, step, target: given, timeoutMin, stepTimeoutSec, maxActions, role, readOnly, agent, attach, overlay, start } = options;
-    // In CI nobody demonstrates or decides: said first, before --role or the environment.
-    requireHuman('record', interactive);
+    const { test, step, target: given, timeoutMin, stepTimeoutSec, maxActions, role, readOnly, agent, attach, overlay, start, headless = false } = options;
+    // In CI nobody demonstrates or decides: said first, before --role or the environment. Without a window nobody is needed.
+    if (!headless) requireHuman('record', interactive);
     const config = loadConfig(root);
     // A draft in caw/drafts records like a test; its last step must then fail while the bug is there.
     const exists = testExists(root, test);
+    // Without a window there is nobody to demonstrate, describe or steer a re-recording from a step: only a whole test with a plan.
+    if (headless && (step !== undefined || !exists || loadTest(root, test).steps.length === 0)) throw new CawError('usage', t(step === undefined ? 'cli.recordHeadlessPlan' : 'cli.recordHeadlessStep', { test, file: `${TEST_DIR}/${test}.yaml` }));
     if (step !== undefined) {
         if (!exists) throw testMissing(root, config, test, given);
         const known = withDefaults(loadTest(root, test), config);
@@ -1512,11 +1519,12 @@ const recordTest = async (root, options, deps = {}) => {
         // Before the demonstration: if Docker failed only afterwards, the human's work would be wasted.
         const sandbox = await openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent, attach });
         const previous = exists ? spec : undefined;
-        const { execute, conversation } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, previous, conversation: options.conversation });
+        const { execute, conversation, undecided } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, previous, conversation: options.conversation, headless });
+        if (headless) ui.info(t('cli.recordHeadless', { test, env: target }));
         // Driven from the developer's Claude Code session: it follows an existing test plan without asking the human first.
-        // A new test without a plan still starts with the human's demonstration.
-        const demonstration = (attach !== undefined || (agent === undefined && agentMode(config) === 'session')) && exists ? undefined : await startRecording(root, config, spec, checked, { exists, conversation });
-        return recordFlow({
+        // A new test without a plan still starts with the human's demonstration; without a window the agent follows the plan.
+        const demonstration = ((attach !== undefined || (agent === undefined && agentMode(config) === 'session')) && exists) || headless ? undefined : await startRecording(root, config, spec, checked, { exists, conversation });
+        const code = await recordFlow({
             sandbox,
             execute: (call) => execute({ ...call, ...(call.replay === undefined && call.repair === undefined ? { demonstration } : {}) }),
             adopt: (draft, only, adoptOptions) => writeTest(root, draft, only, adoptOptions),
@@ -1524,8 +1532,15 @@ const recordTest = async (root, options, deps = {}) => {
             markLooks: (draft, steps) => setStepLooks(root, draft, steps),
             head: () => headOf(root, deps.git),
             log: ui.info,
-            guide: await fixGuide(root, options, deps, { spec, target, lifecycle, conversation }),
+            previous,
+            // The guided bug fix needs a person: without a window a draft ends with its red proof saved.
+            guide: headless ? undefined : await fixGuide(root, options, deps, { spec, target, lifecycle, conversation }),
         });
+        // A decision only a person takes stopped the run: nothing was written, the decision is named.
+        const open = undecided();
+        if (open === undefined) return code;
+        ui.next([{ text: t('cli.recordHeadlessOpen', { id: open.id, report: open.report, options: open.options.map(({ id, gate }) => `${id} (${gate})`).join(', ') }), commands: [`${cawCommand()} record ${test} --env ${target}`] }]);
+        return EXIT.decision;
     });
 };
 

@@ -1455,3 +1455,46 @@ ${finishOf(['S1', 'S2'])}`;
         for (const dir of ['caw/tests', 'caw/recordings']) rmSync(join(native, dir, `${LOOK_SUGGESTED}.yaml`), { force: true });
     }
 });
+
+// ---- N21: record --headless from an existing plan
+
+const HEADLESS = 'rec-headless';
+const HEADLESS_PLAN = `notes: Eine Besorgung anlegen, ohne Fenster aufgenommen.
+steps:
+  - id: S1
+    name: Anlegen
+    do: Lege die Besorgung "Feed the raven {{runTag}}" an.
+    expect: Sie steht oben in der Liste.`;
+
+scenario('N21', 'record --headless follows the plan in the file: plan and adoption taken by caw (auto, logged); a changed plan stops with exit 5, nothing written, the open decision named', async () => {
+    const agent = (plan) => `A='caw agent'
+${tag}
+${planOf(plan)}
+$A plan --file /tmp/p.yaml > /dev/null
+${S1_COMMANDS}
+${finishOf(['S1'])}`;
+    rmSync(join(native, 'caw/recordings', `${HEADLESS}.yaml`), { force: true });
+    writeFileSync(join(native, 'caw/tests', `${HEADLESS}.yaml`), `id: ${HEADLESS}\nenvironments: [test]\nwrites: false\n${HEADLESS_PLAN}\n`);
+    try {
+        // Nobody at a window: no humans, the CI variable may even be set.
+        const code = await record(native, [HEADLESS, ...recordArgs, '--headless'], { interactive: false, containerCommand: ['bash', '-c', agent(HEADLESS_PLAN)] });
+        verify('N21 headless recording: exit 0, recording written', code === 0 && written(HEADLESS), String(code));
+        const dirs = runDirsOf(native, HEADLESS).sort();
+        const results = dirs.map((name) => JSON.parse(readFileSync(join(native, '.caw/runs', name, 'result.json'), 'utf8')));
+        const taken = results.flatMap(({ decisions = [] }) => decisions.map(({ id, option, by }) => `${id}:${option}:${by}`));
+        verify('plan approved and recording adopted by caw, logged as auto', JSON.stringify(taken) === '["plan.approve:approve:auto","recording.adopt:adopt:auto"]', JSON.stringify(taken));
+        const before = recordingText(HEADLESS);
+        const quiet = await runQuietly(HEADLESS);
+        verify('the recording plays', quiet.code === 0, `${quiet.code} ${quiet.note}`);
+
+        // The agent submits another expected result: that plan is the person's to approve.
+        const changed = HEADLESS_PLAN.replace('Sie steht oben in der Liste.', 'Sie steht in der Liste.');
+        const stopped = await record(native, [HEADLESS, ...recordArgs, '--headless'], { interactive: false, containerCommand: ['bash', '-c', agent(changed)] });
+        verify('changed plan: exit 5', stopped === 5, String(stopped));
+        const { result, report } = newestRunOf(native, HEADLESS);
+        verify('the run names the open decision plan.approve and wrote nothing', result?.code === 'decision-needed' && result?.openDecision?.id === 'plan.approve' && /## Offene Entscheidung/.test(report), JSON.stringify(result?.openDecision));
+        verify('recording and test file unchanged', recordingText(HEADLESS) === before && readFileSync(join(native, 'caw/tests', `${HEADLESS}.yaml`), 'utf8').includes('Sie steht oben in der Liste.'));
+    } finally {
+        for (const dir of ['caw/tests', 'caw/recordings']) rmSync(join(native, dir, `${HEADLESS}.yaml`), { force: true });
+    }
+});

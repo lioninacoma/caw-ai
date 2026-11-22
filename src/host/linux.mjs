@@ -47,7 +47,8 @@ const COMMAND_OPTIONS = {
     // --agent-timeout and --max-actions apply to Claude when clarifying, explaining and fixing; playback itself is limited by
     // --step-timeout.
     run: ['--env', '--explain', '--headless', '--no-chat', '--learn', '--strict', '--promote', '--all', '--report', '--retry-env', '--step-timeout', '--agent-timeout', '--max-actions', '--agent', '--attach', '--overlay', '--start', '--reset', '--no-reset'],
-    record: [...CLAUDE_OPTIONS, '--role', '--read-only'],
+    // --headless: no window, for a test that has a plan; caw takes only what changes nothing the test checks.
+    record: [...CLAUDE_OPTIONS, '--role', '--read-only', '--headless'],
     open: ['--env', '--role', '--overlay', '--start', '--reset', '--agent', '--attach', '--agent-timeout', '--max-actions', '--step-timeout', '--design'],
     // bisect always runs headless, without chat and learning, and always starts the environment: nothing to switch.
     bisect: ['--env', '--tests-from', '--step-timeout'],

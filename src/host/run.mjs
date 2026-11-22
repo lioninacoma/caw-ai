@@ -654,7 +654,8 @@ ${text}`) ?? 0;
     const aborted = new Promise((ok) => { abortSignal = ok; });
     const stopSignals = onAbortSignals(abortSignal);
     try {
-        session = await openSession({ root, config, spec, checked, runDir, headless, interactive: conversation !== undefined, agent: reproduce !== undefined, recorded: recordedBrowser(givenSpec.steps), servedTexts: hinting });
+        // Without a window (record --headless) nobody is in front of it, but the agent works all the same: the host lock applies.
+        session = await openSession({ root, config, spec, checked, runDir, headless, interactive: conversation !== undefined && !headless, agent: reproduce !== undefined || (headless && conversation !== undefined), recorded: recordedBrowser(givenSpec.steps), servedTexts: hinting });
         // Distinct fact names: otherwise "target" could mean a step's element and "version" the recording.
         // --attach: the person's own session answers. The header says whether it is there, the chat when that changes. Linked
         // when the session box is first used: at the start, or only after the handover (open, develop).

@@ -226,6 +226,14 @@ test('open and record with a step: a stale step before it names record <test>@<s
     await assert.rejects(open(root, ['bestellen', '--env', 'local'], { interactive: true }), (error) => error.code === 'replay-stale' && /record bestellen@S2/.test(error.message));
 });
 
+test('record --headless: only a whole test with a plan, also in CI; nobody shows a new test or steers from a step', async (t) => {
+    const root = project(t);
+    assert.equal(parseRunArgs('record', ['bestellen', '--headless']).headless, true);
+    // Without a window nobody is needed: in CI it is not refused for that, but a new test has no plan to follow.
+    await assert.rejects(record(root, ['neu-test', '--env', 'local', '--headless'], { interactive: false }), (error) => error.code === 'usage' && /record --headless braucht einen Test mit Plan: caw\/tests\/neu-test\.yaml hat keinen/.test(error.message));
+    await assert.rejects(record(root, ['bestellen@S2', '--env', 'local', '--headless'], { interactive: false }), (error) => error.code === 'usage' && /nicht ab einem Schritt/.test(error.message));
+});
+
 test('run with several tests: each runs, the table shows the outcome, the exit is the worst, JUnit on request', async (t) => {
     const root = project(t);
     const said = [];

@@ -33,6 +33,9 @@ Befehle:`,
       [--role <rolle>]                   Nur beim ersten Mal, nicht mit @<S4>; entfällt, wenn die Config nur eine kennt
       [--read-only]                      Nur beim ersten Mal: Der Test schreibt nicht (writes: false); schreibt er doch,
                                          wird er schreibend
+      [--headless]                       Ohne Fenster, für einen Test mit Plan, nicht mit @<S4>: {agent} folgt dem Plan,
+                                         caw nimmt nur, was nichts an den Prüfungen ändert; alles andere hält mit Exit 5
+                                         an und schreibt nichts
       [--agent-timeout <dauer>]          Zeitlimit für {agent}, Standard 60m
       [--max-actions <n>]                Grenze für Aktionen von {agent}, sonst maxActions aus der Config, sonst 100
       [--step-timeout <dauer>]           Zeitlimit je Schritt im Prüfdurchlauf, Standard 30s
@@ -388,6 +391,10 @@ Browser:
         ? `Offen, noch nicht aufgenommen: ${ids}. Er lief nicht. Nimm ihn auf: {caw} record ${test}@${step} --env ${target}`
         : `Offen, noch nicht aufgenommen: ${ids}. Sie liefen nicht. Nimm sie auf: {caw} record ${test}@${step} --env ${target}`),
     'cli.recordExists': 'Den Test {test} gibt es schon, seine Metadaten bleiben. --role und --read-only müssen zur Datei passen oder entfallen.',
+    'cli.recordHeadless': '{test} auf {env} ohne Fenster aufnehmen: {agent} folgt dem Testplan; caw nimmt nur, was nichts an den Prüfungen ändert (den unveränderten Plan, die Übernahme desselben Plans, den roten Nachweis eines Entwurfs). Alles andere hält den Lauf an, schreibt nichts und endet mit Exit 5.',
+    'cli.recordHeadlessPlan': 'record --headless braucht einen Test mit Plan: {file} hat keinen. Ohne Fenster zeigt und beschreibt niemand einen neuen Test; nimm ihn mit Fenster auf: caw record {test}.',
+    'cli.recordHeadlessStep': 'record --headless nimmt den ganzen Test auf, nicht ab einem Schritt: Niemand würde die Neuaufnahme lenken. Lass @<schritt> weg oder nimm mit Fenster auf.',
+    'cli.recordHeadlessOpen': 'Über {id} entscheidet ein Mensch (Optionen: {options}); nichts wurde geschrieben. Siehe {report}, dann mit Fenster aufnehmen:',
     'cli.recordStepUnknown': '{test} hat keinen Schritt {step}.{suggestion} {steps} Einen neuen Schritt trägst du zuerst in {file} ein.',
     'cli.recordFromReason': 'Neu aufnehmen ab {step} ist gewünscht',
 

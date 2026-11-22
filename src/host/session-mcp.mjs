@@ -32,7 +32,7 @@ const OVERLAY_CHECK_TIMEOUT_MS = 180_000;
 /** Typed fields of caw_start: which command takes which, and which it needs. A step goes with its test as `<test>@<step>`. */
 const FIELDS = {
     run: { needs: ['test'], takes: ['test', 'env', 'overlay', 'headless', 'learn', 'promote', 'start', 'reset'] },
-    record: { needs: ['test'], takes: ['test', 'step', 'env', 'overlay', 'start', 'reset'] },
+    record: { needs: ['test'], takes: ['test', 'step', 'env', 'overlay', 'start', 'reset', 'headless'] },
     open: { needs: [], takes: ['test', 'step', 'env', 'overlay', 'start', 'reset'] },
     reproduce: { needs: ['bug'], takes: ['bug', 'from', 'env', 'role', 'ref', 'headless'] },
 };
@@ -409,7 +409,9 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
         description: 'Starts a caw command in the background with you as the agent (--agent session); the window opens for the human. '
             + 'command: run, record, open or reproduce. Typed fields: test, env, step (record: re-record from this step to the end; open: stop at the '
             + 'entry of this step, its navigation done and its inputs open, to develop from there; e.g. "S3", needs test), '
-            + 'overlay (true, "build", "dev", a dev server URL or parts like "orders,admin:dev": local code on a deployed environment, only if the human wants it), headless (run), '
+            + 'overlay (true, "build", "dev", a dev server URL or parts like "orders,admin:dev": local code on a deployed environment, only if the human wants it), headless (run; record of a test with a plan, without step: '
+            + 'caw takes only what changes nothing the test checks, anything else stops the run, writes nothing and caw_status names it as openDecision; '
+            + 'while it waits for a decision that needs the person, answer it with caw_decide), '
             + 'learn (run: write missing baselines into the recording; only when the human asks), promote (run of a draft from caw/drafts: green and run --all green, then it moves to caw/tests with a fix report; only when the human asks), start (run the environment\'s configured start command if it does not '
             + 'answer and stop it afterwards; not with overlay), reset (run the environment\'s configured reset first). '
             + 'Or args as on the command line, not both. You are the agent, so no extra tokens and no token question; record follows an existing '

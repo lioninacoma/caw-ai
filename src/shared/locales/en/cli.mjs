@@ -33,6 +33,9 @@ Commands:`,
       [--role <role>]                    First time only, not with @<S4>; not needed if the config has just one
       [--read-only]                      First time only: the test doesn't write (writes: false); if it does, it's
                                          marked as writing
+      [--headless]                       No window, for a test that has a plan, not with @<S4>: {agent} follows the plan,
+                                         caw takes only what changes nothing the test checks; anything else stops with
+                                         exit 5 and writes nothing
       [--agent-timeout <duration>]       Time limit for {agent}, default 60m
       [--max-actions <n>]                Limit on the agent's actions, else maxActions from the config, else 100
       [--step-timeout <duration>]        Time limit per step in the check run, default 30s
@@ -384,6 +387,10 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
         ? `Pending, not recorded yet: ${ids}. It did not run. Record it: {caw} record ${test}@${step} --env ${target}`
         : `Pending, not recorded yet: ${ids}. They did not run. Record them: {caw} record ${test}@${step} --env ${target}`),
     'cli.recordExists': 'Test {test} already exists, its metadata stays. --role and --read-only must match the file or be left out.',
+    'cli.recordHeadless': 'Recording {test} on {env} without a window: {agent} follows the test plan; caw takes only what changes nothing the test checks (the unchanged plan, adopting the same plan, a draft\'s red proof). Anything else stops the run, writes nothing and exits 5.',
+    'cli.recordHeadlessPlan': 'record --headless needs a test with a plan: {file} has none. Without a window nobody shows or describes a new test; record it with a window: caw record {test}.',
+    'cli.recordHeadlessStep': 'record --headless records the whole test, not from a step: nobody would steer the re-recording. Leave out @<step>, or record with a window.',
+    'cli.recordHeadlessOpen': 'A person decides {id} (options: {options}); nothing was written. See {report}, then record with a window:',
     'cli.recordStepUnknown': '{test} has no step {step}.{suggestion} {steps} Add a new step to {file} first.',
     'cli.recordFromReason': 'Re-recording from {step} on was requested',
 

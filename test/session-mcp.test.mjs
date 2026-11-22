@@ -288,6 +288,8 @@ test('caw_start: typed fields build the command line, mixing with args and wrong
     assert.throws(() => startArgs({ command: 'run', args: ['b', '--start', '--overlay'] }), /--start mit overlay/);
     assert.deepEqual(startArgs({ command: 'record', test: 'bestellung', step: 'S3', overlay: true }), ['bestellung@S3', '--overlay']);
     assert.deepEqual(startArgs({ command: 'record', test: 'bestellung' }), ['bestellung']);
+    // record without a window: caw follows the plan and takes only the harmless.
+    assert.deepEqual(startArgs({ command: 'record', test: 'bestellung', headless: true }), ['bestellung', '--headless']);
     assert.deepEqual(startArgs({ command: 'open', test: 'bestellung', step: 'S2', env: 'dev' }), ['bestellung@S2', '--env', 'dev']);
     assert.deepEqual(startArgs({ command: 'open', test: 'bestellung' }), ['bestellung']);
     assert.throws(() => startArgs({ command: 'run', test: 'bestellung', target: 'dev' }), /target heißt jetzt env/);

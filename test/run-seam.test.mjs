@@ -51,7 +51,7 @@ const playback = (fail) => async ({ replay, log }) => {
  * A run of caw with the seams in place: the chat answers with `answers` in order, one per decision, as the window's buttons do.
  * @returns { execute, decisions } with what each decision offered
  */
-const harness = ({ fail, answers = [] }) => {
+const harness = ({ fail, answers = [], headless = false }) => {
     const root = mkdtempSync(join(tmpdir(), 'caw-seam-'));
     mkdirSync(join(root, 'caw'), { recursive: true });
     const wishes = [...answers];
@@ -82,6 +82,7 @@ const harness = ({ fail, answers = [] }) => {
             target: 'dev',
             stepTimeoutMs: 1000,
             maxActions: 10,
+            headless,
             ...call,
             ...(call.conclude === undefined ? {} : { conversation: { transcript: [], lazy: lazyChat !== undefined, testing: testing === true } }),
             seams: { openRunSession: async () => fakeSession(), openChat, playReplay: playback(fail) },
@@ -133,4 +134,50 @@ test('Seam: a draft red at its step in the check run offers the red proof; adopt
     assert.deepEqual(h.decisions.map(({ options }) => options), [['adopt', 'discard']]);
     assert.equal(h.adopted.length, 1);
     assert.deepEqual(h.adopted[0].draft.red, { step: 'S2', run: h.runs[0].runId, head: 'abc1234' });
+});
+
+test('Seam without a window: the same plan recorded again is adopted by caw itself, logged as auto', async () => {
+    const h = harness({ headless: true });
+    const code = await fixFlow({ draft: testOf(), whole: true, previous: testOf(), execute: h.execute, adopt: h.adopt, log: () => {}, advising: false });
+    assert.equal(code, EXIT.pass);
+    assert.equal(h.adopted.length, 1);
+    assert.deepEqual(h.result().decisions.map(({ id, option, by }) => [id, option, by]), [['recording.adopt', 'adopt', 'auto']]);
+    assert.equal(h.runs[0].undecided, undefined);
+    assert.match(readFileSync(join(h.root, h.runs[0].report.replace(/report\.md$/, 'chat.log')), 'utf8'), /notice: Testplan übernehmen \(2 Schritte\): von caw gewählt/);
+});
+
+test('Seam without a window: a recording that changes what the test checks is not adopted; the run names the open decision', async () => {
+    const h = harness({ headless: true });
+    // A message that newly counts as known, an expected result that changed: the person's to adopt.
+    await fixFlow({ draft: testOf(), whole: true, previous: testOf(), fresh: ['Gespeichert'], execute: h.execute, adopt: h.adopt, log: () => {}, advising: false });
+    assert.deepEqual(h.adopted, []);
+    assert.equal(h.runs[0].undecided.id, 'recording.adopt');
+    assert.deepEqual(h.runs[0].undecided.context.known, ['Gespeichert']);
+    const result = h.result();
+    assert.equal(result.openDecision.id, 'recording.adopt');
+    assert.deepEqual(result.openDecision.options.map(({ id, gate }) => [id, gate]), [['adopt', 'human'], ['discard', 'free']]);
+    assert.deepEqual(result.decisions.map(({ option, by }) => [option, by]), [['discard', 'auto']]);
+    assert.match(readFileSync(join(h.root, h.runs[0].report), 'utf8'), /## Offene Entscheidung/);
+
+    // A plan that is not the file's: the same.
+    const other = harness({ headless: true });
+    const changed = testOf();
+    changed.steps[1] = { ...changed.steps[1], expect: 'S2 anders' };
+    await fixFlow({ draft: changed, whole: true, previous: testOf(), execute: other.execute, adopt: other.adopt, log: () => {}, advising: false });
+    assert.deepEqual(other.adopted, []);
+    assert.equal(other.runs[0].undecided.context.samePlan, false);
+});
+
+test('Seam without a window: a failed step stops at its card without fixing; a draft red at its step saves its proof', async () => {
+    const h = harness({ fail: 'S2', headless: true });
+    const code = await fixFlow({ draft: testOf(), whole: true, previous: testOf(), execute: h.execute, adopt: h.adopt, log: () => {}, advising: false });
+    assert.equal(code, EXIT.fail);
+    assert.deepEqual(h.adopted, []);
+    assert.equal(h.runs[0].undecided.id, 'step.failed');
+    assert.deepEqual(h.result().decisions.map(({ id, option, by }) => [id, option, by]), [['step.failed', 'close', 'auto']]);
+
+    const red = harness({ fail: 'S2', headless: true });
+    assert.equal(await fixFlow({ draft: testOf({ draft: true }), whole: true, previous: testOf({ draft: true }), execute: red.execute, adopt: red.adopt, log: () => {}, advising: false, head: () => undefined }), EXIT.pass);
+    assert.deepEqual(red.adopted[0].draft.red, { step: 'S2', run: red.runs[0].runId });
+    assert.equal(red.runs[0].undecided, undefined);
 });
