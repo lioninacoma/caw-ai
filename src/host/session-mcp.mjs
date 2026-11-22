@@ -603,7 +603,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             const offered = waiting.options.find(({ id }) => id === input.option);
             const about = { runId: target.runId, decision: waiting.id, option: offered.id, gate: offered.gate };
             // The way to decide by hand when the client cannot ask the person: the window, or a run with one.
-            const byHand = waiting.window === false ? t('run.mcp.decideByHandHeadless', { command: `${cawCommand()} record ${target.test ?? '<test>'}` }) : t('run.mcp.decideByHandWindow');
+            const byHand = waiting.window === false ? t('run.mcp.decideByHandHeadless', { command: `${cawCommand()} record ${target.test ?? '<test>'} --env ${target.target ?? '<env>'}` }) : t('run.mcp.decideByHandWindow');
             // Whose answers the run takes (decision-desk.mjs): the session that started it, or any listening one. Then this
             // server listens, so the run finds its key.
             const answers = waiting.answers ?? {};

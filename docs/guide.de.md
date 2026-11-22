@@ -383,7 +383,7 @@ Der Entwurf macht aus dem Fehler einen Test, der den Fix belegt: vorher rot, dan
 1. **Rot:** `caw record <id>` nimmt den Entwurf auf. Sein letzter Schritt ist der, der scheitern muss: Der Agent prüft dort das
    richtige Verhalten, und die Prüfung antwortet „nein“, solange der Fehler da ist. caw behält genau diese scheiternde Prüfung,
    sofern sie ausgewertet wurde (eine Prüfung, die geworfen hat, belegt nichts). Der Prüflauf ohne den Agenten zeigt dann „S3 rot wie
-   erwartet: der Test fängt den Fehler“, wenn alle Schritte davor bestanden und S3 an seiner Prüfung scheiterte; Speichern
+   erwartet: der Test fängt den Fehler“, wenn alle Schritte davor bestanden und S3 an seiner Prüfung scheiterte; „Testplan übernehmen“
    behält den Entwurf mit `red: {step, run, head}` (der Lauf und der damals ausgecheckte Commit). Besteht S3, fängt der Entwurf
    den Fehler nicht, und die Entscheidung sagt das.
 2. **Fix:** Du behebst den Fehler, von Hand oder mit deiner verbundenen Claude-Code-Session; jede Änderung braucht deine

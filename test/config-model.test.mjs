@@ -88,6 +88,18 @@ test('visual and visualIgnore: the screenshots switch, selectors as text', () =>
     for (const visualIgnore of ['#clock', [''], [3]]) {
         assert.equal(validateConfig({ ...plainConfig, visualIgnore }).issues.length, 1, JSON.stringify(visualIgnore));
     }
+    // A key visual does not take (a removed one, a typo) is named, with a suggestion where one is close.
+    assert.deepEqual(validateConfig({ ...plainConfig, visual: { tolerance: 24 } }).issues, ['visual.tolerance gibt es nicht (erlaubt: screenshots)']);
+    assert.deepEqual(validateConfig({ ...plainConfig, visual: { screenshot: true } }).issues, ['visual.screenshot gibt es nicht (erlaubt: screenshots) (meintest du screenshots?)']);
+});
+
+test('a misspelt top-level key that stands for a missing one is the only finding, without its follow-ups', () => {
+    const signIn = { type: 'form', path: '/login', userSelector: '#u', passwordSelector: '#p', signedInSelector: '#menu' };
+    const environments = { local: { url: 'http://localhost:5173', agent: true, writable: true } };
+    assert.deepEqual(validateConfig({ signIn, roles: { tester: {} }, enviroments: environments }).issues, ['Unbekanntes Feld: enviroments (meintest du environments?)']);
+    assert.deepEqual(validateConfig({ singIn: signIn, roles: { tester: {} }, environments }).issues, ['Unbekanntes Feld: singIn (meintest du signIn?)']);
+    // Present beside its typo, the key itself is checked as always.
+    assert.match(validateConfig({ signIn, roles: { tester: {} }, environments: {}, enviroments: environments }).issues.join('\n'), /Unbekanntes Feld: enviroments[^\n]*\nenvironments fehlt/);
 });
 
 test('names: lowercase, digits and -, at most 32 characters; no underscore (maps 1:1 to the variable suffix)', () => {

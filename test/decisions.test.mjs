@@ -184,15 +184,18 @@ test('Desk without a window: the harmless taken at once, what needs a person end
     const stuck = [];
     const settled = [];
     const desk = createDesk({ ...trust, dir, auto: true, onSettled: (entry) => settled.push(entry), onStop: (entry) => stopped.push(entry.id), onStuck: (entry) => stuck.push(entry.id) });
-    const chat = createChat({ desk });
+    const notices = [];
+    const chat = createChat({ desk, show: (who, text) => { if (who === 'notice') notices.push(text); } });
     const same = { samePlan: true, expectChange: [], known: [], removed: [], fixed: [], stale: [], seen: [] };
     const adopt = [{ id: 'adopt', label: 'Übernehmen' }, { id: 'discard', label: 'Verwerfen' }];
     assert.equal(await decide(chat, { id: 'recording.adopt', context: same, question: 'Übernehmen?', options: adopt, card: { title: 'x' } }), 'adopt');
     assert.equal(await decide(chat, { id: 'recording.adopt', context: { ...same, known: ['Gespeichert'] }, question: 'Übernehmen?', options: adopt, card: { title: 'x' } }), 'discard');
     assert.deepEqual(stopped, ['recording.adopt']);
+    assert.match(notices.at(-1), /^Verwerfen: offen, niemand hat entschieden/, notices.join('\n'));
     // The first recording: adopted by caw, the log names the messages it took as known.
     assert.equal(await decide(chat, { id: 'recording.adopt', context: { ...same, firstRecording: true, known: ['Gespeichert'] }, question: 'Übernehmen?', options: adopt, card: { title: 'x' } }), 'adopt');
-    assert.deepEqual(settled.map(({ option: chosen, by }) => [chosen, by]), [['adopt', 'auto'], ['discard', 'auto'], ['adopt', 'auto']]);
+    // A stop at an open decision is no decision by caw: it stays open (onStop), the log has only what was decided.
+    assert.deepEqual(settled.map(({ option: chosen, by }) => [chosen, by]), [['adopt', 'auto'], ['adopt', 'auto']]);
     assert.deepEqual(settled.at(-1).known, ['Gespeichert']);
     assert.equal(settled[0].known, undefined);
     const plan = decide(chat, { id: 'plan.approve', via: 'plan', context: { changed: true }, card: { steps: [] }, options: [{ id: 'approve', label: 'a' }, { id: 'revise', label: 'r' }] });
@@ -313,6 +316,9 @@ test('Terminal: a run without a window asks a person at a terminal, not in CI or
         '  1) Übernehmen (adopt, ändert, was der Test prüft)',
         '  2) Verwerfen (discard)',
     ]);
+    // What changes: a changed expected result shows before and after, beside the messages newly known.
+    const changing = decisionOf('recording.adopt', [{ id: 'adopt', label: 'Übernehmen' }, { id: 'discard', label: 'Verwerfen' }], { test: 'kauf', expectChange: [{ step: 'S2', before: 'Summe 5', after: 'Summe 6' }], known: ['Neu'] });
+    assert.equal(promptLines(changing)[1], '  test: kauf, expectChange: S2 "Summe 5" → "Summe 6", known: Neu');
 });
 
 test('Terminal: the person answers by number, Enter ends it harmlessly, a plan is revised with a message; logged as terminal', async (t) => {
@@ -345,7 +351,8 @@ test('Terminal: the person answers by number, Enter ends it harmlessly, a plan i
     term.input.end();
     assert.equal(await third, 'discard');
     assert.deepEqual(stopped, ['recording.adopt']);
-    assert.equal(settled.at(-1).by, 'auto');
+    assert.equal(settled.length, 3, 'the open decision is not logged as taken');
+    assert.equal(readDecision(dir).state, 'closed');
     desk.close();
 });
 

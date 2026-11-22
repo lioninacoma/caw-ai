@@ -523,6 +523,7 @@ test('Playback: an unknown status note warns once but fails nothing', async () =
     assert.equal(played.results.get('S1').status, 'pass');
     assert.equal(warned.length, 1);
     assert.match(warned[0].text, /Statushinweis.*Treffer sind vorläufig/);
+    assert.equal(warned[0].step, 'S1', 'the step it showed in, for the CI reports');
 });
 
 test('Playback: a hard failure stops before the next step, even if it only occurs at the end', async () => {

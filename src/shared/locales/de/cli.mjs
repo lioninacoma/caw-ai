@@ -87,10 +87,10 @@ Befehle:`,
       [--overlay[=<teile>]]              wie bei run`,
     'cli.help.reproduce': `  reproduce "<fehlerbericht>" [--env <name>]  {agent} stellt einen Fehler allein nach, angemeldet mit einer
                                          Testrolle: kein Plan zum Freigeben, keine Entscheidungen. Schreibt einen
-                                         Bericht und den Entwurf eines Testplans in den Laufordner, nie nach caw/tests.
-                                         Nur wo {agent} arbeiten darf{here}, nie auf Produktion; nur lesend, außer die
-                                         Umgebung ist writable; keine Code-Änderungen. Exit 0 nachgestellt, 1 nicht
-                                         nachgestellt oder unklar
+                                         Bericht in den Laufordner und einen nachgestellten Fehler als Entwurf nach
+                                         caw/drafts, nie nach caw/tests. Nur wo {agent} arbeiten darf{here}, nie auf
+                                         Produktion; nur lesend, außer die Umgebung ist writable; keine
+                                         Code-Änderungen. Exit 0 nachgestellt, 1 nicht nachgestellt oder unklar
       [--file <datei>] | -               Den Fehlerbericht aus einer Datei oder von stdin
       [--from <test>[@<S4>]]             In einem Zustand eines Tests anfangen: dessen Schritte bis zum Einstieg in
                                          S4, ohne {agent}
@@ -188,7 +188,7 @@ Browser:
     'cli.synopsis.skill': 'caw skill',
     'cli.synopsis.role': 'caw role [list [--json] | add <rolle> | remove <rolle> | login <rolle> --env <name>]',
     'cli.synopsis.run': 'caw run <test> [--env <name>]  oder  caw run <test> <test> … | --all [--env <name>] [--agent local|docker | --attach [<key>]]  oder  caw run <draft> --promote [--env <name>]',
-    'cli.synopsis.record': 'caw record <test> [--env <name>] [--role <rolle>]  oder  caw record <test>@<S4> [--env <name>] [--agent local|docker | --attach [<key>]]',
+    'cli.synopsis.record': 'caw record <test> [--env <name>] [--role <rolle>] [--headless]  oder  caw record <test>@<S4> [--env <name>] [--agent local|docker | --attach [<key>]]',
     'cli.synopsis.open': 'caw open [--env <name>] [--role <rolle>]  oder  caw open <test>[@<S4>] [--design] [--env <name>] [--agent local|docker | --attach [<key>]]',
     'cli.synopsis.overlay': 'caw overlay status|check [--env <name>] [--part <teil>] [--apply] [--start] [--json]',
     'cli.usageLine': 'Aufruf: {synopsis}',
@@ -392,7 +392,7 @@ Browser:
         : `Offen, noch nicht aufgenommen: ${ids}. Sie liefen nicht. Nimm sie auf: {caw} record ${test}@${step} --env ${target}`),
     'cli.recordExists': 'Den Test {test} gibt es schon, seine Metadaten bleiben. --role und --read-only müssen zur Datei passen oder entfallen.',
     'cli.recordHeadless': '{test} auf {env} ohne Fenster aufnehmen: {agent} folgt dem Testplan; caw nimmt nur, was nichts an den Prüfungen ändert (den unveränderten Plan, die Übernahme desselben Plans, den roten Nachweis eines Entwurfs). Alles andere hält den Lauf an, schreibt nichts und endet mit Exit 5.',
-    'cli.recordHeadlessPlan': 'record --headless braucht einen Test mit Plan: {file} hat keinen. Ohne Fenster zeigt und beschreibt niemand einen neuen Test; nimm ihn mit Fenster auf: caw record {test}.',
+    'cli.recordHeadlessPlan': 'record --headless braucht einen Test mit Plan: {file} hat keinen. Ohne Fenster zeigt und beschreibt niemand einen neuen Test; nimm ihn mit Fenster auf: {caw} record {test}.',
     'cli.recordHeadlessStep': 'record --headless nimmt den ganzen Test auf, nicht ab einem Schritt: Niemand würde die Neuaufnahme lenken. Lass @<schritt> weg oder nimm mit Fenster auf.',
     'cli.recordHeadlessOpen': 'Über {id} entscheidet ein Mensch (Optionen: {options}); nichts wurde geschrieben. Siehe {report}, dann mit Fenster aufnehmen:',
     'cli.recordStepUnknown': '{test} hat keinen Schritt {step}.{suggestion} {steps} Einen neuen Schritt trägst du zuerst in {file} ein.',
@@ -651,6 +651,7 @@ Browser:
     'cli.audit.kind.expect-changed-check': 'Das erwartete Ergebnis von {step} wurde von „{was}“ zu „{expect}“, und mit ihm die Prüfung.',
     'cli.audit.kind.environments-narrowed': 'Der Test läuft nicht mehr auf {list}.',
     'cli.audit.kind.known-messages-added': 'Jetzt als bekannt akzeptierte Meldungen: {list}.',
+    'cli.audit.kind.known-messages-baseline': 'Erste Aufnahme; ihre Basis, ab jetzt bekannt: {list}.',
     'cli.audit.kind.retry-added': '{step} wird jetzt wiederholt, bis zu {times}-mal.',
     'cli.audit.kind.retry-raised': '{step} wird bis zu {times}-mal statt {was}-mal wiederholt.',
     'cli.audit.kind.timeout-raised': 'Die Prüfung von {step} wartet bis zu {now} statt {was}.',

@@ -370,11 +370,17 @@ export const validateConfig = (given) => {
     // The team language: a primary language subtag (de, en, fr, pt …). caw's own texts stay de/en, Claude writes in it.
     if (given.language !== undefined && !(typeof given.language === 'string' && /^[a-z]{2,3}$/.test(given.language))) issues.push(t('config.language', { value: String(JSON.stringify(given.language)) }));
     const config = given;
+    // A misspelt key standing for a missing one (enviroments): its own finding is the cause. What follows from the missing key
+    // (environments missing, roles without a sign-in) would only mislead, so it waits until the name is right.
+    const mistyped = new Set(Object.keys(given).filter((key) => !TOP_FIELDS.includes(key)).map((key) => didYouMean(key, TOP_FIELDS))
+        .filter((name) => name !== undefined && given[name] === undefined));
 
-    checkEnvironments(config, issues, notes);
-    for (const [at, signIn] of signInPlaces(config)) checkSignIn(at, signIn, issues);
+    if (!mistyped.has('environments')) {
+        checkEnvironments(config, issues, notes);
+        for (const [at, signIn] of signInPlaces(config)) checkSignIn(at, signIn, issues);
+    }
     if (config.signIn !== undefined && !isObject(config.signIn)) issues.push(t('config.signIn.notObject', { at: 'signIn' }));
-    checkRoles(config, issues);
+    if (!['environments', 'signIn', 'roles'].some((key) => mistyped.has(key))) checkRoles(config, issues);
     if (config.start !== undefined && !isStartPath(config.start)) issues.push(t('config.start'));
     // Where the application's source is, relative to the project (default "."); false: no source here (no code changes, no code advice).
     if (config.source !== undefined && config.source !== false && !relativePath(config.source)) issues.push(t('config.source'));
@@ -452,8 +458,10 @@ export const validateConfig = (given) => {
         issues.push(t('config.design', { kinds: designKinds.join(', ') }));
     }
     // The visual layer: screenshots per step are opt-in (a learned look is per step, look: true in the test file).
-    if (config.visual !== undefined && !(isObject(config.visual)
-        && Object.entries(config.visual).every(([key, value]) => key === 'screenshots' && typeof value === 'boolean'))) {
+    // A key it does not take (removed ones like tolerance, a typo) is named itself.
+    const visualUnknown = isObject(config.visual) ? Object.keys(config.visual).find((key) => key !== 'screenshots') : undefined;
+    if (visualUnknown !== undefined) issues.push(t('config.visual.unknown', { key: visualUnknown, fields: 'screenshots', hint: hintFor(visualUnknown, ['screenshots']) }));
+    else if (config.visual !== undefined && !(isObject(config.visual) && Object.values(config.visual).every((value) => typeof value === 'boolean'))) {
         issues.push(t('config.visual'));
     }
     if (config.visualIgnore !== undefined && !(Array.isArray(config.visualIgnore) && config.visualIgnore.every((selector) => typeof selector === 'string' && selector.trim() !== ''))) {

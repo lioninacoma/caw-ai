@@ -162,7 +162,7 @@ test('Seam without a window: a recording that changes what the test checks is no
     const result = h.result();
     assert.equal(result.openDecision.id, 'recording.adopt');
     assert.deepEqual(result.openDecision.options.map(({ id, gate }) => [id, gate]), [['adopt', 'human'], ['discard', 'free']]);
-    assert.deepEqual(result.decisions.map(({ option, by }) => [option, by]), [['discard', 'auto']]);
+    assert.equal(result.decisions, undefined, 'the stop at the open decision is no decision taken');
     assert.match(readFileSync(join(h.root, h.runs[0].report), 'utf8'), /## Offene Entscheidung/);
 
     // A plan that is not the file's: the same.
@@ -180,7 +180,7 @@ test('Seam without a window: a failed step stops at its card without fixing; a d
     assert.equal(code, EXIT.fail);
     assert.deepEqual(h.adopted, []);
     assert.equal(h.runs[0].undecided.id, 'step.failed');
-    assert.deepEqual(h.result().decisions.map(({ id, option, by }) => [id, option, by]), [['step.failed', 'close', 'auto']]);
+    assert.equal(h.result().decisions, undefined, 'the stop at the open decision is no decision taken');
 
     const red = harness({ fail: 'S2', headless: true });
     assert.equal(await fixFlow({ draft: testOf({ draft: true }), whole: true, previous: testOf({ draft: true }), execute: red.execute, adopt: red.adopt, log: () => {}, advising: false, head: () => undefined }), EXIT.pass);

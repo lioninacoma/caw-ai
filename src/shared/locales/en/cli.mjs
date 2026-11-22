@@ -86,10 +86,10 @@ Commands:`,
       [--start] [--reset]                as for run (--reset only when given)
       [--overlay[=<parts>]]              as for run`,
     'cli.help.reproduce': `  reproduce "<bug report>" [--env <name>]  {agent} reproduces a bug on its own, signed in as a test role: no plan
-                                         to approve, no decisions. Writes a report and a draft test plan to the run
-                                         folder, never into caw/tests. Only where {agent} may work{here}, never on
-                                         production; read-only unless the environment is writable; no code changes.
-                                         Exit 0 reproduced, 1 not reproduced or unclear
+                                         to approve, no decisions. Writes a report to the run folder and a reproduced
+                                         bug as a draft to caw/drafts, never into caw/tests. Only where {agent} may
+                                         work{here}, never on production; read-only unless the environment is writable;
+                                         no code changes. Exit 0 reproduced, 1 not reproduced or unclear
       [--file <file>] | -                The bug report from a file, or from stdin
       [--from <test>[@<S4>]]             Start in a test's state: its steps up to the entry of S4, without {agent}
       [--role <role>]                    Without --from; not needed if the config has just one
@@ -184,7 +184,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.synopsis.skill': 'caw skill',
     'cli.synopsis.role': 'caw role [list [--json] | add <role> | remove <role> | login <role> --env <name>]',
     'cli.synopsis.run': 'caw run <test> [--env <name>]  or  caw run <test> <test> … | --all [--env <name>] [--agent local|docker | --attach [<key>]]  or  caw run <draft> --promote [--env <name>]',
-    'cli.synopsis.record': 'caw record <test> [--env <name>] [--role <role>]  or  caw record <test>@<S4> [--env <name>] [--agent local|docker | --attach [<key>]]',
+    'cli.synopsis.record': 'caw record <test> [--env <name>] [--role <role>] [--headless]  or  caw record <test>@<S4> [--env <name>] [--agent local|docker | --attach [<key>]]',
     'cli.synopsis.open': 'caw open [--env <name>] [--role <role>]  or  caw open <test>[@<S4>] [--design] [--env <name>] [--agent local|docker | --attach [<key>]]',
     'cli.synopsis.overlay': 'caw overlay status|check [--env <name>] [--part <part>] [--apply] [--start] [--json]',
     'cli.usageLine': 'Usage: {synopsis}',
@@ -388,7 +388,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
         : `Pending, not recorded yet: ${ids}. They did not run. Record them: {caw} record ${test}@${step} --env ${target}`),
     'cli.recordExists': 'Test {test} already exists, its metadata stays. --role and --read-only must match the file or be left out.',
     'cli.recordHeadless': 'Recording {test} on {env} without a window: {agent} follows the test plan; caw takes only what changes nothing the test checks (the unchanged plan, adopting the same plan, a draft\'s red proof). Anything else stops the run, writes nothing and exits 5.',
-    'cli.recordHeadlessPlan': 'record --headless needs a test with a plan: {file} has none. Without a window nobody shows or describes a new test; record it with a window: caw record {test}.',
+    'cli.recordHeadlessPlan': 'record --headless needs a test with a plan: {file} has none. Without a window nobody shows or describes a new test; record it with a window: {caw} record {test}.',
     'cli.recordHeadlessStep': 'record --headless records the whole test, not from a step: nobody would steer the re-recording. Leave out @<step>, or record with a window.',
     'cli.recordHeadlessOpen': 'A person decides {id} (options: {options}); nothing was written. See {report}, then record with a window:',
     'cli.recordStepUnknown': '{test} has no step {step}.{suggestion} {steps} Add a new step to {file} first.',
@@ -646,6 +646,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.audit.kind.expect-changed-check': 'The expected result of {step} changed from "{was}" to "{expect}", and with it the check.',
     'cli.audit.kind.environments-narrowed': 'The test no longer runs on {list}.',
     'cli.audit.kind.known-messages-added': 'Messages now accepted as known: {list}.',
+    'cli.audit.kind.known-messages-baseline': 'First recording; its baseline, known from now on: {list}.',
     'cli.audit.kind.retry-added': '{step} is now retried, up to {times} times.',
     'cli.audit.kind.retry-raised': '{step} is retried up to {times} times instead of {was}.',
     'cli.audit.kind.timeout-raised': 'The check of {step} waits up to {now} instead of {was}.',

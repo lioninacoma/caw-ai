@@ -526,12 +526,15 @@ export const buildReplay = ({ recorder, outcome, spec, target, draft, from, prev
     // On re-recording only the patterns: the new recording brings the old fixed texts itself, as far as they still appear.
     const given = draft?.knownMessages ?? (previous?.knownMessages ?? []).filter((entry) => typeof entry !== 'string');
     const known = textMatcher(given);
-    const fresh = [...messages].filter((message) => !known(message)).sort();
+    const seen = [...messages].filter((message) => !known(message)).sort();
+    // Newly known is what the previous recording did not know yet: its fixed texts showing again change nothing it checks.
+    const before = draft === undefined ? textMatcher((previous?.knownMessages ?? []).filter((entry) => typeof entry === 'string')) : () => false;
+    const fresh = seen.filter((message) => !before(message));
     const texts = given.filter((entry) => typeof entry === 'string');
     const candidate = withExpectations({
         ...(draft ?? spec),
         steps: kept !== undefined ? [...kept, ...recorded] : draft === undefined ? recorded : draft.steps.map((step) => recorded.find(({ id }) => id === step.id) ?? step),
-        knownMessages: [...[...new Set([...texts, ...fresh])].sort(), ...given.filter((entry) => typeof entry !== 'string')],
+        knownMessages: [...[...new Set([...texts, ...seen])].sort(), ...given.filter((entry) => typeof entry !== 'string')],
     });
     const lost = missingRemembered(candidate);
     return lost.length > 0 ? { problems: lost } : { problems, candidate, fresh };
@@ -859,7 +862,8 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         for (const note of state?.notes ?? []) {
             if (known?.(note) || noted.has(note)) continue;
             noted.add(note);
-            session.warn?.({ type: 'note', text: t('session.replay.newNote', { note: shownMessage(note) }) });
+            // The step being played, where one is: the CI reports name it like any other step's warning.
+            session.warn?.({ type: 'note', ...(activeOwner === undefined ? {} : { step: activeOwner }), text: t('session.replay.newNote', { note: shownMessage(note) }) });
         }
         return state;
     };

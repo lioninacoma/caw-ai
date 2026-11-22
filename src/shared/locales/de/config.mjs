@@ -438,6 +438,7 @@ export default {
     'config.test.redDraftOnly': 'red gehört nur in einen Entwurf in {dir}: Es belegt, dass der Entwurf scheitert, solange der Fehler da ist. Entferne es hier.',
     'config.test.red': 'red ist { step, run, head? }: ein Schritt dieses Entwurfs, der Lauf, der ihn rot gezeigt hat, und der damals ausgecheckte Commit (kurzer Hash).',
     'config.visual': 'visual muss ein Objekt sein mit screenshots (true/false), etwa { "screenshots": true }',
+    'config.visual.unknown': 'visual.{key} gibt es nicht (erlaubt: {fields}){hint}',
     'config.visualIgnore': 'visualIgnore muss eine Liste von CSS-Selektoren sein, etwa ["#clock", ".avatar"]',
     'config.test.visual': 'recording.visual braucht runs (Zahl), styles: [Zeilen] und optional basis und adopted (JJJJ-MM-TT), wie caw es lernt.',
     'config.report.warning.visual': 'Aussehen',

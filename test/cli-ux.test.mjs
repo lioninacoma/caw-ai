@@ -185,6 +185,25 @@ test('validate: all problems of a test at once, YAML positions only once', (t) =
     });
 });
 
+test('validate: an invalid test with a recording file is reported once, not again for its recordings', (t) => {
+    const root = project(t);
+    const file = join(root, 'caw', 'tests', 'anmelden.yaml');
+    assert.ok(existsSync(join(root, 'caw', 'recordings', 'anmelden.yaml')));
+    writeFileSync(file, readFileSync(file, 'utf8').replace('writes: false', 'mutates: false'));
+    t.mock.method(process.stdout, 'write', () => true);
+    assert.throws(() => validate(root), (error) => {
+        assert.equal(error.code, 'test-invalid');
+        assert.equal(error.message.split('\n').filter((line) => /anmelden\.yaml: .*mutates/.test(line)).length, 1, error.message);
+        return true;
+    });
+});
+
+test('help: reproduce writes its draft to caw/drafts, record names --headless in its usage', () => {
+    assert.match(helpText('reproduce'), /caw\/drafts/);
+    assert.doesNotMatch(helpText('reproduce'), /Entwurf eines Testplans in den Laufordner/);
+    assert.match(synopsisOf('record'), /--headless/);
+});
+
 /** Runs fn with CI set: there nobody picks the developer's own environment. */
 const inCi = async (fn) => {
     const before = process.env.CI;
@@ -518,7 +537,7 @@ test('CLI: unknown command with suggestion, help everywhere with -h, exit codes'
     assert.match(renamed.stderr, /run kennt die Option --target nicht\. Erlaubt: --env/);
     const usage = cli('record', 'x@s3');
     assert.equal(usage.status, 3);
-    assert.match(usage.stderr, /x@s3: Ein Schritt steht als <test>@S<n> hinter dem Test, etwa bestellung@S3\.\n\[caw\] Aufruf: caw record <test> \[--env <name>\] \[--role <rolle>\] {2}oder {2}caw record <test>@<S4> \[--env <name>\] \[--agent local\|docker \| --attach \[<key>\]\]\n\[caw\] \(code: usage, exit 3\)/);
+    assert.match(usage.stderr, /x@s3: Ein Schritt steht als <test>@S<n> hinter dem Test, etwa bestellung@S3\.\n\[caw\] Aufruf: caw record <test> \[--env <name>\] \[--role <rolle>\] \[--headless\] {2}oder {2}caw record <test>@<S4> \[--env <name>\] \[--agent local\|docker \| --attach \[<key>\]\]\n\[caw\] \(code: usage, exit 3\)/);
     const unknown = cli('qqqq', 'x', 'S2');
     assert.equal(unknown.status, 3);
     assert.match(unknown.stderr, /Unbekannter Befehl: qqqq\./);

@@ -39,6 +39,7 @@ export default {
     'chat.answeredInSession': '{label}: confirmed by you in the session.',
     'chat.answeredInTerminal': '{label}: answered by you in the terminal.',
     'chat.answeredAuto': '{label}: taken by caw, nothing the test checks changes.',
+    'chat.stoppedOpen': '{label}: open, nobody decided; the run stops here and writes nothing.',
     'chat.decision.revise': 'Ask for changes',
     'chat.waiting': 'Waiting for you in the Chrome window: {status}',
     'chat.error.noWorkbench': 'The chat only runs in the workbench, and this run has none.',

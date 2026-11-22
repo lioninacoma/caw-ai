@@ -158,6 +158,18 @@ test('buildReplay: patterns stay in knownMessages, what a pattern already covers
     assert.deepEqual(candidate.knownMessages, ['Alt', 'Neu', { pattern: '^Prüfsumme' }]);
 });
 
+test('buildReplay: recorded again, a message the previous recording knew already is not newly known; only a new one is fresh', () => {
+    const recorder = { problems: [], steps: [{ action: 'check', id: 'S1', code: 'true' }], messages: new Set(['Gespeichert.', 'Neu']) };
+    const spec = { id: 't', steps: [{ id: 'S1', name: 'a', do: 'b', expect: 'c' }] };
+    const previous = { ...spec, knownMessages: ['Gespeichert.', 'Veraltet'] };
+    const same = buildReplay({ recorder: { ...recorder, messages: new Set(['Gespeichert.']) }, outcome: { status: 'pass', results: [] }, spec, previous, target: 'local' });
+    assert.deepEqual(same.fresh, [], 'the same fixed text as before: nothing newly known');
+    assert.deepEqual(same.candidate.knownMessages, ['Gespeichert.']);
+    const more = buildReplay({ recorder, outcome: { status: 'pass', results: [] }, spec, previous, target: 'local' });
+    assert.deepEqual(more.fresh, ['Neu']);
+    assert.deepEqual(more.candidate.knownMessages, ['Gespeichert.', 'Neu'], 'what still appears is kept, the old text gone from the app is dropped');
+});
+
 test('buildReplay: a remember manually marked secret stays secret when Claude re-records the step', () => {
     const recorder = { problems: [], steps: [{ action: 'remember', name: 'pw', code: 'neu' }, { action: 'check', id: 'S1', code: 'true' }], messages: new Set() };
     const spec = { id: 't', steps: [{ id: 'S1', name: 'a', do: 'b', expect: 'c' }] };

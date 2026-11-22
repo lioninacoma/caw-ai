@@ -600,8 +600,15 @@ export const recordingHints = (root) => {
     return readdirSync(dir).filter((name) => name.endsWith('.yaml')).flatMap((name) => {
         const id = name.slice(0, -'.yaml'.length);
         if (!existsSync(testPath(root, id))) return [t('config.test.hint.noDescription', { file: `${RECORDING_DIR}/${name}`, test: `${TEST_DIR}/${name}` })];
-        const recordings = readRecordingFile(root, id);
-        const steps = new Set(loadTest(root, id).steps.map((step) => step.id));
+        let recordings;
+        let steps;
+        try {
+            recordings = readRecordingFile(root, id);
+            steps = new Set(loadTest(root, id).steps.map((step) => step.id));
+        } catch {
+            // A test that does not load is reported with the test, once; its recordings have no hint to add.
+            return [];
+        }
         const orphans = [...recordings.byId.keys()].filter((step) => !steps.has(step)).map((step) => t('config.test.hint.orphan', { file: `${RECORDING_DIR}/${name}`, step }));
         // Recorded before the viewport was stored: replay keeps the default size until the test is recorded again.
         const unpinned = [...recordings.byId.values()].some((recording) => recording?.viewport === undefined);

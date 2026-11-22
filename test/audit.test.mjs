@@ -86,6 +86,15 @@ test('auditChanges: known messages added', () => {
     assert.deepEqual(kinds(findings), ['weakening:known-messages-added']);
     assert.match(findings[0].text, /Server nicht erreichbar\./);
     assert.deepEqual(audit(spec(BASE), { before: spec(BASE, { knownMessages: ['Gespeichert.'] }) }), []);
+    assert.doesNotMatch(findings[0].text, /\.\.$/, 'a message ending in a period gets no second one');
+});
+
+test('auditChanges: the known messages of a first recording are its baseline, listed for information, not a weakening', () => {
+    const plan = BASE.map((recorded) => Object.fromEntries(Object.entries(recorded).filter(([key]) => key !== 'recording')));
+    const findings = audit(spec(BASE, { knownMessages: ['Gespeichert.'] }), { before: spec(plan) });
+    assert.deepEqual(kinds(findings), ['info:known-messages-baseline']);
+    assert.match(findings[0].text, /Gespeichert\.$/);
+    assert.doesNotMatch(findings[0].text, /\.\.$/);
 });
 
 test('auditChanges: learned effect lines removed (any list), console errors accepted, forgotten', () => {

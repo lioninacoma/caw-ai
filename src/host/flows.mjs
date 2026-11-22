@@ -346,22 +346,26 @@ export const offerRecordRed = async (chat, draft) => {
     return choice === RECORD_RED.id ? { next: 'record' } : { outcome: t('run.guide.later', { command: draft.record }) };
 };
 
+/** The command that goes on with a draft later, on the run's environment (guide.env) like every other hint. */
+const laterCommand = (guide, test, extra = '') => `${cawCommand()} run ${test}${extra}${guide?.env === undefined ? '' : ` --env ${guide.env}`}`;
+
 /**
  * A draft red at its step, the bug still there: the person has the agent advise the fix (code changes come back as cards,
  * applied one by one), fixes it themselves, or stops. A cause outside the project is fixed there.
  * @param red       redBundle: the red step for the card and the agent's task
+ * @param later     the command that tests again later (laterCommand)
  * @param again     still red after a fix: fix again, test again or end
  * @param title     the card's head; by default "Now fix the bug"
  * @param adviseFix () => the advice result ({ spec, touched, notes, files, outside }) or null if no agent could start
  * @param store     (advice result) adopts what changed in the test (rare: the fix is the app's)
  * @returns true to test again in a new window, false to end the run
  */
-const guideFix = async (chat, { red, test, again = false, title, adviseFix, store }) => {
+const guideFix = async (chat, { red, test, later, again = false, title, adviseFix, store }) => {
     const ask = { ...resultCard('next', title ?? t('run.guide.fixTitle'), undefined, t(again ? 'run.guide.againMuted' : 'run.guide.fixMuted')), rows: redRows(red) };
     let card = ask;
     let options = again ? [FIX_AGAIN, { ...RETEST, primary: false }, CLOSE] : [FIX_BY_AGENT, FIX_MYSELF, LATER];
     const waiting = () => {
-        card = resultCard('next', t('run.guide.waitTitle'), t('run.guide.waitText', { id: red.step }), t('run.guide.laterHint', { command: `${cawCommand()} run ${test}` }));
+        card = resultCard('next', t('run.guide.waitTitle'), t('run.guide.waitText', { id: red.step }), t('run.guide.laterHint', { command: later }));
         options = [RETEST, LATER];
     };
     for (;;) {
@@ -510,7 +514,7 @@ const changeNote = (changes) => {
  * @param head         () => the checked-out commit's short hash or undefined: a draft's red proof records it
  * @param markLooks    (test, step ids) => the file: writes `look: true` on the steps the human ticked when adopting a whole
  *                     recording; without it nothing is suggested
- * @param guide        a draft with a window (the guided bug fix): { cause, rerun }; once its red proof is saved the card offers the
+ * @param guide        a draft with a window (the guided bug fix): { env, cause, rerun }; once its red proof is saved the card offers the
  *                     fix, and testing again is `rerun()`, a run of the draft in a new window of this process (its exit code)
  * @param previous     the test file as it was before: adopting a recording of the same plan that changes nothing it checks is
  *                     harmless (decisions.mjs harmlessAdopt), which a run without a window may do on its own
@@ -631,8 +635,8 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
                             current = result.spec;
                             if (result.touched.length > 0 || result.notes) log(t('run.flow.adviceAdopted', { file: adopt(current, new Set(result.touched), { withNotes: result.notes }) }));
                         };
-                        retest = await guideFix(chat, { red: redBundle(current, guide.cause), test: current.id, adviseFix, store });
-                        return retest ? { next: 'run' } : { outcome: t('run.guide.later', { command: `${cawCommand()} run ${current.id}` }) };
+                        retest = await guideFix(chat, { red: redBundle(current, guide.cause), test: current.id, later: laterCommand(guide, current.id), adviseFix, store });
+                        return retest ? { next: 'run' } : { outcome: t('run.guide.later', { command: laterCommand(guide, current.id) }) };
                     }
                     return { outcome: t('run.flow.saved', { file: saved }) };
                 }
@@ -761,7 +765,7 @@ export const recordFlow = async ({ sandbox, execute, adopt, markLooks, log, head
  *                      outside CI, in CI with --learn)
  * @param onPlayed  gets the playback result before things continue
  * @param hint      (failed, { canFix }) after a failed step, if the run ends with it
- * @param guide     a draft with chat (the guided bug fix): { cause, promote }; red, the card offers the fix and testing again;
+ * @param guide     a draft with chat (the guided bug fix): { env, cause, promote }; red, the card offers the fix and testing again;
  *                  green, adopting it runs `promote({ runId })` -> { ok, test, report, others } or { ok: false, reason }
  * @param openDesign (step) => exit code: opens the window at that step with its design over the app (open <test>@S<n>
  *                  --design) in this process; a design not met offers it. The run's own exit code stays.
@@ -941,8 +945,8 @@ export const runFlow = async (options) => {
                             return ready === null ? null : concluded.advise({ sandbox: ready, spec: current, fix: redBundle(current, guide.cause) });
                         };
                         const title = t(known ? 'run.flow.stillRedTitle' : 'run.flow.redTitle', { id });
-                        rerun = await guideFix(chat, { red: redBundle(current, guide.cause), test: current.id, again: known, title, adviseFix, store: (advised) => keep(advised, chat, { offer: false }) });
-                        return rerun ? windowAfter() : { outcome: t('run.guide.later', { command: `${cawCommand()} run ${current.id}` }) };
+                        rerun = await guideFix(chat, { red: redBundle(current, guide.cause), test: current.id, later: laterCommand(guide, current.id), again: known, title, adviseFix, store: (advised) => keep(advised, chat, { offer: false }) });
+                        return rerun ? windowAfter() : { outcome: t('run.guide.later', { command: laterCommand(guide, current.id) }) };
                     }
                     await decide(chat, 'red.still', { test: current.id, step: id }, resultCard('info', t(known ? 'run.flow.stillRedTitle' : 'run.flow.redTitle', { id }), t(known ? 'run.flow.stillRedText' : 'run.flow.redText', { id }), t('run.flow.stillRedMuted', { test: current.id })), [ONLY_CLOSE]);
                     return undefined;
@@ -968,7 +972,7 @@ export const runFlow = async (options) => {
                 if (!failed && guide !== undefined && verdict.status === 'pass' && current.red !== undefined) {
                     const id = current.red.step;
                     if (await decide(chat, 'fix.green', { test: current.id, step: id }, inPhase('green', resultCard('next', t('run.guide.greenTitle', { id }), t('run.guide.greenText', { test: current.id }))), [PROMOTE, LATER]) !== PROMOTE.id) {
-                        return { outcome: t('run.guide.later', { command: `${cawCommand()} run ${current.id} --promote` }) };
+                        return { outcome: t('run.guide.later', { command: laterCommand(guide, current.id, ' --promote') }) };
                     }
                     learnFrom(concluded);
                     chat.progress(t('run.guide.promoting'));

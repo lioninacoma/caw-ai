@@ -255,7 +255,7 @@ export const createChat = ({ show: shown = () => {}, status = () => {}, onAbort 
      */
     const external = (decision, { option, message, picked, by }) => {
         if (ended) return false;
-        const said = (label) => show('notice', t({ elicitation: 'chat.answeredInSession', auto: 'chat.answeredAuto', terminal: 'chat.answeredInTerminal' }[by] ?? 'chat.answeredBySession', { label }));
+        const said = (label) => show('notice', t({ elicitation: 'chat.answeredInSession', auto: 'chat.answeredAuto', terminal: 'chat.answeredInTerminal', stopped: 'chat.stoppedOpen' }[by] ?? 'chat.answeredBySession', { label }));
         if (choice === null && planAnswer !== null && planDecision === decision) {
             if (option === 'approve') {
                 said(t('chat.page.approvePlan'));

@@ -139,7 +139,7 @@ test('caw_decide on a run without a window: a human decision waits for the perso
     const { call } = await client(p.root);
     const green = decide(p.chat, { id: 'fix.green', context: { test: 'kauf', step: 'S2' }, card: { title: 'grün' }, options: [{ id: 'promote', label: 'Übernehmen' }, { id: 'later', label: 'Später' }] });
     const refused = await call('caw_decide', { decision: 'fix.green', option: 'promote' });
-    assert.match(refused.content[0].text, /der Lauf hat kein Fenster: Der Mensch nimmt mit Fenster auf \(caw record kauf\)/);
+    assert.match(refused.content[0].text, /der Lauf hat kein Fenster: Der Mensch nimmt mit Fenster auf \(caw record kauf --env dev\)/);
     const person = await client(p.root, { elicitation: true, form: () => ({ action: 'accept', content: { confirm: true } }) });
     assert.equal((await person.call('caw_decide', { decision: 'fix.green', option: 'promote' })).structuredContent.by, 'elicitation');
     assert.equal(await green, 'promote');

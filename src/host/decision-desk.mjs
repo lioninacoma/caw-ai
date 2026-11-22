@@ -18,6 +18,8 @@ export const ANSWER_FILE = 'decision-answer.json';
  * terminal of a run without a window, or caw itself.
  */
 export const ANSWERED_BY = ['window', 'session', 'elicitation', 'terminal', 'auto'];
+/** Not an answer: a run without a window stopped at a decision nobody took, and ends it with its harmless option. */
+export const STOPPED = 'stopped';
 /** Who may take a `human` option: a person, in the window, confirming in the session or in the terminal. */
 const PERSON = ['window', 'elicitation', 'terminal'];
 
@@ -114,13 +116,16 @@ export const createDesk = ({ dir, onSettled = () => {}, auto = false, waitMs = 0
         if (answerRefusal(top.entry, answer) !== undefined) return;
         top.inject({ option: answer.option, by: answer.by, ...(answer.message === undefined ? {} : { message: answer.message }), ...(answer.picked === undefined ? {} : { picked: answer.picked }) });
     };
-    /** Without a window: nobody answered what needs a person. The ending answer if there is one, otherwise the run ends. */
+    /**
+     * Without a window: nobody answered what needs a person. The ending answer if there is one, otherwise the run ends. The
+     * decision stays open (onStop): ending it is no decision, by caw or anyone, so it is not logged as taken.
+     */
     const stop = (held) => {
         if (!stack.includes(held)) return;
         onStop(held.entry);
         const end = endOption(held.entry);
         if (end === undefined) onStuck(held.entry);
-        else held.inject({ option: end, by: 'auto' });
+        else held.inject({ option: end, by: STOPPED });
     };
     return {
         open: (decision, inject) => {
@@ -157,6 +162,16 @@ export const createDesk = ({ dir, onSettled = () => {}, auto = false, waitMs = 0
             clearTimeout(held.timer);
             held.asking?.abort();
             const option = answerOption(answer);
+            if (by === STOPPED) {
+                // Left open: named as openDecision (onStop), not answered, not in the log of decisions taken.
+                if (stack.length > 0) show();
+                else {
+                    writeJson(file, { state: 'closed', at: new Date().toISOString() });
+                    clearInterval(poll);
+                    poll = null;
+                }
+                return;
+            }
             const gate = held.entry.options.find((offered) => offered.id === option)?.gate;
             const entry = { seq: held.entry.seq, id: held.entry.id, option, ...(gate === undefined ? {} : { gate }), by, at: new Date().toISOString(), ...notedOf(held.entry, option) };
             last = entry;

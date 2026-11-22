@@ -320,7 +320,8 @@ export const auditChanges = (before, after) => {
     const findings = [];
     const finding = (kind, severity, { test, step, expect, number, before: was, after: now, vars = {} }) => {
         const id = [kind, test ?? CONFIG_FILE, step, number].filter((part) => part !== undefined).join(':');
-        const text = t(`cli.audit.kind.${kind}`, { test, step, expect, ...vars });
+        // A listed message that ends a sentence itself ("Saved.") gets no second period.
+        const text = t(`cli.audit.kind.${kind}`, { test, step, expect, ...vars }).replace(/([.!?…])\.$/, '$1');
         return { id, kind, severity, test, ...(step === undefined ? {} : { step }), ...(was === undefined ? {} : { before: was }), ...(now === undefined ? {} : { after: now }), text };
     };
     const unreadable = new Set(after.unreadable ?? []);
@@ -335,7 +336,9 @@ export const auditChanges = (before, after) => {
         const lost = runsOn(before.config, old).filter((name) => !runsOn(after.config, spec).includes(name));
         if (lost.length > 0) findings.push(finding('environments-narrowed', 'weakening', { test, before: runsOn(before.config, old), after: runsOn(after.config, spec), vars: { list: lost.join(', ') } }));
         const known = added(old.knownMessages, spec.knownMessages);
-        if (known.length > 0) findings.push(finding('known-messages-added', 'weakening', { test, before: old.knownMessages, after: spec.knownMessages, vars: { list: listed(known) } }));
+        // The test's first recording: the messages it knows are its baseline (as `record` adopts them), for information.
+        const first = !old.steps.some(({ recording }) => recording !== undefined);
+        if (known.length > 0) findings.push(finding(first ? 'known-messages-baseline' : 'known-messages-added', first ? 'info' : 'weakening', { test, before: old.knownMessages, after: spec.knownMessages, vars: { list: listed(known) } }));
         const steps = pairSteps(old.steps, spec.steps);
         const step = (s, more = {}) => ({ test, step: s.id, expect: s.expect, ...more });
         for (const removed of steps.removed) findings.push(finding('step-removed', 'weakening', step(removed, { before: removed })));

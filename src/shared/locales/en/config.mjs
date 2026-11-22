@@ -438,6 +438,7 @@ export default {
     'config.test.redDraftOnly': 'red belongs to a draft in {dir} only: it proves the draft fails while the bug is there. Remove it here.',
     'config.test.red': 'red is { step, run, head? }: a step of this draft, the run that showed it red, and the commit checked out then (a short hash).',
     'config.visual': 'visual must be an object with screenshots (true/false), e.g. { "screenshots": true }',
+    'config.visual.unknown': 'visual.{key} doesn\'t exist (allowed: {fields}){hint}',
     'config.visualIgnore': 'visualIgnore must be a list of CSS selectors, e.g. ["#clock", ".avatar"]',
     'config.test.visual': 'recording.visual needs runs (number), styles: [lines] and optionally basis and adopted (YYYY-MM-DD), as caw learns it.',
     'config.report.warning.visual': 'Look',

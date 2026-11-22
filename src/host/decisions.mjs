@@ -122,15 +122,22 @@ export const autoOption = (decision) => {
     return undefined;
 };
 
+/** A changed expected result as a person reads it: S2 "before" → "after"; undefined for anything else. */
+const cut = (text, max) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
+const changeItem = (item) => (typeof item?.step === 'string' && typeof item.before === 'string' && typeof item.after === 'string'
+    ? `${item.step} "${cut(item.before, 100)}" → "${cut(item.after, 100)}"` : undefined);
+
 /**
  * A decision's context in one line for a person: its plain values (test, step, reason …); with `lists` also lists of plain
- * values (the messages a recording knows, the steps it fixed).
+ * values (the messages a recording knows, the steps it fixed) and the changed expected results (before → after).
  */
 export const contextSummary = (context = {}, { lists = false } = {}) => Object.entries(context)
     .map(([key, value]) => {
         if (['string', 'number', 'boolean'].includes(typeof value)) return `${key}: ${String(value).slice(0, 200)}`;
-        const plain = lists && Array.isArray(value) ? value.filter((item) => ['string', 'number'].includes(typeof item)) : [];
-        return plain.length === 0 ? undefined : `${key}: ${plain.map((item) => String(item).slice(0, 100)).join('; ')}`;
+        const plain = lists && Array.isArray(value)
+            ? value.map((item) => (['string', 'number'].includes(typeof item) ? String(item).slice(0, 100) : changeItem(item))).filter((item) => typeof item === 'string')
+            : [];
+        return plain.length === 0 ? undefined : `${key}: ${plain.join('; ')}`;
     })
     .filter((line) => line !== undefined).join(', ');
 

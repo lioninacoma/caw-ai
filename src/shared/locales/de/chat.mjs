@@ -40,6 +40,7 @@ export default {
     'chat.answeredInSession': '{label}: von dir in der Session bestätigt.',
     'chat.answeredInTerminal': '{label}: von dir im Terminal beantwortet.',
     'chat.answeredAuto': '{label}: von caw gewählt, nichts ändert sich, was der Test prüft.',
+    'chat.stoppedOpen': '{label}: offen, niemand hat entschieden; der Lauf hält hier an und schreibt nichts.',
     'chat.decision.revise': 'Änderung erbitten',
     'chat.waiting': 'Wartet im Chrome-Fenster auf dich: {status}',
     'chat.error.noWorkbench': 'Der Chat läuft nur in der Werkbank, und dieser Lauf hat keine.',

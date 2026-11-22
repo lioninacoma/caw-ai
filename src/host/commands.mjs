@@ -1105,6 +1105,7 @@ export const runOne = async (root, options, deps = {}, loaded = undefined) => {
     // A draft in the window: the chat guides through the fix (red: fix it, test again; green: promote). Headless, CI and
     // promoting run it as before.
     const guide = canFix && guided && !handover && entry === undefined && through === undefined && spec.draft === true ? {
+        env: target,
         cause: (await import('./bugfix.mjs')).reproductionOf(root, spec.id)?.cause,
         // The red proof as the file has it now: a run that proved it red first wrote it only after that run.
         promote: ({ runId }) => promoteGreen(root, { ...options, target }, deps, { config, test, target, red: loadDraft(root, test).red, report: posix.join(RUN_DIR, 'runs', runId, 'report.md') }),
@@ -1485,6 +1486,7 @@ const fixGuide = async (root, options, deps, { spec, target, lifecycle, conversa
     const { test, agent, attach, overlay, timeoutMin, maxActions, stepTimeoutSec } = options;
     const again = { ...parseRunArgs('run', [test]), target, lifecycle, conversation, stepTimeoutSec, ...(agent === undefined ? {} : { agent }), ...(attach === undefined ? {} : { attach }), ...(overlay === undefined ? {} : { overlay }), ...(timeoutMin === undefined ? {} : { timeoutMin }), ...(maxActions === undefined ? {} : { maxActions }) };
     return {
+        env: target,
         cause: reproductionOf(root, spec.id)?.cause,
         rerun: async () => (await runOne(root, again, deps)).code,
     };

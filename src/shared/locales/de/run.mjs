@@ -490,7 +490,7 @@ export default {
     'run.reproduce.draftTrailMore': '- … und {count} weitere',
     'run.flow.redTitle': '{id} rot wie erwartet: der Test fängt den Fehler',
     'run.flow.redText': 'Alle Schritte vor {id} bestehen, und seine Prüfung scheitert, solange der Fehler da ist.',
-    'run.flow.redMuted': 'Speichern behält den Entwurf mit diesem Nachweis. Behebe den Fehler, dann zeigt {caw} run {test} grün.',
+    'run.flow.redMuted': '„Testplan übernehmen“ behält den Entwurf mit diesem Nachweis. Behebe den Fehler, dann zeigt {caw} run {test} grün.',
     'run.flow.redSaved': 'Rot bei {id}, gespeichert: {file}. Behebe den Fehler, dann zeigt {caw} run {test} grün.',
     'run.flow.notRed': 'Der Entwurf besteht bei seinem letzten Schritt {id}: Er fängt den Fehler (noch) nicht. Nimm ihn auf, solange der Fehler da ist.',
     'run.flow.stillRedTitle': '{id} noch rot: der Fehler ist noch da',

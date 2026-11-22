@@ -381,7 +381,7 @@ The draft turns the bug into a test that proves the fix: red before, green after
 1. **Red:** `caw record <id>` records the draft. Its last step is the one that must fail: the agent checks the correct behaviour
    there and the check answers "no" while the bug is there. caw keeps exactly that failing check, as long as it evaluated (a
    check that threw proves nothing). The check run without the agent then shows "S3 red as expected: the test catches the bug"
-   when every step before passed and S3 failed at its check; saving keeps the draft with `red: {step, run, head}` (the run and
+   when every step before passed and S3 failed at its check; "Adopt test plan" keeps the draft with `red: {step, run, head}` (the run and
    the commit checked out then). If S3 passes, the draft does not catch the bug, and the decision says so.
 2. **Fix:** you fix the bug, by hand or with your attached Claude Code session; every change needs your approval. caw's own
    agent never changes code.

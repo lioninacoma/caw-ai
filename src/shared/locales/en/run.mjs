@@ -490,7 +490,7 @@ export default {
     'run.reproduce.draftTrailMore': '- … and {count} more',
     'run.flow.redTitle': '{id} red as expected: the test catches the bug',
     'run.flow.redText': 'Every step before {id} passed, and its check fails while the bug is there.',
-    'run.flow.redMuted': 'Saving keeps the draft with this proof. Fix the bug, then {caw} run {test} shows green.',
+    'run.flow.redMuted': '"Adopt test plan" keeps the draft with this proof. Fix the bug, then {caw} run {test} shows green.',
     'run.flow.redSaved': 'Red at {id}, saved: {file}. Fix the bug, then {caw} run {test} shows green.',
     'run.flow.notRed': 'The draft passes at its last step {id}: it does not catch the bug (yet). Record it while the bug is there.',
     'run.flow.stillRedTitle': '{id} still red: the bug is still there',

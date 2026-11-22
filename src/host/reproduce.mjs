@@ -209,7 +209,7 @@ const MAX_TRAIL = 40;
  *              orientation for recording
  * @param cause the cause the agent suspected, with its evidence: at the start of the notes for the agent that records the
  *              draft. The plan it records may rewrite them; the guided fix reads the cause from this run (bugfix.mjs)
- * @returns { id, text }
+ * @returns { id, text, environment }
  */
 export const draftTestPlan = ({ id, role, environment, writes, steps, runId, ref, cause, trail = [] }) => {
     // The ticket id stays with the test once promoted: where the bug came from.
@@ -224,8 +224,8 @@ export const draftTestPlan = ({ id, role, environment, writes, steps, runId, ref
     const text = renderTest(spec);
     // Same rules as a hand-written file: a draft that would not load is no draft.
     parseTest(text, `${DRAFT_DIR}/${id}.yaml`, { draft: true });
-    return { id, text };
+    return { id, text, environment };
 };
 
-/** Where the draft is and the command that records it. */
-export const draftHint = (draft) => ({ file: `${DRAFT_DIR}/${draft.id}.yaml`, record: `${cawCommand()} record ${draft.id}` });
+/** Where the draft is and the command that records it, on the environment it was reproduced on (its only one). */
+export const draftHint = (draft) => ({ file: `${DRAFT_DIR}/${draft.id}.yaml`, record: `${cawCommand()} record ${draft.id}${draft.environment === undefined ? '' : ` --env ${draft.environment}`}` });
