@@ -19,7 +19,8 @@ role and style, how many controls have it; controls inside rows, list entries, c
 do not count) learn in every such run, in a window and headless alike: the first stores them, the second confirms them (a
 count that differed becomes `×?`), then they are compared. Only the person takes a changed look over
 ("{{label:run.button.adoptLook}}"). The person sees the design over the app with `caw open <test>@S<n> --design` (F7
-toggles it).
+toggles it; from your session `caw_start` `{command: "open", test, step, design: true}`), or from the card of a design not
+met with "{{label:run.button.openDesign}}". The deviations below it are listed anew after a reload or a restored state.
 
 **Fetch and write a design.**
 1. Get the design yourself: a Claude Design artifact (read it with your own tools and save one screen as a self-contained

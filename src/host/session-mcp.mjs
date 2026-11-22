@@ -34,14 +34,14 @@ const OVERLAY_CHECK_FILE = 'overlay-check.json';
 const OVERLAY_CHECK_TIMEOUT_MS = 180_000;
 /** Typed fields of caw_start: which command takes which, and which it needs. A step goes with its test as `<test>@<step>`. */
 const FIELDS = {
-    run: { needs: ['test'], takes: ['test', 'env', 'overlay', 'headless', 'learn', 'promote', 'start', 'reset'] },
+    run: { needs: ['test'], takes: ['test', 'env', 'overlay', 'headless', 'learn', 'promote', 'strict', 'start', 'reset'] },
     record: { needs: ['test'], takes: ['test', 'step', 'env', 'overlay', 'start', 'reset', 'headless'] },
-    open: { needs: [], takes: ['test', 'step', 'env', 'overlay', 'start', 'reset'] },
+    open: { needs: [], takes: ['test', 'step', 'env', 'overlay', 'design', 'start', 'reset'] },
     reproduce: { needs: ['bug'], takes: ['bug', 'from', 'env', 'role', 'ref', 'headless'] },
 };
-const TYPED = ['test', 'env', 'step', 'overlay', 'headless', 'learn', 'promote', 'start', 'reset', 'bug', 'from', 'role', 'ref'];
+const TYPED = ['test', 'env', 'step', 'overlay', 'headless', 'learn', 'promote', 'strict', 'design', 'start', 'reset', 'bug', 'from', 'role', 'ref'];
 /** Switches of caw_start: true adds the flag, false is the same as leaving it out. */
-const SWITCH_FLAGS = { headless: '--headless', learn: '--learn', promote: '--promote', start: '--start', reset: '--reset' };
+const SWITCH_FLAGS = { headless: '--headless', learn: '--learn', promote: '--promote', strict: '--strict', design: '--design', start: '--start', reset: '--reset' };
 const RESULT_FIELDS = ['status', 'code', 'reason', 'results', 'failures', 'warnings', 'decisions'];
 const RUN_ARTEFACTS = ['report.md', 'result.json', 'fix-report.md', 'chat.log', 'failures.json', 'network.json', 'demonstration.json'];
 
@@ -459,6 +459,8 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                 overlay: { type: ['boolean', 'string'], description: 'true (every part), "build", "dev", a dev server URL (the only part) or parts like "orders,admin:dev"' },
                 headless: { type: 'boolean' },
                 learn: { type: 'boolean', description: 'run: learn missing baselines and effects (--learn); only when the human asks' },
+                strict: { type: 'boolean', description: 'run: fail with exit 4 while the test has pending steps (--strict)' },
+                design: { type: 'boolean', description: 'open with test and step: play through the step (a pending one: up to its entry) and lay its target design over the app with the deviations below it (--design)' },
                 promote: { type: 'boolean', description: 'run of a draft in caw/drafts (--promote): it must pass and so must run --all on the same env; then it moves to caw/tests and the run folder gets fix-report.md. Only when the human asks' },
                 start: { type: 'boolean', description: 'Start the environment with its configured start command if it does not answer, stop it at the end (--start)' },
                 reset: { type: 'boolean', description: 'Run the environment\'s configured reset before the first test (--reset)' },

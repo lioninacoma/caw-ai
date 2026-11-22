@@ -662,7 +662,7 @@ Projekt installiert (`npm i -D caw-ai`), stellt `init` den Eintrag auf die insta
 | `caw_doctor`, `caw_validate`, `caw_list` | `doctor`, `validate` und `list` als Daten | nein |
 | `caw_reproductions` | die Nachstellungen in `.caw/runs` mit Urteil, `ref`, abdeckendem Test, Entwurf und Bericht; `refs` nennt die ohne Lauf als `missing`, `since` filtert nach Datum | nein |
 | `caw_design` | Zielbilder unter `caw/design`: schreiben (`put`), auflisten, auf Wunsch des Menschen an einen Schritt hängen | nein |
-| `caw_start` | startet `run`, `record`, `open` oder `reproduce` mit deiner Session als Agent: Felder `test`, `env`, `step`, `overlay`, `headless`, `learn`, `promote`, `start`, `reset`; bei `reproduce` `bug`, `from`, `role`, `ref` (oder `args`) | nur deine Session |
+| `caw_start` | startet `run`, `record`, `open` oder `reproduce` mit deiner Session als Agent: Felder `test`, `env`, `step`, `overlay`, `headless`, `learn`, `promote`, `strict`, `design`, `start`, `reset`; bei `reproduce` `bug`, `from`, `role`, `ref` (oder `args`) | nur deine Session |
 | `caw_status` | ob ein Lauf auf die Session wartet und welche Guide-Themen gelten, auf welche Entscheidung das Fenster wartet (`waiting.decision`), die letzten Zeilen der Ausgabe und der letzte Lauf: Ergebnis, letzter Schritt, Artefakte | nein |
 | `caw_decide` | beantwortet die wartende Entscheidung wie ein Knopf: eine `free`-Option darf die Session beantworten, eine `human`-Option erst, wenn du sie in einem Formular deines Clients bestätigst ([Entscheidungen](#entscheidungen-aus-deiner-session)) | nein |
 | `caw` | die Befehle des Agenten (`snapshot`, `click`, `plan`, `finish` …) für den wartenden Lauf | im Lauf |

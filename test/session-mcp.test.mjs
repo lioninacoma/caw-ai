@@ -329,6 +329,21 @@ test('caw_start: typed fields build the command line, mixing with args and wrong
     assert.ok(!spawned[0].args.some((arg) => arg.includes(listener.publicKey)));
 });
 
+test('caw_start: design for open and strict for run are typed switches, each only for its command', async (t) => {
+    assert.deepEqual(startArgs({ command: 'open', test: 'bestellung', step: 'S2', design: true }), ['bestellung@S2', '--design']);
+    assert.deepEqual(startArgs({ command: 'run', test: 'bestellung', strict: true }), ['bestellung', '--strict']);
+    assert.deepEqual(startArgs({ command: 'run', test: 'bestellung', strict: false }), ['bestellung']);
+    assert.throws(() => startArgs({ command: 'run', test: 'bestellung', design: true }), /design gilt nicht für run/);
+    assert.throws(() => startArgs({ command: 'open', test: 'bestellung', strict: true }), /strict gilt nicht für open/);
+    assert.throws(() => startArgs({ command: 'open', test: 'bestellung', step: 'S2', design: 'ja' }), /design/);
+
+    const root = project(t);
+    const { call, spawned } = session(root, { overlayPreconditions: () => ({ state: 'ready' }) });
+    const started = await call('caw_start', { command: 'open', test: 'bestellung', step: 'S2', env: 'local', design: true });
+    assert.equal(started.isError, false, started.content[0].text);
+    assert.deepEqual(spawned[0].args.slice(1, -1), ['open', 'bestellung@S2', '--env', 'local', '--design']);
+});
+
 test('caw_start: open is allowed, config problems come back with their code', async (t) => {
     const root = project(t, { config: null });
     const { call, spawned } = session(root);
