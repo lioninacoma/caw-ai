@@ -10,6 +10,7 @@ import { isAbsolute, resolve } from 'node:path';
 import { isAttachValue } from '../shared/attach.mjs';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
+import { cawCommand } from '../shared/invocation.mjs';
 import { DRAFT_DIR, REF_PATTERN, TEST_DIR } from '../shared/names.mjs';
 import { AGENT_CHOICES, splitStep } from './linux.mjs';
 import { newestRunOf } from './runs.mjs';
@@ -227,4 +228,4 @@ export const draftTestPlan = ({ id, role, environment, writes, steps, runId, ref
 };
 
 /** Where the draft is and the command that records it. */
-export const draftHint = (draft) => ({ file: `${DRAFT_DIR}/${draft.id}.yaml`, record: `caw record ${draft.id}` });
+export const draftHint = (draft) => ({ file: `${DRAFT_DIR}/${draft.id}.yaml`, record: `${cawCommand()} record ${draft.id}` });

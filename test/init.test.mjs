@@ -135,7 +135,7 @@ test('role login: saves a role\'s session, only where the sign-in is a session a
     await assert.rejects(login(['kunde', '--env', 'live'], capture), (error) => error.code === 'env-denied' && /Produktion/.test(error.message));
     await assert.rejects(login(['gast', '--env', 'local'], capture), /Rolle gast/);
     await assert.rejects(login(['kunde'], capture), /Aufruf: caw role login <rolle> --env <umgebung>/);
-    await assert.rejects(login(['kunde', '--target', 'local'], capture), /--target heißt jetzt --env/);
+    await assert.rejects(login(['kunde', '--target', 'local'], capture), /role kennt --target nicht\. Erlaubt: --env, --json/);
     write({ type: 'form', path: '/login', userSelector: '#u', passwordSelector: '#p', signedInSelector: '#menu' });
     await assert.rejects(login(['kunde', '--env', 'local'], capture), /nur, wo die Anmeldung vom Typ session ist; auf local ist sie form/);
     assert.equal(calls.length, 1);
@@ -188,6 +188,10 @@ test('doctor: names the next step per problem, optional items do not block, neve
     lines.length = 0;
     assert.equal(await doctor(root, { ui, env: {}, nodeVersion: '20.1.0', probes }), 2, 'too old Node blocks');
     assert.match(lines.join('\n'), /warn FEHLT +Node 20.1.0 ist zu alt/);
+    // package.json needs >=22.4 (engines): 22.0 to 22.3 are too old as well.
+    const node = async (version) => (await doctorChecks(root, { env: {}, nodeVersion: version, probes }))[0];
+    assert.deepEqual([(await node('22.3.0')).ok, (await node('22.3.0')).next], [false, 'Node 22.4 oder neuer installieren.']);
+    assert.deepEqual([(await node('22.4.0')).ok, (await node('23.0.0')).ok, (await node('21.9.0')).ok], [true, true, false]);
     assert.match(lines.join('\n'), /warn .*1 fehlt.*Erst die mit FEHLT beheben/);
     writeFileSync(join(root, '.gitignore'), '# runs\n/.caw\n**/caw/.auth/\n.env\n');
     const loose = await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes });
@@ -230,7 +234,7 @@ test('doctor: names the next step per problem, optional items do not block, neve
     writeFileSync(join(root, 'node_modules', 'caw-ai', 'bin', 'caw.mjs'), '');
     const npx = await sessionCheck();
     assert.equal(npx.ok, false);
-    assert.match(npx.next, /npx caw init/);
+    assert.match(npx.next, /caw init/);
 });
 
 test('init: detects the framework, takes answers, no role without login', async (t) => {

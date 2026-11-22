@@ -69,20 +69,6 @@ export const isViewport = (value) => typeof value === 'object' && value !== null
     && Number.isInteger(value.width) && value.width >= 320 && value.width <= 7680
     && Number.isInteger(value.height) && value.height >= 240 && value.height <= 4320;
 
-/**
- * Keys that existed before 1.0. They are not read: the message says what replaced them or why they went. A static table, so
- * an old config fails with a clear message instead of an "unknown key".
- */
-export const REMOVED_KEYS = {
-    sites: { why: 'config.removed.sites' },
-    extends: { why: 'config.removed.extends' },
-    insecureTls: { now: 'environments.<env>.insecureTls' },
-    extraAllowedHosts: { now: 'allowHosts' },
-    auth: { now: 'signIn' },
-    assetUrlPattern: { now: 'overlay.assetUrlPattern' },
-    apps: { why: 'config.removed.apps' },
-    maxSteps: { now: 'maxActions' },
-};
 const ENVIRONMENT_REMOVED = { urls: { why: 'config.removed.urls' }, overlay: { now: 'overlay.environments' } };
 /** The message for a removed key: renamed (now) or gone (why). */
 const removedKey = (path, entry) => (entry.now === undefined ? t('config.removed.gone', { key: path, why: t(entry.why) }) : t('config.removed.renamed', { key: path, now: entry.now }));
@@ -393,8 +379,7 @@ export const validateConfig = (given) => {
     // Notes that block nothing: settings that have no effect as they are.
     const notes = [];
     for (const key of Object.keys(given)) {
-        if (REMOVED_KEYS[key] !== undefined) issues.push(removedKey(key, REMOVED_KEYS[key]));
-        else if (!TOP_FIELDS.includes(key)) issues.push(t('config.unknownField', { key, hint: hintFor(key, TOP_FIELDS) }));
+        if (!TOP_FIELDS.includes(key)) issues.push(t('config.unknownField', { key, hint: hintFor(key, TOP_FIELDS) }));
     }
     // The team language: a primary language subtag (de, en, fr, pt …). caw's own texts stay de/en, Claude writes in it.
     if (given.language !== undefined && !(typeof given.language === 'string' && /^[a-z]{2,3}$/.test(given.language))) issues.push(t('config.language', { value: String(JSON.stringify(given.language)) }));

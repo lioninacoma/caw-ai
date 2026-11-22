@@ -86,7 +86,6 @@ const optionsOf = (rest) => {
     for (let index = 0; index < rest.length; index += 1) {
         const arg = rest[index];
         if (arg === '--json') options.json = true;
-        else if (arg === '--target') throw new CawError('usage', t('session.args.renamedOption', { flag: arg, now: '--env' }));
         else if (arg === '--env') {
             options.target = rest[index + 1];
             if (options.target === undefined || options.target.startsWith('--')) throw new CawError('usage', t('session.args.valueMissing', { flag: '--env', example: 'dev' }));

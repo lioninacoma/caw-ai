@@ -9,6 +9,7 @@ import { credentialState, knownCredentialPattern } from '../shared/credentials.m
 import { effectiveEnvironments, usesCredentials, usesTotp } from '../shared/environments.mjs';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
+import { cawCommand } from '../shared/invocation.mjs';
 import { CONFIG_FILE, ENV_FILE, RECORDING_DIR, RUN_DIR } from '../shared/names.mjs';
 import { personalContextPath, readPersonalContext, shownPath } from '../shared/personal-context.mjs';
 import { ago } from './code-source.mjs';
@@ -23,7 +24,8 @@ const browserName = (config) => {
     return launch.executablePath ?? launch.channel;
 };
 
-const MIN_NODE = 22;
+// As package.json's engines (>=22.4).
+const MIN_NODE = [22, 4];
 
 /** Reserved example names (RFC 2606, RFC 6761): example.com/.net/.org and everything under .example, .invalid and .test. */
 export const isPlaceholderHost = (url) => {
@@ -44,10 +46,10 @@ export const isPlaceholderHost = (url) => {
 export const doctorChecks = async (root, { env = process.env, nodeVersion = process.versions.node, probes = {}, agent, attach = false, environment } = {}) => {
     const results = [];
     const add = (entry) => results.push(entry);
-    const major = Number(nodeVersion.split('.')[0]);
-    add(major >= MIN_NODE
+    const [major, minor] = nodeVersion.split('.').map(Number);
+    add(major > MIN_NODE[0] || (major === MIN_NODE[0] && minor >= MIN_NODE[1])
         ? { ok: true, text: `Node ${nodeVersion}` }
-        : { ok: false, text: t('cli.doctorNodeOld', { version: nodeVersion }), next: t('cli.doctorNodeNext', { min: MIN_NODE }) });
+        : { ok: false, text: t('cli.doctorNodeOld', { version: nodeVersion }), next: t('cli.doctorNodeNext', { min: MIN_NODE.join('.') }) });
 
     let config = null;
     try {
@@ -161,7 +163,7 @@ export const doctorChecks = async (root, { env = process.env, nodeVersion = proc
             } else if (signIn.type === 'session') {
                 add(existsSync(join(root, sessionPath(target, name)))
                     ? { ok: true, text: t('cli.doctorSessionSaved', { name, target }) }
-                    : { ok: false, optional: true, text: t('cli.doctorSessionNone', { name, target }), next: `caw role login ${name} --env ${target}` });
+                    : { ok: false, optional: true, text: t('cli.doctorSessionNone', { name, target }), next: `${cawCommand()} role login ${name} --env ${target}` });
             }
         }
     }

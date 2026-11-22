@@ -92,7 +92,7 @@ test('config: browser.locale, browser.timezone and readyIgnore', () => {
     for (const source of ['.', 'frontend', false]) assert.equal(issues({ ...simple(), source }), '', String(source));
     for (const source of ['/abs', '../other', true, '']) assert.match(issues({ ...simple(), source }), /source muss der relative Pfad/, String(source));
     for (const language of ['Deutsch', 'de-DE', 7]) assert.match(issues({ ...simple(), language }), /ist kein Sprachkürzel/, String(language));
-    assert.match(issues({ ...simple(), maxSteps: 50 }), /maxSteps heißt jetzt maxActions/);
+    assert.match(issues({ ...simple(), maxSteps: 50 }), /Unbekanntes Feld: maxSteps/);
     assert.equal(issues({ ...simple(), maxActions: 50 }), '');
     assert.match(issues({ ...simple(), maxActions: 0 }), /maxActions muss eine positive ganze Zahl sein/);
     assert.match(issues({ ...simple(), readyIgnore: '.uhr' }), /readyIgnore muss eine Liste von CSS-Selektoren sein/);
@@ -121,17 +121,13 @@ test('config: required fields, login per type', () => {
     assert.equal(issues({ ...simple(), readyTimeoutMs: 20000 }), '');
 });
 
-test('config: keys from before 1.0 name what replaced them; extends between environments is checked', () => {
-    assert.match(issues({ ...simple(), sites: ['nord'] }), /sites gibt es nicht mehr: Mandanten sind jetzt Umgebungen/);
-    assert.match(issues({ ...simple(), extends: './basis.json' }), /extends gibt es nicht mehr: eine Config je Projekt/);
-    assert.match(issues({ ...simple(), insecureTls: true }), /insecureTls heißt jetzt environments\.<env>\.insecureTls/);
-    assert.match(issues({ ...simple(), extraAllowedHosts: ['sso.example'] }), /extraAllowedHosts heißt jetzt allowHosts/);
+test('config: top-level keys from before 1.0 are unknown fields like any other; extends between environments is checked', () => {
+    for (const key of ['sites', 'extends', 'insecureTls', 'extraAllowedHosts', 'auth', 'assetUrlPattern', 'apps', 'maxSteps']) {
+        assert.equal(issues({ ...simple(), [key]: 1 }), `Unbekanntes Feld: ${key}`, key);
+    }
     assert.match(issues({ ...simple(), environments: { dev: { urls: { a: 'https://a.example' } } } }), /environments\.dev\.urls gibt es nicht mehr/);
     // The overlay moved into its own block.
     assert.match(issues({ ...simple(), environments: { local: { url: 'https://app.localhost:8443', overlay: true } } }), /environments\.local\.overlay heißt jetzt overlay\.environments/);
-    assert.match(issues({ ...simple(), assetUrlPattern: 'a/(.+)' }), /assetUrlPattern heißt jetzt overlay\.assetUrlPattern/);
-    // One application per project: apps went, its start path is the top-level start.
-    assert.match(issues({ ...simple(), apps: { shop: { dir: 'shop', startUrl: '/shop' } } }), /apps gibt es nicht mehr: eine Anwendung je Projekt: ihr Startpfad ist "start"/);
     for (const bad of ['shop', '//cdn.example/x', 3, '']) assert.match(issues({ ...simple(), start: bad }), /start muss ein Pfad sein, der mit \/ beginnt/, String(bad));
     for (const good of ['/', '/app#orders', '/shop?tab=2']) assert.equal(issues({ ...simple(), start: good }), '', good);
     const at = (environments) => issues({ ...simple(), environments: { ...simple().environments, ...environments } });

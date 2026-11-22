@@ -77,9 +77,9 @@ test('test file: every shape violation is rejected with its line', () => {
     const cases = [
         [YAML.replace('writes: false', 'writes: maybe'), /Zeile 4: writes/],
         [YAML.replace('role: r', 'role: r\nextra: 1'), /Zeile 3: Unbekanntes Feld extra/],
-        // Fields from before 1.0: one application per project, overlay parts in the config.
-        [YAML.replace('role: r', 'role: r\napp: web'), /Zeile 3: app gibt es nicht mehr: eine Anwendung je Projekt; ein Test, der auf einer anderen Seite beginnt, setzt "start"/],
-        [YAML.replace('role: r', 'role: r\nalso: [admin]'), /Zeile 3: also gibt es nicht mehr: --overlay bringt jeden Teil/],
+        // Fields from before 1.0 are unknown like any other.
+        [YAML.replace('role: r', 'role: r\napp: web'), /Zeile 3: Unbekanntes Feld app/],
+        [YAML.replace('role: r', 'role: r\nalso: [admin]'), /Zeile 3: Unbekanntes Feld also/],
         [YAML.replace('role: r', 'role: r\nstart: orders'), /Zeile 3: start muss ein Pfad sein, der mit \/ beginnt/],
         [YAML.replace('role: r', 'role: r\nstart: //cdn.example/x'), /start muss ein Pfad sein/],
         [YAML.replace('- id: S2', '- id: S1'), /S1 ist doppelt/],
@@ -89,9 +89,9 @@ test('test file: every shape violation is rejected with its line', () => {
         [YAML.replace('    do: ""\n', ''), /do fehlt/],
         [YAML.replace('environments: [a/dev, a/test]', 'environments: []'), /environments muss eine nicht leere Liste/],
         [YAML.replace('environments: [a/dev, a/test]', 'environment: [a/dev]'), /Unbekanntes Feld environment\. Meintest du environments\?/],
-        // Renamed before 1.0.
-        [YAML.replace('environments: [a/dev, a/test]', 'targets: [a/dev]'), /targets heißt jetzt environments/],
-        [YAML.replace('writes: false', 'mutates: false'), /mutates heißt jetzt writes/],
+        // Names from before 1.0, unknown like any other.
+        [YAML.replace('environments: [a/dev, a/test]', 'targets: [a/dev]'), /Unbekanntes Feld targets/],
+        [YAML.replace('writes: false', 'mutates: false'), /Unbekanntes Feld mutates/],
         [YAML.replace('    expect: There.', '    expected: There.'), /Unbekanntes Feld expected im Schritt\. Meintest du expect\?/],
         [YAML.replace('writes: false', 'source: watch\nwrites: false'), /Unbekanntes Feld source/],
         [YAML.replace('writes: false', 'code: deployed\nwrites: false'), /Unbekanntes Feld code/],

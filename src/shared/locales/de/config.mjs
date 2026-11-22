@@ -16,13 +16,7 @@ export default {
     // config.mjs: environments
     'config.removed.renamed': '{key} heißt jetzt {now}.',
     'config.removed.gone': '{key} gibt es nicht mehr: {why}',
-    'config.removed.sites': 'Mandanten sind jetzt Umgebungen, etwa "nord-dev" und "sued-dev" mit "extends": "nord-dev" und eigener url.',
     'config.removed.urls': 'eine url je Umgebung; ein Mandant wird eine eigene Umgebung mit "extends".',
-    'config.removed.extends': 'eine Config je Projekt; was Umgebungen teilen, geht in environments.<env>.extends.',
-    'config.removed.apps': 'eine Anwendung je Projekt: ihr Startpfad ist "start" oben in der Config (etwa "start": "/app"); getrennt gebaute Teile gehören in overlay.parts.',
-    'config.removed.testApp': 'eine Anwendung je Projekt; ein Test, der auf einer anderen Seite beginnt, setzt "start" (etwa "start": "/orders").',
-    'config.removed.noLearn': 'jeder Lauf außerhalb von CI lernt fehlende Vergleichswerte und Effekte; in CI tut das --learn.',
-    'config.removed.also': '--overlay bringt jeden Teil aus overlay.parts mit, oder die genannten (--overlay=orders,admin).',
     'config.removed.roleEnv': 'der Testnutzer folgt der Namenskonvention CAW_<ROLLE>_USER, CAW_<ROLLE>_PASSWORD und CAW_<ROLLE>_TOTP in caw/.env (für eine Umgebung mit der Endung __<UMGEBUNG>).',
     'config.start': 'start muss ein Pfad sein, der mit / beginnt (nicht //), etwa "/" oder "/app#orders"',
     'config.source': 'source muss der relative Pfad zum Quellcode der Anwendung sein, etwa "." oder "frontend", oder false, wenn der Code nicht in diesem Repository liegt',
@@ -143,7 +137,7 @@ export default {
     'config.overlay.static': 'overlay.parts.{name}.statics[{index}] braucht name und path, sonst nichts. path ist relativ zum dir des Teils und darf es mit .. verlassen (etwa zu einem Nachbar-Package), muss aber im Projekt oder seinem Workspace bleiben; kein absoluter Pfad',
 
     // config.mjs: loading and environments
-    'config.load.missing': '{file} fehlt in {root}. Einrichten mit: npx caw init --url <adresse>',
+    'config.load.missing': '{file} fehlt in {root}. Einrichten mit: {caw} init --url <adresse>',
     'config.load.invalidJson': '{file} ist kein gültiges JSON: {error}',
 
     // report.mjs: submitting the result
@@ -311,7 +305,7 @@ export default {
     'config.test.needs.locator': 'needs: {message}',
     'config.test.recordings.label': 'Aufzeichnung',
     'config.test.recordings.object': 'Die Datei muss ein Objekt mit test und steps sein.',
-    'config.test.recordings.stepId': 'Jeder Eintrag braucht eine Schritt-ID wie S1.',
+    'config.test.recordings.stepId': 'Jeder Eintrag braucht eine Schritt-ID wie S1, die ID seines Schritts in der Testdatei; ist die Aufnahme beschädigt, nimm den Test neu auf.',
     'config.test.recordings.otherTest': '{label} gehört zu "{test}", nicht zu {id}.',
     'config.test.notFound': 'Test nicht gefunden: {path}',
     'config.test.idMismatch': '{path} trägt die abweichende id "{id}".',

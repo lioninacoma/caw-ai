@@ -18,6 +18,7 @@ import { CawError, EXIT } from '../shared/errors.mjs';
 import { foldAction } from './activity.mjs';
 import { DEFAULT_KEEP_RUNS, REPRODUCE_RUN, markRunAlive, pruneRuns } from './runs.mjs';
 import { AGENT_NAME, inLanguage, language, languageSource, t, teamLanguage } from '../shared/i18n.mjs';
+import { cawCommand } from '../shared/invocation.mjs';
 import { pollChannel } from '../shared/channel.mjs';
 import { personalContextPath, readPersonalContext, shownPath } from '../shared/personal-context.mjs';
 import { prefsDir, readPrefs } from '../shared/prefs.mjs';
@@ -1403,8 +1404,8 @@ ${text}`) ?? 0;
             // A reproduction: its verdict, and the command that records its draft in caw/drafts.
             if (reproduce !== undefined) text = t(`run.reproduce.card.${verdict.reproduce?.reproduced ?? 'none'}`);
             const draft = verdict.reproduce?.draft;
-            let command = `caw run ${spec.id}`;
-            if (reproduce !== undefined) command = draft === undefined ? 'caw reproduce' : draft.record;
+            let command = `${cawCommand()} run ${spec.id}`;
+            if (reproduce !== undefined) command = draft === undefined ? `${cawCommand()} reproduce` : draft.record;
             // A run that learns says in the chat which steps get baselines: written once the window has closed.
             if (learns && (found.baselines !== undefined || found.effects !== undefined || found.looks !== undefined)) {
                 // Steps without any baselines yet, and steps whose effects a second healthy run confirms (effects learn over two runs).
@@ -2090,7 +2091,7 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             const missing = await missingNeeds(session.framework ?? frameworkOf(config), () => session.page().mainFrame(), replay.needs.locators);
             const { step } = replay.needs;
             reportBase.needs = { step, ready: missing.length === 0, missing };
-            const text = missing.length === 0 ? t('run.needs.ready', { step, command: `caw record ${spec.id}@${step}` }) : t('run.needs.missing', { step, list: missing.join('; ') });
+            const text = missing.length === 0 ? t('run.needs.ready', { step, command: `${cawCommand()} record ${spec.id}@${step}` }) : t('run.needs.missing', { step, list: missing.join('; ') });
             ui.info(text);
             chat?.notice(text);
         }

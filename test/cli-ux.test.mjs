@@ -83,7 +83,7 @@ test('parseRunArgs: several tests or --all run without chat, --explain only for 
     assert.equal(parseRunArgs('run', ['a']).learn, false, 'a run learns nothing unless asked (Q7)');
     assert.equal(parseRunArgs('run', ['a', '--learn']).learn, true);
     assert.equal(parseRunArgs('run', ['a', 'b', '--learn', '--headless']).learn, true, '--learn in every mode (SC-21)');
-    assert.throws(() => parseRunArgs('run', ['a', '--no-learn']), (error) => error.code === 'usage' && /--no-learn gibt es nicht mehr: jeder Lauf außerhalb von CI lernt fehlende Vergleichswerte und Effekte; in CI tut das --learn/.test(error.message));
+    assert.throws(() => parseRunArgs('run', ['a', '--no-learn']), (error) => error.code === 'usage' && /run kennt die Option --no-learn nicht/.test(error.message));
     assert.equal(parseRunArgs('run', ['a']).batch, undefined);
     assert.equal(parseRunArgs('run', ['a']).strict, false, 'pending steps pass unless asked');
     assert.equal(parseRunArgs('run', ['--all', '--strict']).strict, true);
@@ -507,7 +507,7 @@ test('CLI: unknown command with suggestion, help everywhere with -h, exit codes'
     }
     const renamed = cli('run', 'x', '--target', 'local');
     assert.equal(renamed.status, 3);
-    assert.match(renamed.stderr, /--target heißt jetzt --env\./);
+    assert.match(renamed.stderr, /run kennt die Option --target nicht\. Erlaubt: --env/);
     const usage = cli('record', 'x@s3');
     assert.equal(usage.status, 3);
     assert.match(usage.stderr, /x@s3: Ein Schritt steht als <test>@S<n> hinter dem Test, etwa bestellung@S3\.\n\[caw\] Aufruf: caw record <test> \[--env <name>\] \[--role <rolle>\] {2}oder {2}caw record <test>@<S4> \[--env <name>\] \[--agent local\|docker \| --attach \[<key>\]\]\n\[caw\] \(code: usage, exit 3\)/);

@@ -48,3 +48,15 @@ test('t: placeholders, an unknown key is returned as is, setLanguage falls back 
     assert.equal(t('gibt.es.nicht', { a: 1 }), 'gibt.es.nicht');
     setLanguage(before);
 });
+
+test('{caw}: commands in hints as the person calls caw, npx caw when npm started it (npm i -D), caw otherwise', async (context) => {
+    const { cawCommand } = await import('../src/shared/invocation.mjs');
+    assert.equal(cawCommand({}), 'caw');
+    assert.equal(cawCommand({ npm_execpath: '/usr/lib/node_modules/npm/bin/npm-cli.js' }), 'npx caw');
+    assert.match(t('cli.untilHint', { test: 'a', target: 'local', step: 'S2' }), /: caw open a@S2 --env local$/);
+    process.env.npm_execpath = 'npm-cli.js';
+    context.after(() => { delete process.env.npm_execpath; });
+    assert.match(t('cli.untilHint', { test: 'a', target: 'local', step: 'S2' }), /: npx caw open a@S2 --env local$/);
+    assert.match(t('cli.pendingSteps', { ids: 'S5', count: 1, test: 'a', step: 'S5', target: 'local' }), /Nimm ihn auf: npx caw record a@S5 --env local$/);
+    assert.match(t('run.error.todo', { keys: 'signIn.path' }), /; npx caw doctor zeigt/);
+});

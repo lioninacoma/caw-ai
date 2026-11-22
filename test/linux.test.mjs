@@ -86,11 +86,11 @@ test('parseRunArgs: each command only knows its own options', () => {
     assert.equal(parseRunArgs('run', ['smoke', '--env=shop/dev', '--step-timeout', '1m']).stepTimeoutSec, 60);
     const created = parseRunArgs('record', [...base, '--role', 'r', '--agent-timeout=2h', '--max-actions=30']);
     assert.deepEqual([created.role, created.timeoutMin, created.maxActions], ['r', 120, 30]);
-    // One application per project: --app and --also are gone, the message says why.
+    // Old flags are unknown like any other: no table of former names.
     for (const command of ['record', 'open', 'run']) {
-        assert.throws(() => parseRunArgs(command, [...base, '--app', 'a']), (error) => error.code === 'usage' && /--app gibt es nicht mehr: eine Anwendung je Projekt/.test(error.message), command);
+        assert.throws(() => parseRunArgs(command, [...base, '--app', 'a']), (error) => error.code === 'usage' && new RegExp(`${command} kennt die Option --app nicht\\. Erlaubt: `).test(error.message), command);
     }
-    assert.throws(() => parseRunArgs('record', [...base, '--also=b']), /--also gibt es nicht mehr: --overlay bringt jeden Teil/);
+    assert.throws(() => parseRunArgs('record', [...base, '--also=b']), /record kennt die Option --also nicht/);
     assert.throws(() => parseRunArgs('run', ['--env', 'x']), /Name des Tests/);
     // Without --env the command chooses, see chooseEnv.
     assert.equal(parseRunArgs('run', ['smoke']).target, undefined);
@@ -100,7 +100,7 @@ test('parseRunArgs: each command only knows its own options', () => {
     assert.throws(() => parseRunArgs('record', [...base, '--agent-timeout', 'x']), /--agent-timeout x ist keine Dauer/);
 });
 
-test('parseRunArgs: durations need a unit and stay in range; renamed flags name their new name', () => {
+test('parseRunArgs: durations need a unit and stay in range; old flag names are unknown options', () => {
     const base = ['smoke', '--env', 'shop/dev'];
     assert.equal(parseRunArgs('run', [...base, '--step-timeout', '1500ms']).stepTimeoutSec, 1.5);
     assert.equal(parseRunArgs('run', [...base, '--step-timeout', '1.5s']).stepTimeoutSec, 1.5);
@@ -112,7 +112,7 @@ test('parseRunArgs: durations need a unit and stay in range; renamed flags name 
     assert.throws(() => parseRunArgs('record', [...base, '--agent-timeout', '30s']), /zwischen 1m und 24h/);
     assert.throws(() => parseRunArgs('run', [...base, '--step-timeout', '30 s']), /keine Dauer/);
     for (const [old, now] of [['--target', '--env'], ['--timeout', '--agent-timeout'], ['--max-steps', '--max-actions'], ['--advise', '--explain']]) {
-        assert.throws(() => parseRunArgs('run', ['smoke', old, '1']), (error) => error.code === 'usage' && error.message === `${old} heißt jetzt ${now}.`, old);
+        assert.throws(() => parseRunArgs('run', ['smoke', old, '1']), (error) => error.code === 'usage' && error.message.startsWith(`run kennt die Option ${old} nicht. Erlaubt: `) && error.message.includes(now), old);
     }
 });
 

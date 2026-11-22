@@ -52,10 +52,6 @@ const COMMAND_OPTIONS = {
     // bisect always runs headless, without chat and learning, and always starts the environment: nothing to switch.
     bisect: ['--env', '--tests-from', '--step-timeout'],
 };
-/** Flags that were renamed before 1.0: the message names the new one instead of listing every allowed option. */
-export const RENAMED_FLAGS = { '--target': '--env', '--timeout': '--agent-timeout', '--max-steps': '--max-actions', '--advise': '--explain' };
-/** Options from before 1.0 that have no successor: the message says why. */
-export const REMOVED_FLAGS = { '--app': 'config.removed.testApp', '--also': 'config.removed.also', '--no-learn': 'config.removed.noLearn' };
 // --start: start the environment (its start command) and, with --overlay, the parts' local code servers if they do not answer, and
 // stop at the end what caw started. --reset runs the environment's reset before the first test, --no-reset never.
 const SWITCHES = new Set(['--explain', '--headless', '--no-chat', '--learn', '--strict', '--promote', '--all', '--read-only', '--start', '--reset', '--no-reset', '--design']);
@@ -136,8 +132,6 @@ export const parseRunArgs = (command, args) => {
             continue;
         }
         const [flag, inline] = arg.split(/=(.*)/s);
-        if (RENAMED_FLAGS[flag] !== undefined) throw new CawError('usage', t('session.args.renamedOption', { flag, now: RENAMED_FLAGS[flag] }));
-        if (REMOVED_FLAGS[flag] !== undefined) throw new CawError('usage', t('config.removed.gone', { key: flag, why: t(REMOVED_FLAGS[flag]) }));
         if (!allowed.includes(flag)) throw new CawError('usage', t('session.args.unknownOption', { command, flag, allowed: allowed.join(', ') }));
         // --overlay may stand without a value: --overlay, --overlay build, --overlay=dev, --overlay http://localhost:5174. Parts
         // only with =: --overlay=orders,admin:dev, since --overlay orders reads the test orders. checkTest validates the items.

@@ -31,8 +31,6 @@ const STEP_ID = /^S[1-9]\d*$/;
 // `red` only in a draft (caw/drafts): the run that proved the draft fails at that step while the bug is there.
 const TOP_FIELDS = ['id', 'role', 'writes', 'environments', 'start', 'notes', 'red', 'steps', 'knownMessages'];
 const RED_FIELDS = ['step', 'run', 'head'];
-/** Fields from before 1.0: rejected with what replaced them (now) or why they went (why). */
-const TEST_REMOVED = { app: { why: 'config.removed.testApp' }, also: { why: 'config.removed.also' }, targets: { now: 'environments' }, mutates: { now: 'writes' } };
 const PLAN_STEP_FIELDS = ['id', 'name', 'do', 'expect', 'note', 'retry'];
 const RETRY_FIELDS = ['times', 'waitMs', 'from'];
 const MAX_RETRY_TIMES = 10;
@@ -401,11 +399,7 @@ export const parseTest = (text, label = t('config.test.label'), { description = 
     if (problems.length > 0) throw invalid(label, problems);
     const report = (path, message) => problems.push(t('config.test.line', { line: lineOf(path), message }));
     if (!isObject(value)) throw invalid(label, [t('config.test.file.object')]);
-    for (const key of Object.keys(value).filter((candidate) => !TOP_FIELDS.includes(candidate))) {
-        const removed = TEST_REMOVED[key];
-        if (removed === undefined) report([key], t('config.test.unknown', { key, hint: hintFor(key, TOP_FIELDS) }));
-        else report([key], removed.now === undefined ? t('config.removed.gone', { key, why: t(removed.why) }) : t('config.removed.renamed', { key, now: removed.now }));
-    }
+    for (const key of Object.keys(value).filter((candidate) => !TOP_FIELDS.includes(candidate))) report([key], t('config.test.unknown', { key, hint: hintFor(key, TOP_FIELDS) }));
     // id, role and environments may be missing: defaults come from the file name and the config (withDefaults).
     for (const key of ['id', 'role']) if (value[key] !== undefined && !isText(value[key])) report([key], t('config.test.text', { key }));
     if (value.start !== undefined && !isStartPath(value.start)) report(['start'], t('config.test.start'));

@@ -10,6 +10,7 @@ import { credentialNames } from '../shared/credentials.mjs';
 import { NAME, blockedHosts, chooseEnvironment, effectiveEnvironment, environmentCandidates, startPath, usesCredentials, usesTotp } from '../shared/environments.mjs';
 import { CawError, EXIT, exitOf, worstExit } from '../shared/errors.mjs';
 import { inLanguage, language, t, teamLanguage } from '../shared/i18n.mjs';
+import { cawCommand } from '../shared/invocation.mjs';
 import { CONFIG_FILE, CONTEXT_FILE, DRAFT_DIR, ENV_FILE, PROJECT_DIR, RECORDING_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
 import { closest } from '../shared/suggest.mjs';
 import { createUi } from '../shared/ui.mjs';
@@ -559,7 +560,7 @@ const recordHint = (config, id, target) => {
     if (target !== undefined) targetFlag = [`--env ${target}`];
     else if (choices.length !== 1) targetFlag = [`--env <${choices.join('|') || 'env'}>`];
     return [
-        `caw record ${id}`,
+        `${cawCommand()} record ${id}`,
         ...targetFlag,
         ...(onlyKey(config.roles) === undefined ? [`--role <${Object.keys(config.roles ?? {}).join('|') || 'role'}>`] : []),
     ].join(' ');
@@ -1129,14 +1130,14 @@ export const runOne = async (root, options, deps = {}, loaded = undefined) => {
         hint: (step, { canFix: hadChat }) => {
             if (!nextSteps) return;
             const lines = [];
-            const rerun = (env) => `caw run ${test} --env ${env}`;
+            const rerun = (env) => `${cawCommand()} run ${test} --env ${env}`;
             if (!hadChat) {
-                if (withAgent) lines.push({ text: t('cli.failedHintAgent', { step: step.id, test, target }), commands: [rerun(target), `caw record ${test}@${step.id} --env ${target}`] });
+                if (withAgent) lines.push({ text: t('cli.failedHintAgent', { step: step.id, test, target }), commands: [rerun(target), `${cawCommand()} record ${test}@${step.id} --env ${target}`] });
                 else if (chatTarget !== undefined) lines.push({ text: t('cli.failedHint', { step: step.id, test, target: chatTarget }), commands: [rerun(chatTarget)] });
                 else lines.push({ text: t('cli.failedHintNoAgent', { step: step.id, environments: agentEnvironments(config) }), commands: [] });
             }
             // open lands at the entry of the failed step: everything before it done, the step itself still open.
-            if (spec.steps.some(({ id }) => id === step.id)) lines.push({ text: t('cli.untilHint', { test, target, step: step.id }), commands: [`caw open ${test}@${step.id} --env ${target}`] });
+            if (spec.steps.some(({ id }) => id === step.id)) lines.push({ text: t('cli.untilHint', { test, target, step: step.id }), commands: [`${cawCommand()} open ${test}@${step.id} --env ${target}`] });
             ui.next(lines);
         },
     });

@@ -16,13 +16,7 @@ export default {
     // config.mjs: environments
     'config.removed.renamed': '{key} was renamed to {now}.',
     'config.removed.gone': '{key} was removed: {why}',
-    'config.removed.sites': 'tenants are environments now, e.g. "north-dev" and "south-dev" with "extends": "north-dev" and their own url.',
     'config.removed.urls': 'one url per environment; a tenant becomes its own environment with "extends".',
-    'config.removed.extends': 'one config per project; shared settings between environments go in environments.<env>.extends.',
-    'config.removed.apps': 'one application per project: its start path is the top-level "start" (e.g. "start": "/app"); separately built parts go in overlay.parts.',
-    'config.removed.testApp': 'one application per project; a test that begins on another page sets "start" (e.g. "start": "/orders").',
-    'config.removed.noLearn': 'every run outside CI learns missing baselines and effects; in CI --learn does.',
-    'config.removed.also': '--overlay brings every part of overlay.parts, or the ones it names (--overlay=orders,admin).',
     'config.removed.roleEnv': 'the test user follows the naming convention CAW_<ROLE>_USER, CAW_<ROLE>_PASSWORD and CAW_<ROLE>_TOTP in caw/.env (for one environment with the suffix __<ENV>).',
     'config.start': 'start must be a path beginning with / (not //), e.g. "/" or "/app#orders"',
     'config.source': 'source must be the relative path to the application\'s source, e.g. "." or "frontend", or false when the source is not in this repository',
@@ -143,7 +137,7 @@ export default {
     'config.overlay.static': 'overlay.parts.{name}.statics[{index}] needs name and path, nothing else. path is relative to the part\'s dir and may leave it with .. (e.g. a neighbouring package), but must stay inside the project or its workspace; no absolute path',
 
     // config.mjs: loading and environments
-    'config.load.missing': '{file} is missing in {root}. Set up with: npx caw init --url <address>',
+    'config.load.missing': '{file} is missing in {root}. Set up with: {caw} init --url <address>',
     'config.load.invalidJson': '{file} is not valid JSON: {error}',
 
     // report.mjs: submitting the result
@@ -311,7 +305,7 @@ export default {
     'config.test.needs.locator': 'needs: {message}',
     'config.test.recordings.label': 'Recording',
     'config.test.recordings.object': 'The file must be an object with test and steps.',
-    'config.test.recordings.stepId': 'Each entry needs a step ID like S1.',
+    'config.test.recordings.stepId': 'Each entry needs a step ID like S1, the id of its step in the test file; if the recording was damaged, record the test again.',
     'config.test.recordings.otherTest': '{label} belongs to "{test}", not {id}.',
     'config.test.notFound': 'Test not found: {path}',
     'config.test.idMismatch': '{path} has a different id "{id}".',

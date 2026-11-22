@@ -3,6 +3,7 @@
 
 import { CawError, EXIT } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
+import { cawCommand } from '../shared/invocation.mjs';
 import { CONFIG_FILE, CONTEXT_FILE } from '../shared/names.mjs';
 import { cutReplay, positionalActions, replayOf, replayToEntry, replayUpToStale, withBaselines, withEffects, withoutEffects, withProposal } from './replay.mjs';
 import { LEARN_RUNS, isEffectCause } from './effects.mjs';
@@ -321,7 +322,7 @@ const guideFix = async (chat, { red, test, again = false, title, adviseFix, stor
     let card = ask;
     let options = again ? [FIX_AGAIN, { ...RETEST, primary: false }, CLOSE] : [FIX_BY_AGENT, FIX_MYSELF, LATER];
     const waiting = () => {
-        card = resultCard('next', t('run.guide.waitTitle'), t('run.guide.waitText', { id: red.step }), t('run.guide.laterHint', { command: `caw run ${test}` }));
+        card = resultCard('next', t('run.guide.waitTitle'), t('run.guide.waitText', { id: red.step }), t('run.guide.laterHint', { command: `${cawCommand()} run ${test}` }));
         options = [RETEST, LATER];
     };
     for (;;) {
@@ -639,7 +640,7 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
                             if (result.touched.length > 0 || result.notes) log(t('run.flow.adviceAdopted', { file: adopt(current, new Set(result.touched), { withNotes: result.notes }) }));
                         };
                         retest = await guideFix(chat, { red: redBundle(current, guide.cause), test: current.id, adviseFix, store });
-                        return retest ? { next: 'run' } : { outcome: t('run.guide.later', { command: `caw run ${current.id}` }) };
+                        return retest ? { next: 'run' } : { outcome: t('run.guide.later', { command: `${cawCommand()} run ${current.id}` }) };
                     }
                     return { outcome: t('run.flow.saved', { file: saved }) };
                 }
@@ -944,7 +945,7 @@ export const runFlow = async (options) => {
                         };
                         const title = t(known ? 'run.flow.stillRedTitle' : 'run.flow.redTitle', { id });
                         rerun = await guideFix(chat, { red: redBundle(current, guide.cause), test: current.id, again: known, title, adviseFix, store: (advised) => keep(advised, chat, { offer: false }) });
-                        return rerun ? windowAfter() : { outcome: t('run.guide.later', { command: `caw run ${current.id}` }) };
+                        return rerun ? windowAfter() : { outcome: t('run.guide.later', { command: `${cawCommand()} run ${current.id}` }) };
                     }
                     await decide(chat, resultCard('info', t(known ? 'run.flow.stillRedTitle' : 'run.flow.redTitle', { id }), t(known ? 'run.flow.stillRedText' : 'run.flow.redText', { id }), t('run.flow.stillRedMuted', { test: current.id })), [ONLY_CLOSE]);
                     return undefined;
@@ -970,7 +971,7 @@ export const runFlow = async (options) => {
                 if (!failed && guide !== undefined && verdict.status === 'pass' && current.red !== undefined) {
                     const id = current.red.step;
                     if (await decide(chat, inPhase('green', resultCard('next', t('run.guide.greenTitle', { id }), t('run.guide.greenText', { test: current.id }))), [PROMOTE, LATER]) !== PROMOTE.id) {
-                        return { outcome: t('run.guide.later', { command: `caw run ${current.id} --promote` }) };
+                        return { outcome: t('run.guide.later', { command: `${cawCommand()} run ${current.id} --promote` }) };
                     }
                     learnFrom(concluded);
                     chat.progress(t('run.guide.promoting'));

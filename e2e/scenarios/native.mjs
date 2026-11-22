@@ -943,7 +943,7 @@ scenario('N13', 'Pending steps: run passes with S1–S2 and names S3, S4; --stri
     const strict = await runQuietly(PENDING, ['--strict']);
     verify('--strict: replay-pending (exit 4), names the record command', /^error replay-pending: .*caw record rec-pending@S3/.test(String(strict.code)), String(strict.code));
     const behind = await open(native, [`${PENDING}@S4`, ...target], { interactive: true }).catch((error) => `error ${error.code}: ${error.message}`);
-    verify('open @S4 behind the pending S3: refused, names S3', /^error replay-stale: S3 ist offen, noch nicht aufgenommen\. Nimm ihn zuerst auf: caw record rec-pending@S3/.test(String(behind)), String(behind));
+    verify('open @S4 behind the pending S3: refused, names S3', /^error replay-stale: S3 ist offen, noch nicht aufgenommen\. Nimm ihn zuerst auf: (?:npx )?caw record rec-pending@S3/.test(String(behind)), String(behind));
     // open @S3: S1 and S2 ran (shadow status and Saved), nothing of S3.
     const atEntry = humans(async (chat) => {
         const bench = chat.page();

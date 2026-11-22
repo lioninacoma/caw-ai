@@ -8,6 +8,7 @@
 // Rule for modules: never call t() at module top level, because the language is not known yet at import time.
 // Texts belong inside functions or are fetched when used.
 
+import { cawCommand } from './invocation.mjs';
 import { CATALOGS } from './locales/index.mjs';
 import { readPrefs } from './prefs.mjs';
 
@@ -87,7 +88,8 @@ export const language = () => {
 /** The agent that runs or is connected, as texts name it ({agent}). There is one today: Claude Code. */
 export const AGENT_NAME = 'Claude Code';
 // agentDash: in a German compound the name is coupled with hyphens (Claude-Code-Session).
-const DEFAULTS = { agent: AGENT_NAME, agentDash: AGENT_NAME.replaceAll(' ', '-') };
+// caw: the command as the person calls it ({caw} run …), read when a text is filled.
+const DEFAULTS = { agent: AGENT_NAME, agentDash: AGENT_NAME.replaceAll(' ', '-'), get caw() { return cawCommand(); } };
 const fill = (text, vars) => text.replace(/\{(\w+)\}/g, (whole, name) => {
     const value = vars[name] ?? DEFAULTS[name];
     return value === undefined ? whole : String(value);

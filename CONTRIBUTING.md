@@ -42,7 +42,7 @@ npx caw doctor
 ## Pull requests
 
 - Keep a PR to one topic. Open an issue first for larger changes.
-- Add or update unit tests. `npm run lint`, `npm test` and `npm run pack:check` must pass. CI lints once and runs the tests on Linux and Windows with Node 22.4, 22 and 24; a macOS job runs too but does not block.
+- Add or update unit tests. `npm run lint`, `npm test` and `npm run pack:check` must pass. CI lints once and runs the tests on Linux and Windows with Node 22.4, 22 and 24; the end-to-end run runs nightly or by hand, not on a PR.
 - Code, names and comments are in English. UI texts live in `src/shared/locales/` (de and en).
 - User-facing text goes into both `src/shared/locales/en` and `src/shared/locales/de`. Keep it short.
 - Workbench, chat, report page and the explore card share one look from `src/host/style.mjs`: its tokens for light and dark, fonts, icons and base components. Use them instead of own colours, and check a UI change in both modes.

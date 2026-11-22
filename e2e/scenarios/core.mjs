@@ -59,17 +59,17 @@ export const scenarios = [
             verify(`caw ${args[0]} → exit 3 with the new place`, moved.code === 3 && expected.test(moved.err), `${moved.code} ${moved.err.trim().split('\n')[0]}`);
         }
 
-        // (4) Renamed flags and durations without unit.
+        // (4) Flag names from before 1.0 are unknown options like any other; durations without unit.
         for (const [args, pattern] of [
-            [['run', 't', '--target', 'local'], /--target is now called --env\./],
+            [['run', 't', '--target', 'local'], /run has no option --target\. Allowed: --env/],
             [['run', 't', '--step-timeout', '30'], /--step-timeout 30: add a unit, e\.g\. --step-timeout 30s/],
-            [['run', 't', '--advise'], /--advise is now called --explain\./],
-            [['record', 't', '--max-steps', '5'], /--max-steps is now called --max-actions\./],
-            [['record', 't', '--timeout', '60'], /--timeout is now called --agent-timeout\./],
-            [['role', 'login', 'clerk', '--target', 'local'], /--target is now called --env\./],
+            [['run', 't', '--advise'], /run has no option --advise\. Allowed: .*--explain/],
+            [['record', 't', '--max-steps', '5'], /record has no option --max-steps\. Allowed: .*--max-actions/],
+            [['record', 't', '--timeout', '60'], /record has no option --timeout\. Allowed: .*--agent-timeout/],
+            [['role', 'login', 'clerk', '--target', 'local'], /role doesn't know --target\. Allowed: --env, --json/],
         ]) {
-            const renamed = caw(args);
-            verify(`${args.join(' ')} → exit 3 naming the new form`, renamed.code === 3 && pattern.test(renamed.err), `${renamed.code} ${renamed.err.trim().split('\n')[0]}`);
+            const refused = caw(args);
+            verify(`${args.join(' ')} → exit 3 naming the allowed options`, refused.code === 3 && pattern.test(refused.err), `${refused.code} ${refused.err.trim().split('\n')[0]}`);
         }
 
         // (6) Claude's commands under caw agent, with their own help.

@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 process.env.CAW_LANG = 'de';
+// Commands in texts read `caw …` whether the tests run through npm (which sets npm_execpath, then `npx caw …`) or node.
+delete process.env.npm_execpath;
 
 // Everything a test process creates in the temp folder (its own folders, Chrome profiles, Playwright artifacts, child
 // processes) goes into one folder of its own, removed when the process ends. Otherwise every run leaves hundreds behind.
