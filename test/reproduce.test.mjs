@@ -110,7 +110,7 @@ test('draft for caw/drafts: an id free in tests and drafts, the trail of locator
     assert.match(spec.notes, /Was .* getan hat, als Orientierung für die Aufnahme:\n- fill getByRole\('searchbox', \{ name: 'Search todos' \}\)\n- click getByRole\('button', \{ name: 'Save' \}\)\n- goto \/todos$/);
     assert.equal(spec.red, undefined);
     assert.deepEqual(draftHint(draft), { file: 'caw/drafts/bug-search.yaml', record: 'caw record bug-search' });
-    // The suspected cause stays with the draft, for whoever fixes the bug later.
+    // The suspected cause opens the notes, for the agent that records the draft.
     const caused = parseTest(draftTestPlan({ id: 'bug-c', environment: 'local', writes: false, runId: 'r1', cause: 'server.mjs:12 answers\n before saving.', steps: [{ name: 'a', do: 'a', expect: 'b' }] }).text, 'x', { draft: true });
     assert.match(caused.notes, /scheitern, solange der Fehler da ist\.\nVermutete Ursache: server\.mjs:12 answers before saving\.$/);
     const long = draftTestPlan({ id: 'b', environment: 'local', writes: false, runId: 'r1', steps: [{ name: 'a', do: 'a', expect: 'b' }], trail: Array.from({ length: 45 }, (_, index) => `click e${index}`) });

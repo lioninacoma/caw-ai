@@ -1,5 +1,6 @@
 // The run folders in .caw/runs: every run and every open leaves one (report, trace, chat log). caw keeps the newest ones
-// (keepRuns, default 30) and deletes older ones when a run starts; a run whose process still lives is never deleted.
+// (keepRuns, default 30) and deletes older ones when a run starts; a run whose process still lives is never deleted, nor a
+// reproduction whose draft is still in caw/drafts: it holds the suspected cause the guided fix shows (bugfix.mjs).
 
 import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -21,6 +22,13 @@ const openNow = (dir) => {
     }
 };
 
+/** A reproduction whose draft is still in caw/drafts: the draft names this run, and its verdict holds the cause. */
+const draftStillThere = (root, dir, name) => {
+    if (RUN_ID.exec(name)?.[6] !== REPRODUCE_RUN) return false;
+    const file = readResult(dir)?.reproduce?.draft?.file;
+    return typeof file === 'string' && existsSync(join(root, file));
+};
+
 /**
  * Deletes the oldest run folders beyond `keep`. Run ids start with their time, so the name order is the age order.
  * @param keep   how many to keep; 0 keeps all
@@ -33,7 +41,7 @@ export const pruneRuns = (root, keep = DEFAULT_KEEP_RUNS, { except } = {}) => {
     const names = readdirSync(runs, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map(({ name }) => name).sort();
     const deleted = [];
     for (const name of names.slice(0, Math.max(0, names.length - keep))) {
-        if (name === except || openNow(join(runs, name))) continue;
+        if (name === except || openNow(join(runs, name)) || draftStillThere(root, join(runs, name), name)) continue;
         try {
             rmSync(join(runs, name), { recursive: true, force: true, maxRetries: 2 });
             deleted.push(name);

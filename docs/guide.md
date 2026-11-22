@@ -400,7 +400,7 @@ chat so far goes along; "Later" on any card ends the run there, and the terminal
 
 - `caw reproduce` reproduced: the card offers **Record red**, the recording of the draft as with `caw record <id>`.
 - Saved red: the card **Now fix the bug** shows the red step, its expected result, its check and the cause the reproduction
-  suspected (it is also in the draft's `notes`). **Let the agent fix it** has the agent advise the fix, with every agent kind
+  suspected (from the reproduction's run folder, which `keepRuns` keeps while the draft exists; the agent recording it also finds it at the start of the draft's `notes`, which the recorded plan may rewrite). **Let the agent fix it** has the agent advise the fix, with every agent kind
   (local, Docker, your attached session): its code changes come as cards you apply one by one ("Apply change"), caw's own agent
   never writes code. If the cause lies outside the project (another repository, a service, the environment), its card says
   where, there is nothing to apply, and **I fix it there** waits like **I fix it myself** until you **Test again**.

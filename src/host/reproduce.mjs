@@ -206,7 +206,8 @@ const MAX_TRAIL = 40;
  * one that must fail while the bug is there; recording it proves that (topic record).
  * @param trail what Claude did in the browser, with resolved locators (`click getByRole('button', …)`): in the notes as
  *              orientation for recording
- * @param cause the cause the agent suspected, with its evidence: in the notes, so whoever fixes the bug later still has it
+ * @param cause the cause the agent suspected, with its evidence: at the start of the notes for the agent that records the
+ *              draft. The plan it records may rewrite them; the guided fix reads the cause from this run (bugfix.mjs)
  * @returns { id, text }
  */
 export const draftTestPlan = ({ id, role, environment, writes, steps, runId, ref, cause, trail = [] }) => {

@@ -404,7 +404,7 @@ Befehl:
 
 - `caw reproduce` nachgestellt: Die Karte bietet **Rot aufnehmen**, die Aufnahme des Entwurfs wie mit `caw record <id>`.
 - Rot gespeichert: Die Karte **Jetzt den Fehler beheben** zeigt den roten Schritt, sein erwartetes Ergebnis, seine Prüfung und
-  die Ursache, die das Nachstellen vermutet hat (sie steht auch in den `notes` des Entwurfs). **Vom Agenten beheben lassen**
+  die Ursache, die das Nachstellen vermutet hat (aus dem Laufordner des Nachstellens, den `keepRuns` behält, solange der Entwurf da ist; der Agent, der ihn aufnimmt, findet sie auch am Anfang der `notes` des Entwurfs, die der aufgenommene Plan umschreiben darf). **Vom Agenten beheben lassen**
   lässt den Agenten den Fix empfehlen, mit jeder Art Agent (lokal, Docker, deine verbundene Session): Seine Codeänderungen kommen
   als Karten, die du einzeln übernimmst („Änderung übernehmen“); caws eigener Agent schreibt nie Code. Liegt die Ursache außerhalb
   des Projekts (ein anderes Repository, ein Dienst, die Umgebung), sagt seine Karte wo, es gibt nichts zu übernehmen, und **Ich

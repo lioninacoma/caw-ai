@@ -1,6 +1,6 @@
 // Old run folders go when a run starts: the newest keepRuns stay, an open run always stays.
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -20,6 +20,21 @@ test('runs: the oldest beyond keepRuns go, an open one and the starting one stay
     assert.deepEqual(pruneRuns(root, 2, { except: names[2] }), [names[1], names[3]], 'the open one (this process) and the starting one stay, a dead process does not count');
     assert.deepEqual(readdirSync(runs).sort(), [names[0], names[2], names[4], names[5]]);
     assert.deepEqual(pruneRuns(join(root, 'nothing'), 2), [], 'no runs folder yet');
+});
+
+test('runs: a reproduction whose draft is still in caw/drafts stays, it holds the cause; once the draft is gone it may go', (t) => {
+    const root = mkdtempSync(join(tmpdir(), 'caw-runs-'));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const runs = join(root, '.caw', 'runs');
+    const reproduction = '2026-11-10T10-00-00-000Z-reproduce';
+    const names = [reproduction, '2026-11-11T10-00-00-000Z-reproduce', '2026-11-12T10-00-00-000Z-open', '2026-11-13T10-00-00-000Z-open'];
+    for (const name of names) mkdirSync(join(runs, name), { recursive: true });
+    writeFileSync(join(runs, reproduction, 'result.json'), JSON.stringify({ status: 'pass', reproduce: { reproduced: 'yes', draft: { file: 'caw/drafts/bug-x.yaml' } } }));
+    mkdirSync(join(root, 'caw', 'drafts'), { recursive: true });
+    writeFileSync(join(root, 'caw', 'drafts', 'bug-x.yaml'), 'steps: []\n');
+    assert.deepEqual(pruneRuns(root, 1), [names[1], names[2]]);
+    rmSync(join(root, 'caw', 'drafts', 'bug-x.yaml'));
+    assert.deepEqual(pruneRuns(root, 1), [reproduction]);
 });
 
 test('runs: keepRuns is a whole number from 0', () => {

@@ -825,8 +825,11 @@ scenario('N12', 'reproduce: Claude reproduces a bug alone (no plan, no decision)
     const tests = readdirSync(join(native, 'caw/tests')).sort().join(',');
     try {
         // (1) With a window: the status reads English although the app speaks German. Claude finds it without a plan; plan and
-        // check are refused, the human only watches.
+        // check are refused, the human only watches; reproduced, the card offers recording the draft red, and the human says later.
         const seen = humans(async (page) => {
+            await page.locator('.message.result', { hasText: 'Nachgestellt: Entwurf caw/drafts/bug-nach-dem-speichern-steht-der-status.yaml' }).waitFor({ timeout: 90000 });
+            verify('(1) the card offers Rot aufnehmen and Später', await page.locator('#choices button', { hasText: 'Rot aufnehmen' }).count() === 1 && await page.locator('#choices button', { hasText: 'Später' }).count() === 1);
+            await decide(page, 'Später');
             await page.locator('#next.on').waitFor({ timeout: 90000 });
             verify('(1) end card: bug reproduced', /Fehler nachgestellt/.test(await page.locator('#next').textContent()));
             await endAction(page, 'closeWindow', { timeout: 5000 }).catch(() => {});
@@ -1228,8 +1231,9 @@ fi`;
         verify('(1–3) one process, five windows, exit 0', await h.done() === 5 && code === 0, String(code));
         verify('(2) the red proof was saved before the fix', redProof?.step === 'S2' && /^[0-9a-f]{4,40}$/.test(redProof?.head ?? ''), JSON.stringify(redProof));
         verifyPromoted('(3)', redProof ?? {});
-        const notes = readFileSync(join(fixRoot, 'caw/tests', `${FIX_ID}.yaml`), 'utf8');
-        verify('(3) the suspected cause stays in the notes', /Vermutete Ursache: serve\.mjs: \/api\/total antwortet 0/.test(notes), notes);
+        // The cause's home is the reproduction's verdict (the notes belong to the recorded plan): kept with its run folder.
+        const cause = newestRunOf(fixRoot, 'reproduce').result?.reproduce?.cause;
+        verify('(3) the reproduction keeps the suspected cause', cause === 'serve.mjs: /api/total antwortet 0', String(cause));
     } finally {
         await switchBug(false).catch(() => {});
     }
@@ -1243,9 +1247,11 @@ scenario('N15c', 'Guided bug fix, Von Claude Code beheben lassen: the advice get
         const id = await reproduceHeadless();
         const advice = `exec 2>&1
 A='caw agent'
-$A task > /tmp/t.json; grep -q '"fix"' /tmp/t.json && echo TASK-FIX
-cat > /tmp/a.json <<'JSON'
-{"items":[{"about":"S2","side":"app","title":"Summe aus den Preisen","evidence":"src/total.mjs:2","reason":"total gibt immer 0 zurück.","edits":[{"file":"src/total.mjs","find":"return 0;","replace":"return items.reduce((sum, item) => sum + item.price, 0);","why":"Die Summe der Preise"}],"prompt":"Rechne die Summe in src/total.mjs aus den Preisen."}]}
+$A task > /tmp/t.json
+# What the task says about the red step goes into the advice: the card shows it (a scripted agent's output reaches no log).
+FIX=$(node -e "try { const fix = JSON.parse(require('fs').readFileSync('/tmp/t.json', 'utf8')).fix; process.stdout.write(fix === undefined ? 'none' : fix.step + ' ' + fix.expect) } catch { process.stdout.write('unreadable') }")
+cat > /tmp/a.json <<JSON
+{"items":[{"about":"S2","side":"app","title":"Summe aus den Preisen","evidence":"src/total.mjs:2","reason":"total gibt immer 0 zurück (task.fix: $FIX).","edits":[{"file":"src/total.mjs","find":"return 0;","replace":"return items.reduce((sum, item) => sum + item.price, 0);","why":"Die Summe der Preise"}],"prompt":"Rechne die Summe in src/total.mjs aus den Preisen."}]}
 JSON
 $A advise --file /tmp/a.json; echo "ADVISE Exit=$?"`;
         const byAgent = async (chat) => {
@@ -1254,6 +1260,7 @@ $A advise --file /tmp/a.json; echo "ADVISE Exit=$?"`;
             await stateOf(chat, 'reviewing');
             const card = await chat.locator('.message.advice').last().textContent();
             verify('(2) the advice card shows the edit to src/total.mjs', /src\/total\.mjs/.test(card) && /items\.reduce/.test(card), card);
+            verify('(2) the advice task carried the red step (task.fix)', /task\.fix: S2 Die Summe zeigt Total: 5\./.test(card), card);
             await decide(chat, 'Änderung übernehmen');
             await findCard(chat, 'Änderung übernommen');
             // The fixture's bug lives in the server: the switch stands in for the edit taking effect.
@@ -1266,10 +1273,6 @@ $A advise --file /tmp/a.json; echo "ADVISE Exit=$?"`;
         verify('(2) the edit is in the file, written only on the click', /return items\.reduce\(\(sum, item\) => sum \+ item\.price, 0\);/.test(readFileSync(join(fixRoot, 'src/total.mjs'), 'utf8')));
         verify('(3) Später keeps the draft', existsSync(join(fixRoot, 'caw/drafts', `${id}.yaml`)));
         const red = loadTest(fixRoot, id).red;
-        // The advice ran in the red check run: its log shows the task carried the red step.
-        const adviceFile = join(fixRoot, '.caw/runs', red?.run ?? '-', 'agent/claude-advice.log');
-        const adviceLog = existsSync(adviceFile) ? readFileSync(adviceFile, 'utf8') : '';
-        verify('(2) the advice task carried the red step (task.fix)', /TASK-FIX/.test(adviceLog), adviceLog.slice(-400));
         const promoted = await run(fixRoot, [id, '--promote', ...target]);
         verify('(4) --promote: exit 0', promoted === 0, String(promoted));
         verifyPromoted('(4)', red);
