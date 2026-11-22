@@ -1499,6 +1499,33 @@ test('chat: an advice card starts with its icon and heading, never with "null" (
     return undefined;
 });
 
+test('chat: a card of the guided bug fix has its phase bar above it, done ticked, the current one marked; the fix card lists the red step', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { chat, frame, waiting } = await chatReady(t);
+    const rows = [{ label: 'Schritt', text: 'S2 Summe' }, { label: 'Erwartung', text: 'Die Summe zeigt Total: 5.' }, { label: 'Prüfung', text: "sum==='Total: 5'", code: true }];
+    const card = { kind: 'result', tone: 'next', title: 'Jetzt den Fehler beheben', rows, muted: 'Änderungen kommen als Karten.', phase: 'fix' };
+    const chosen = chat.choose('deciding', card.title, [{ id: 'later', label: 'Später', primary: true }], card);
+    assert.ok(await until(() => frame.isVisible('ol.phases')));
+    const bar = await frame.$$eval('ol.phases li', (items) => items.map((li) => ({ text: li.textContent, current: li.getAttribute('aria-current'), tick: li.querySelector('svg') !== null })));
+    assert.deepEqual(bar, [
+        { text: 'Nachgestellt', current: null, tick: true },
+        { text: 'Rot', current: null, tick: true },
+        { text: 'Beheben', current: 'step', tick: false },
+        { text: 'Grün', current: null, tick: false },
+        { text: 'Übernommen', current: null, tick: false },
+    ]);
+    assert.equal(await frame.getAttribute('ol.phases', 'aria-label'), 'Fehlerbehebung');
+    assert.equal(await frame.evaluate(() => document.querySelector('ol.phases').nextElementSibling.classList.contains('r-next')), true, 'the bar stands right above its card');
+    assert.deepEqual(await frame.$$eval('.message.result dl.kv dt', (list) => list.map((dt) => dt.textContent)), ['Schritt', 'Erwartung', 'Prüfung']);
+    assert.equal(await frame.textContent('.message.result dl.kv dd code'), "sum==='Total: 5'", 'the check as code');
+    assert.equal(await frame.textContent('.message.result p.muted'), 'Änderungen kommen als Karten.');
+    assert.ok(await until(() => waiting.length > 0));
+    assert.deepEqual(waiting.at(-1), 'Wartet im Chrome-Fenster auf dich: Jetzt den Fehler beheben: Änderungen kommen als Karten.', 'the terminal line keeps title and consequence only');
+    chat.closed?.();
+    void chosen;
+    return undefined;
+});
+
 test('chat: the terminal names the token notice it waits for', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { chat, waiting } = await open(t);

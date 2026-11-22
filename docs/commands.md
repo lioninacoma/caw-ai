@@ -244,8 +244,9 @@ npx caw run bug-search-finds-nothing --promote --env local
 A draft from [`reproduce`](#reproduce) that was recorded red (its `red` field) and passes now becomes a test. caw runs the
 draft; if it passes, every other test on the same environment (`run --all`); only when both are green does the test move to
 `caw/tests` and `caw/recordings` (without `red`), the draft is deleted and the draft's run folder gets `fix-report.md`: red at
-which step (run, commit), green in which run, the files changed since the red commit (`git diff --name-only` plus untracked,
-without `caw/` and `.caw/`) and how many other tests passed. A test of the same name is never overwritten (exit 3).
+which step (run, commit), green in which run, the files changed since the red commit (`git diff --name-only` in the whole
+repository plus untracked files inside the project folder, never an untracked folder such as a nested repository; without
+`caw/` and `.caw/`) and how many other tests passed. A test of the same name is never overwritten (exit 3).
 
 Exit codes: `0` promoted, `1` the draft or another test did not pass, `4` the draft is not fully recorded or was never shown
 red. `--promote` takes one draft, not with `--all`, `--report` or `--retry-env` (exit 3). Drafts are never part of `--all`.

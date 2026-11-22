@@ -69,9 +69,11 @@ export const resolveCommit = (root, ref) => {
 export const shortHead = (root) => git(root, ['rev-parse', '--short', 'HEAD']).toString('utf8').trim();
 
 /**
- * What changed since a commit, for a promoted draft's fix report: committed and uncommitted changes (`git diff --name-only`)
- * plus untracked files, relative to the project folder, without caw/ and .caw/ (the tests themselves and the runs). A path
- * outside the project folder keeps its place in the repository, marked with a leading ../ per level.
+ * What changed since a commit, for a promoted draft's fix report: committed and uncommitted changes of tracked files in the
+ * whole repository (`git diff --name-only`: app code may sit beside the project folder) plus untracked files inside the project
+ * folder only, never an untracked folder git lists as a whole (a nested repository, "lib/"); relative to the project folder,
+ * without caw/ and .caw/ (the tests themselves and the runs). A path outside the project folder keeps its place in the
+ * repository, marked with a leading ../ per level.
  * @param since a commit hash, as a draft's red.head records it
  * @returns the paths, sorted, with forward slashes
  */
@@ -81,7 +83,8 @@ export const changedFiles = (root, since) => {
     const names = (args) => git(root, args).toString('utf8').split('\0').filter((path) => path !== '' && !path.includes('\n'));
     // `:/` is the whole repository: app code may sit next to the project folder.
     const diff = names(['diff', '--name-only', '-z', since, '--', ':/']);
-    const untracked = names(['ls-files', '--others', '--exclude-standard', '--full-name', '-z', '--', ':/']);
+    // Untracked only inside the project folder: whatever else lies untracked in the repository is not the fix's.
+    const untracked = names(['ls-files', '--others', '--exclude-standard', '--full-name', '-z', '--', '.']).filter((path) => !path.endsWith('/'));
     const up = prefix === '' ? '' : prefix.split('/').filter(Boolean).map(() => '../').join('');
     const shown = (path) => (path.startsWith(prefix) ? path.slice(prefix.length) : `${up}${path}`);
     return [...new Set([...diff, ...untracked].map(shown))]

@@ -246,7 +246,8 @@ Ein Entwurf aus [`reproduce`](#reproduce), der rot aufgenommen wurde (sein Feld 
 den Entwurf ab; besteht er, alle anderen Tests auf derselben Umgebung (`run --all`); erst wenn beides grün ist, wandert der Test
 nach `caw/tests` und `caw/recordings` (ohne `red`), der Entwurf wird gelöscht, und der Laufordner des Entwurfs bekommt
 `fix-report.md`: rot bei welchem Schritt (Lauf, Commit), grün in welchem Lauf, die seit dem roten Commit geänderten Dateien
-(`git diff --name-only` plus neue Dateien, ohne `caw/` und `.caw/`) und wie viele andere Tests bestanden haben. Ein Test gleichen
+(`git diff --name-only` im ganzen Repository plus neue Dateien im Projektordner, nie ein neuer Ordner wie ein eingebettetes
+Repository; ohne `caw/` und `.caw/`) und wie viele andere Tests bestanden haben. Ein Test gleichen
 Namens wird nie überschrieben (Exit 3).
 
 Exit-Codes: `0` übernommen, `1` der Entwurf oder ein anderer Test hat nicht bestanden, `4` der Entwurf ist nicht ganz aufgenommen

@@ -1216,8 +1216,11 @@ fi`;
         let redProof = null;
         const fixMyself = async (chat) => {
             await adoptRed(chat);
-            const fix = await chat.locator('.message.decision', { hasText: 'Jetzt den Fehler beheben' }).last().textContent();
-            verify('(2) the fix card names the red step, its expectation, its check and the suspected cause', /Roter Schritt: S2/.test(fix) && /Erwartet: Die Summe zeigt Total: 5/.test(fix) && /textContent==='Total: 5'/.test(fix) && /Vermutete Ursache: serve\.mjs: \/api\/total antwortet 0/.test(fix), fix);
+            // The fix card's rows (dt then dd, without a space in textContent) and the phase bar above it.
+            const fix = await chat.locator('.message.result', { hasText: 'Jetzt den Fehler beheben' }).last().textContent();
+            verify('(2) the fix card names the red step, its expectation, its check and the suspected cause', /SchrittS2 Summe/.test(fix) && /ErwartungDie Summe zeigt Total: 5/.test(fix) && /Prüfungdocument\.getElementById\('sum'\)\.textContent==='Total: 5'/.test(fix) && /Ursacheserve\.mjs: \/api\/total antwortet 0/.test(fix), fix);
+            const phase = await chat.locator('ol.phases [aria-current=step]').last().textContent();
+            verify('(2) the phase bar over the fix card marks Beheben', phase === 'Beheben', phase);
             redProof = loadTest(fixRoot, FIX_ID).red;
             await decide(chat, 'Ich behebe selbst');
             await findCard(chat, 'Behebe den Fehler, dann teste erneut');

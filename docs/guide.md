@@ -391,16 +391,18 @@ The draft turns the bug into a test that proves the fix: red before, green after
    there" and offers nothing to fix in the test; green, the terminal names the next command.
 4. **Promote:** `caw run <id> --promote` runs the draft and, if it passes, `run --all` on the same environment. Only when both
    are green does the test move to `caw/tests` and `caw/recordings`, the draft is deleted, and the draft's run folder gets
-   `fix-report.md`: red at which step (run, commit), green in which run, the files changed since the red commit (committed,
-   uncommitted and untracked, without `caw/` and `.caw/`) and how many other tests passed. Exit 0 promoted, 1 not green,
+   `fix-report.md`: red at which step (run, commit), green in which run, the files changed since the red commit (tracked files,
+   committed or not, in the whole repository; new files only inside the project folder; without `caw/` and `.caw/`) and how
+   many other tests passed. Exit 0 promoted, 1 not green,
    4 not recorded or never red.
 
 **Guided in the workbench.** With a window the chat leads through these steps in one process, each in a new window, and the
-chat so far goes along; "Later" on any card ends the run there, and the terminal still names the next command:
+chat so far goes along; "Later" on any card ends the run there, and the terminal still names the next command. A bar over
+each card shows the phases Reproduced › Red › Fix › Green › Promoted: done ones ticked, the current one highlighted.
 
 - `caw reproduce` reproduced: the card offers **Record red**, the recording of the draft as with `caw record <id>`.
-- Saved red: the card **Now fix the bug** shows the red step, its expected result, its check and the cause the reproduction
-  suspected (from the reproduction's run folder, which `keepRuns` keeps while the draft exists; the agent recording it also finds it at the start of the draft's `notes`, which the recorded plan may rewrite). **Let the agent fix it** has the agent advise the fix, with every agent kind
+- Saved red: the card **Now fix the bug** lists the red step, its expected result, its check and, when known, the cause the
+  reproduction suspected (from the reproduction's run folder, which `keepRuns` keeps while the draft exists; the agent recording it also finds it at the start of the draft's `notes`, which the recorded plan may rewrite). **Let the agent fix it** has the agent advise the fix, with every agent kind
   (local, Docker, your attached session): its code changes come as cards you apply one by one ("Apply change"), caw's own agent
   never writes code. If the cause lies outside the project (another repository, a service, the environment), its card says
   where, there is nothing to apply, and **I fix it there** waits like **I fix it myself** until you **Test again**.

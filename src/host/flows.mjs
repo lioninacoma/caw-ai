@@ -57,7 +57,10 @@ const withoutDot = (text) => text.replace(/\.$/, '');
 const closed = (text) => (/[.!?]$/.test(text) ? text : `${text}.`);
 
 /** Added baselines in one sentence for the chat. */
-/** A result card for the chat: what happened (title), details (text) and the consequence (muted); tone fail, warn, next, info, ask. */
+/**
+ * A result card for the chat: what happened (title), details (text) and the consequence (muted); tone fail, warn, next, info, ask.
+ * The fix card adds rows and the guided bug fix a phase (chat.mjs).
+ */
 const resultCard = (tone, title, text, muted) => ({ kind: 'result', tone, title, ...(text ? { text } : {}), ...(muted ? { muted } : {}) });
 /** Waits for a button under a result card. */
 const decide = (chat, card, options) => chat.choose('deciding', card.title, options, card);
@@ -283,13 +286,15 @@ const withRed = (spec, run, head) => {
 /** The red step of a draft for the fix, also before its red proof is written: the step it must fail at. */
 const redBundle = (spec, cause) => redOf({ ...spec, red: spec.red ?? { step: redStep(spec) } }, cause);
 
-/** The red step as the fix card shows it: step, expected result, check and suspected cause, one point each. */
-const redFacts = (red) => [
-    t('run.guide.fixStep', { id: red.step, name: red.name ?? '' }).trim(),
-    ...(red.expect === undefined ? [] : [t('run.guide.fixExpect', { expect: withoutDot(red.expect) })]),
-    ...(red.check === undefined ? [] : [t('run.guide.fixCheck', { check: red.check })]),
-    t(red.cause === undefined ? 'run.guide.fixNoCause' : 'run.guide.fixCause', { cause: withoutDot(red.cause ?? '') }),
+/** The red step as the fix card lists it: step, expected result, check (as code) and the suspected cause when there is one. */
+const redRows = (red) => [
+    { label: t('run.guide.fixStep'), text: `${red.step} ${red.name ?? ''}`.trim() },
+    ...(red.expect === undefined ? [] : [{ label: t('run.guide.fixExpect'), text: red.expect }]),
+    ...(red.check === undefined ? [] : [{ label: t('run.guide.fixCheck'), text: red.check, code: true }]),
+    ...(red.cause === undefined ? [] : [{ label: t('run.guide.fixCause'), text: red.cause }]),
 ];
+/** A card of the guided bug fix: the chat shows its phase (reproduced, red, fix, green, promoted) over it. */
+const inPhase = (phase, card) => ({ ...card, phase });
 
 /**
  * A reproduction with a window found the bug and wrote a draft: the next step is recording it red, in a new window.
@@ -297,7 +302,7 @@ const redFacts = (red) => [
  * @returns { next: 'record' } or the outcome for the chat
  */
 export const offerRecordRed = async (chat, draft) => {
-    const choice = await decide(chat, resultCard('next', t('run.guide.reproducedTitle', { file: draft.file }), t('run.guide.reproducedText'), t('run.guide.laterHint', { command: draft.record })), [RECORD_RED, LATER]);
+    const choice = await decide(chat, inPhase('reproduced', resultCard('next', t('run.guide.reproducedTitle', { file: draft.file }), t('run.guide.reproducedText'), t('run.guide.laterHint', { command: draft.record }))), [RECORD_RED, LATER]);
     return choice === RECORD_RED.id ? { next: 'record' } : { outcome: t('run.guide.later', { command: draft.record }) };
 };
 
@@ -312,7 +317,7 @@ export const offerRecordRed = async (chat, draft) => {
  * @returns true to test again in a new window, false to end the run
  */
 const guideFix = async (chat, { red, test, again = false, title, adviseFix, store }) => {
-    const ask = { title: title ?? t('run.guide.fixTitle'), facts: redFacts(red), question: t(again ? 'run.guide.againQuestion' : 'run.guide.fixQuestion') };
+    const ask = { ...resultCard('next', title ?? t('run.guide.fixTitle'), undefined, t(again ? 'run.guide.againMuted' : 'run.guide.fixMuted')), rows: redRows(red) };
     let card = ask;
     let options = again ? [FIX_AGAIN, { ...RETEST, primary: false }, CLOSE] : [FIX_BY_AGENT, FIX_MYSELF, LATER];
     const waiting = () => {
@@ -320,7 +325,7 @@ const guideFix = async (chat, { red, test, again = false, title, adviseFix, stor
         options = [RETEST, LATER];
     };
     for (;;) {
-        const choice = await chat.choose('deciding', card.title, options, card);
+        const choice = await chat.choose('deciding', card.title, options, inPhase('fix', card));
         if (choice === FIX_BY_AGENT.id) {
             const advised = await adviseFix();
             if (advised === null) {
@@ -617,7 +622,8 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
                 if (failed && redAsExpected(current, failed, verdict)) {
                     red = true;
                     const id = redStep(current);
-                    choice = await decide(chat, resultCard('info', t('run.flow.redTitle', { id }), t('run.flow.redText', { id }), t('run.flow.redMuted', { test: current.id })), [adoptButton(current.steps.length), DISCARD]);
+                    const proof = resultCard('info', t('run.flow.redTitle', { id }), t('run.flow.redText', { id }), t('run.flow.redMuted', { test: current.id }));
+                    choice = await decide(chat, guide === undefined ? proof : inPhase('red', proof), [adoptButton(current.steps.length), DISCARD]);
                     if (choice !== ADOPT.id) return { outcome: t('run.flow.discarded') };
                     current = withRed(current, runId, head);
                     saved = adopt(current, undefined, {});
@@ -963,14 +969,14 @@ export const runFlow = async (options) => {
                 // environment passed too, while this window waits.
                 if (!failed && guide !== undefined && verdict.status === 'pass' && current.red !== undefined) {
                     const id = current.red.step;
-                    if (await decide(chat, resultCard('next', t('run.guide.greenTitle', { id }), t('run.guide.greenText', { test: current.id })), [PROMOTE, LATER]) !== PROMOTE.id) {
+                    if (await decide(chat, inPhase('green', resultCard('next', t('run.guide.greenTitle', { id }), t('run.guide.greenText', { test: current.id }))), [PROMOTE, LATER]) !== PROMOTE.id) {
                         return { outcome: t('run.guide.later', { command: `caw run ${current.id} --promote` }) };
                     }
                     learnFrom(concluded);
                     chat.progress(t('run.guide.promoting'));
                     const promoted = await guide.promote({ runId: concluded.runId });
                     if (promoted.ok) return { outcome: t('run.guide.promoted', promoted) };
-                    await decide(chat, resultCard('fail', t('run.guide.refusedTitle'), closed(withoutDot(promoted.reason)), t('run.guide.refusedMuted', { test: current.id })), [ONLY_CLOSE]);
+                    await decide(chat, inPhase('promoted', resultCard('fail', t('run.guide.refusedTitle'), closed(withoutDot(promoted.reason)), t('run.guide.refusedMuted', { test: current.id }))), [ONLY_CLOSE]);
                     return undefined;
                 }
                 if (!failed) {

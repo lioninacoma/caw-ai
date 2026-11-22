@@ -395,16 +395,18 @@ Der Entwurf macht aus dem Fehler einen Test, der den Fix belegt: vorher rot, dan
 4. **Übernehmen:** `caw run <id> --promote` spielt den Entwurf ab und, wenn er besteht, `run --all` auf derselben Umgebung. Erst
    wenn beides grün ist, wandert der Test nach `caw/tests` und `caw/recordings`, der Entwurf wird gelöscht, und der Laufordner
    des Entwurfs bekommt `fix-report.md`: rot bei welchem Schritt (Lauf, Commit), grün in welchem Lauf, die seit dem roten Commit
-   geänderten Dateien (committet, nicht committet und neu, ohne `caw/` und `.caw/`) und wie viele andere Tests bestanden haben.
+   geänderten Dateien (versionierte Dateien, committet oder nicht, im ganzen Repository; neue Dateien nur im Projektordner; ohne
+   `caw/` und `.caw/`) und wie viele andere Tests bestanden haben.
    Exit 0 übernommen, 1 nicht grün, 4 nicht aufgenommen oder nie rot.
 
 **Geführt in der Werkbank.** Mit Fenster führt der Chat in einem Prozess durch diese Schritte, jeden in einem neuen Fenster,
 und der bisherige Chat läuft mit; „Später“ auf jeder Karte beendet den Lauf dort, und das Terminal nennt weiter den nächsten
-Befehl:
+Befehl. Eine Leiste über jeder Karte zeigt die Phasen Nachgestellt › Rot › Beheben › Grün › Übernommen: erledigte mit Haken,
+die aktuelle hervorgehoben.
 
 - `caw reproduce` nachgestellt: Die Karte bietet **Rot aufnehmen**, die Aufnahme des Entwurfs wie mit `caw record <id>`.
-- Rot gespeichert: Die Karte **Jetzt den Fehler beheben** zeigt den roten Schritt, sein erwartetes Ergebnis, seine Prüfung und
-  die Ursache, die das Nachstellen vermutet hat (aus dem Laufordner des Nachstellens, den `keepRuns` behält, solange der Entwurf da ist; der Agent, der ihn aufnimmt, findet sie auch am Anfang der `notes` des Entwurfs, die der aufgenommene Plan umschreiben darf). **Vom Agenten beheben lassen**
+- Rot gespeichert: Die Karte **Jetzt den Fehler beheben** listet den roten Schritt, sein erwartetes Ergebnis, seine Prüfung und,
+  wenn bekannt, die Ursache, die das Nachstellen vermutet hat (aus dem Laufordner des Nachstellens, den `keepRuns` behält, solange der Entwurf da ist; der Agent, der ihn aufnimmt, findet sie auch am Anfang der `notes` des Entwurfs, die der aufgenommene Plan umschreiben darf). **Vom Agenten beheben lassen**
   lässt den Agenten den Fix empfehlen, mit jeder Art Agent (lokal, Docker, deine verbundene Session): Seine Codeänderungen kommen
   als Karten, die du einzeln übernimmst („Änderung übernehmen“); caws eigener Agent schreibt nie Code. Liegt die Ursache außerhalb
   des Projekts (ein anderes Repository, ein Dienst, die Umgebung), sagt seine Karte wo, es gibt nichts zu übernehmen, und **Ich

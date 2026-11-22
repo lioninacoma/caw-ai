@@ -77,6 +77,7 @@ test('Reproduced with a window: the card offers recording the draft red next, or
     assert.deepEqual(asked[0].options, ['record-red', 'later']);
     assert.deepEqual(asked[0].labels, ['Rot aufnehmen', 'Später']);
     assert.equal(asked[0].card.title, 'Nachgestellt: Entwurf caw/drafts/bug-x.yaml');
+    assert.equal(asked[0].card.phase, 'reproduced');
 });
 
 test('Recording a draft guided: after the red proof the card shows step, expectation, check and cause; fixing myself, then testing again runs the draft', async () => {
@@ -87,12 +88,21 @@ test('Recording a draft guided: after the red proof the card shows step, expecta
     assert.equal(reruns.length, 1);
     assert.deepEqual(h.adopted[0].spec.red, { step: 'S2', run: 'r-red', head: 'abc1234' }, 'the red proof is saved before the fix');
     const fix = h.questions[1];
+    assert.equal(h.questions[0].card.phase, 'red', 'the red proof card stands in its phase');
     assert.equal(fix.card.title, 'Jetzt den Fehler beheben');
-    assert.deepEqual(fix.card.facts, ['Roter Schritt: S2 Summe', 'Erwartet: Die Summe zeigt Total: 5', "Prüfung: sum==='Total: 5'", 'Vermutete Ursache: server.mjs:12 rechnet ohne Preise']);
+    assert.equal(fix.card.phase, 'fix');
+    assert.deepEqual(fix.card.rows, [
+        { label: 'Schritt', text: 'S2 Summe' },
+        { label: 'Erwartung', text: 'Die Summe zeigt Total: 5.' },
+        { label: 'Prüfung', text: "sum==='Total: 5'", code: true },
+        { label: 'Ursache', text: 'server.mjs:12 rechnet ohne Preise.' },
+    ]);
+    assert.equal(fix.card.muted, 'Änderungen von Claude Code kommen als Karten, du übernimmst jede einzeln: Ohne deinen Klick ändert sich nichts.');
     assert.deepEqual(fix.options, ['fix-by-agent', 'fix-myself', 'later']);
     assert.deepEqual(fix.labels, ['Von Claude Code beheben lassen', 'Ich behebe selbst', 'Später']);
     const waiting = h.questions[2];
     assert.equal(waiting.card.title, 'Behebe den Fehler, dann teste erneut');
+    assert.equal(waiting.card.phase, 'fix');
     assert.deepEqual(waiting.options, ['retest', 'later']);
     assert.deepEqual(h.said.at(-1), { next: 'run' }, 'testing again opens a new window');
 });
@@ -101,7 +111,7 @@ test('Recording a draft guided: later at the fix card ends the run with the red 
     const h = harness({ outcomes: [{ ...redRun(), candidate: draft }, redRun()], answers: ['adopt', 'later'] });
     const code = await recordFlow({ sandbox: 's', ...h, guide: { rerun: async () => assert.fail('no run') } });
     assert.equal(code, EXIT.pass);
-    assert.deepEqual(h.questions[1].card.facts.at(-1), 'Noch keine Ursache vermutet.');
+    assert.deepEqual(h.questions[1].card.rows.map(({ label }) => label), ['Schritt', 'Erwartung', 'Prüfung'], 'no cause row without a suspected cause');
     assert.deepEqual(h.said.at(-1), { outcome: 'Später weiter mit caw run bug-x.' });
 });
 
@@ -161,6 +171,9 @@ test('Test run of a red draft guided: still red offers fixing again, testing aga
     assert.equal(still.card.title, 'S2 noch rot: der Fehler ist noch da');
     assert.deepEqual(still.options, ['fix-by-agent', 'retest', 'close']);
     assert.deepEqual(still.labels, ['Erneut beheben lassen', 'Erneut testen', 'Lauf beenden']);
+    assert.equal(still.card.phase, 'fix');
+    assert.equal(still.card.rows[0].text, 'S2 Summe');
+    assert.match(still.card.muted, /Lass Claude Code noch einmal suchen/);
     assert.deepEqual(h.said[0], { next: 'run' });
     assert.deepEqual(h.said[1], { outcome: 'Später weiter mit caw run bug-x.' });
     assert.deepEqual(h.adopted, [], 'the first red proof stays');
@@ -188,6 +201,7 @@ test('Test run of a red draft guided: green offers adopting; it learns first, th
     assert.equal(await runFlow({ spec: proven, handover: false, canFix: true, fillBaselines: true, openSandbox: async () => assert.fail('no agent'), ...h, guide: { promote } }), EXIT.pass);
     assert.equal(h.questions[0].card.title, 'S2 grün: der Fehler ist behoben');
     assert.deepEqual(h.questions[0].options, ['promote', 'later']);
+    assert.equal(h.questions[0].card.phase, 'green');
     assert.deepEqual(order, ['learn', 'promote r-green'], 'learned baselines go into the draft before it moves');
     assert.equal(h.adopted.length, 1, 'nothing is written after promoting');
     assert.deepEqual(h.said[0], { outcome: 'Übernommen: caw/tests/bug-x.yaml, caw/recordings/bug-x.yaml. 1 andere(r) Test(s) auf test grün. Fix-Bericht: .caw/runs/r-green/fix-report.md' });
@@ -199,6 +213,7 @@ test('Test run of a red draft guided: promoting refused says so on a card, the d
     const card = refused.questions[1];
     assert.equal(card.card.title, 'Nicht übernommen');
     assert.equal(card.card.tone, 'fail');
+    assert.equal(card.card.phase, 'promoted');
     assert.match(card.text, /Andere Tests auf test sind nicht grün\..*Der Entwurf bug-x bleibt in caw\/drafts\./s);
     assert.deepEqual(card.options, ['close']);
 

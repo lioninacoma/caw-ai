@@ -97,6 +97,31 @@ test('git: changed files since a commit for the fix report: committed, uncommitt
     assert.throws(() => changedFiles(root, '--output=x'), (error) => error instanceof CawError && error.code === 'git-ref');
 });
 
+test('git: the fix report lists tracked changes repo-wide, untracked files only inside the project folder, never an untracked folder', (t) => {
+    const { top, root, git, write } = repository(t);
+    const start = git('rev-parse', '--short', 'HEAD');
+    // Tracked beside the project folder: committed with the start, changed since.
+    writeFileSync(join(top, 'api.js'), 'v1');
+    git('add', 'api.js');
+    git('commit', '-q', '-m', 'Api');
+    const before = git('rev-parse', '--short', 'HEAD');
+    writeFileSync(join(top, 'api.js'), 'v2');
+    // Untracked beside the project folder: not the fix's.
+    writeFileSync(join(top, 'scratch.txt'), 'x');
+    mkdirSync(join(top, 'tools'), { recursive: true });
+    writeFileSync(join(top, 'tools/helper.js'), 'x');
+    // Untracked inside: a new file counts; a nested repository is listed by git as a folder ("vendor/lib/") and does not.
+    write('src/new.js', 'export {};');
+    mkdirSync(join(root, 'vendor/lib'), { recursive: true });
+    execFileSync('git', ['init', '-q'], { cwd: join(root, 'vendor/lib') });
+    writeFileSync(join(root, 'vendor/lib/index.js'), 'x');
+    write('caw/drafts/bug-y.yaml', 'x');
+    write('.caw/runs/r2/report.md', 'x');
+    assert.match(execFileSync('git', ['ls-files', '--others', '--exclude-standard'], { cwd: root }).toString('utf8'), /^vendor\/lib\/$/m, 'git lists the nested repository as a folder');
+    assert.deepEqual(changedFiles(root, before), ['../api.js', 'src/new.js']);
+    assert.deepEqual(changedFiles(root, start), ['../api.js', 'src/new.js'], 'a file added since the commit is tracked');
+});
+
 test('git: a folder outside any repository is git-missing', (t) => {
     const dir = mkdtempSync(join(tmpdir(), 'caw-nogit-'));
     t.after(() => rmSync(dir, { recursive: true, force: true }));
