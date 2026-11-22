@@ -1550,6 +1550,59 @@ test('workbench: the comparison with the target design is a page of its own (F7,
     return undefined;
 });
 
+test('workbench: the comparison starts at the left edge of both images and scrolls sideways to a deviation only when it is out of view', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench, context } = await open(t);
+    const page = bench.page;
+    // The size of the reported screenshot: side by side the 75 % images are wider than their columns.
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const maker = await context.newPage();
+    await maker.setViewportSize({ width: 1280, height: 1600 });
+    await maker.setContent('<body style="margin:0;background:#f4ece0"><h1 style="position:absolute;left:24px;top:60px;margin:0">Feed the raven</h1></body>');
+    const picture = { src: `data:image/png;base64,${(await maker.screenshot()).toString('base64')}`, width: 1280, height: 1600 };
+    await maker.close();
+    // A whole page, taller than the column. One deviation in the left part (inside the column at the left edge), one far right,
+    // both low on the page.
+    const near = { x: 450, y: 1300, width: 120, height: 40 };
+    const far = { x: 1100, y: 1320, width: 120, height: 40 };
+    await bench.viewport({ width: 1280, height: 800 });
+    await bench.design({
+        step: { id: 'S5', name: 'Notiz' }, file: 'design/note.html', viewport: { width: 1280, height: 800 }, run: '21-45-37', met: false, design: picture, app: picture, extra: [],
+        deviations: [{ kind: 'style', text: 'button "Save note": background-color', design: near, app: near }, { kind: 'text', text: 'text: heading "Note" → "Notes"', design: far, app: far }],
+        steps: [{ id: 'S5', name: 'Notiz', status: 'deviations', count: 2 }],
+    }, { open: true });
+    assert.ok(await until(() => page.evaluate(() => !document.getElementById('cmp').hidden)), 'open');
+    const view = () => page.evaluate(() => [...document.querySelectorAll('#cmpPanel .shot-s')].map((box) => ({ kind: box.dataset.kind, left: Math.round(box.scrollLeft), top: Math.round(box.scrollTop), width: box.clientWidth, wide: box.scrollWidth })));
+    await pause(300);
+    const first = await view();
+    assert.ok(first.every(({ wide, width }) => wide > width), 'at 75 % wider than the column');
+    assert.deepEqual(first.map(({ left }) => left), [0, 0], 'starts at the left edge, the heading whole');
+    // The near deviation lies inside the column at the left edge: selecting it only moves the height.
+    await page.click('#cmpCards li:nth-child(1) .dev');
+    await pause(300);
+    const near1 = await view();
+    assert.deepEqual(near1.map(({ left }) => left), [0, 0], 'still at the left edge');
+    assert.ok(near1.every(({ top }) => top > 0), 'scrolled down to the deviation');
+    // The far one: out of view to the right, so the images scroll sideways until it is in view.
+    await page.click('#cmpCards li:nth-child(2) .dev');
+    await pause(300);
+    const second = await view();
+    for (const shot of second) {
+        const scale = shot.wide / 1280;
+        assert.ok(shot.left > 0, 'scrolled sideways');
+        assert.ok(far.x * scale >= shot.left && (far.x + far.width) * scale <= shot.left + shot.width, `the element in view: ${JSON.stringify(shot)}`);
+    }
+    // Back to the near one: in view again from the left edge.
+    await page.click('#cmpCards li:nth-child(1) .dev');
+    await pause(300);
+    assert.deepEqual((await view()).map(({ left }) => left), [0, 0], 'back at the left edge');
+    // Another tab starts at the left edge too.
+    await page.click('#cmpTab-diff');
+    await pause(300);
+    assert.deepEqual((await view()).map(({ left }) => left), [0, 0], 'differences only from the left edge');
+    return undefined;
+});
+
 test('F8 with the focus in the app switches App only, both ways', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { bench } = await open(t);

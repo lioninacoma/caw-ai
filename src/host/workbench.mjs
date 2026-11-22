@@ -882,6 +882,8 @@ new ResizeObserver(fitApp).observe($('appBox'));
 const VIEWS=${json(COMPARE_VIEWS)};
 // Side by side at 100 %, or smaller down to this to fit the column; below it the columns scroll, both together.
 const MIN_SCALE=0.75;
+// Room beside a deviation scrolled into view sideways.
+const REVEAL_MARGIN=16;
 const STATUS_ICON={met:'ok',deviations:'fail',pending:'open',unknown:'skip'};
 let cmp=null,cmpSel=-1,cmpAside=false,cmpFocus=null,shots=[],syncing=false;
 let cmpView=VIEWS[0];try{const view=sessionStorage.getItem('caw-cmp-view');if(VIEWS.includes(view))cmpView=view;}catch{}
@@ -937,8 +939,9 @@ const shotOf=(kind)=>{const box=el('section','shot');const head=el('div','shot-h
 const panelRender=()=>{const panel=$('cmpPanel');panel.replaceChildren();shots=[];if(cmp===null)return;
   if(cmpView==='overlay')panel.append(shotOf('overlay'));else panel.append(shotOf('app'),shotOf('design'));
   placeShots();
-  // Into view: the selected deviation, else the middle of the page (designs are usually centred).
-  if(cmpSel>=0)reveal(cmpSel);else for(const shot of shots)shot.scroll.scrollLeft=Math.max(0,(shot.scroll.scrollWidth-shot.scroll.clientWidth)/2);
+  // From the left edge, so the page's start stays whole; the selected deviation then comes into view.
+  for(const shot of shots)shot.scroll.scrollLeft=0;
+  if(cmpSel>=0)reveal(cmpSel);
   const pair=shots.filter((shot)=>shot.kind!=='overlay');
   if(pair.length===2)for(const [a,b] of [[pair[0],pair[1]],[pair[1],pair[0]]])a.scroll.addEventListener('scroll',()=>{if(syncing)return;syncing=true;b.scroll.scrollTop=a.scroll.scrollTop;b.scroll.scrollLeft=a.scroll.scrollLeft;requestAnimationFrame(()=>{syncing=false;});},{passive:true});};
 const SVG='http://www.w3.org/2000/svg';
@@ -975,8 +978,11 @@ new ResizeObserver(()=>{if(cmpOn())placeShots();}).observe($('cmpPanel'));
 const selectDev=(i)=>{cmpSel=i;for(const b of document.querySelectorAll('#cmpCards .dev'))b.setAttribute('aria-pressed',String(Number(b.dataset.i)===i));placeShots();reveal(i);};
 const reveal=(i)=>{const deviation=cmp?.deviations[i];if(!deviation)return;syncing=true;
   for(const shot of shots){const box=(shot.kind==='overlay'?['app','design']:[shot.kind]).map((side)=>deviation[side]).find(Boolean);if(!box)continue;
-    // The element in the middle of its image's view, so what is around it stays in sight.
-    const s=shot.scale;shot.scroll.scrollTo({top:Math.max(0,(box.y+box.height/2)*s-shot.scroll.clientHeight/2),left:Math.max(0,(box.x+box.width/2)*s-shot.scroll.clientWidth/2)});}
+    // The element in the middle of its image's height, so what is around it stays in sight. Sideways only when it is out of
+    // view, and only as far as needed from the left edge: the start of the page stays whole when it can.
+    const s=shot.scale,view=shot.scroll.clientWidth,from=shot.scroll.scrollLeft,x0=box.x*s,x1=(box.x+box.width)*s;
+    const left=x0>=from&&x1<=from+view?from:x1-x0>view-2*REVEAL_MARGIN?x0-REVEAL_MARGIN:Math.max(0,x1+REVEAL_MARGIN-view);
+    shot.scroll.scrollTo({top:Math.max(0,(box.y+box.height/2)*s-shot.scroll.clientHeight/2),left:Math.max(0,left)});}
   requestAnimationFrame(()=>requestAnimationFrame(()=>{syncing=false;}));};
 const renderCmp=()=>{if(cmp===null)return;
   $('cmpTest').textContent=$('title').dataset.test||$('crumbTest').textContent;
