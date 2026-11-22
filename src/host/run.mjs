@@ -27,6 +27,7 @@ import { readReproduction, draftId, draftTestPlan, draftHint, coverageIn } from 
 import { createHeadlessChat, openChat, parseClaudeLog, tailLines } from './chat.mjs';
 import { decide } from './decisions.mjs';
 import { createDesk } from './decision-desk.mjs';
+import { terminalAsk } from './decision-prompt.mjs';
 import { isPublicKey, spawnerKey } from './decision-proof.mjs';
 import { liveListeners } from '../shared/attach.mjs';
 import { describeCode } from './code-source.mjs';
@@ -474,7 +475,7 @@ export const keptCheck = (olds, step, check) => {
     return same.length === 0 || same.some((old) => old.recording.check === check) ? null : same[0];
 };
 
-export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true, reproduce, withDesign = false, suggestLooks = false, seams = {} }) => {
+export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true, reproduce, withDesign = false, suggestLooks = false, terminal, seams = {} }) => {
     // Tests only: the browser session, the chat and the playback without Chrome (test/run-seam.test.mjs).
     const { openRunSession: openSession = openRunSession, openChat: openWindowChat = openChat, playReplay: replayWith = playReplay } = seams;
     // Mutable: repairing in the same browser turns the test run into a run that fixes exactly this step.
@@ -718,6 +719,8 @@ ${text}`) ?? 0;
     const desk = createDesk({
         dir: runDir,
         auto: headless,
+        // Without a window, a person at the terminal (decision-prompt.mjs promptTerminal) answers what needs one.
+        ...(headless && terminal !== undefined ? { ask: terminalAsk(terminal) } : {}),
         starter,
         trusted: () => liveListeners(root).map(({ publicKey }) => publicKey).filter(isPublicKey),
         onIgnored: (ignored) => {

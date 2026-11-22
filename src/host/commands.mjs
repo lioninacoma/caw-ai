@@ -25,6 +25,7 @@ import { describeCode } from './code-source.mjs';
 import { ignoreAuthDir, requireTestUser } from './test-users.mjs';
 import { ensureMcpEntry } from './mcp-entry.mjs';
 import { decide } from './decisions.mjs';
+import { promptTerminal } from './decision-prompt.mjs';
 import { projectPath } from './project-path.mjs';
 import { changedFiles, shortHead } from './git.mjs';
 import { brokenChain, checkTest, draftIds, draftPath, environmentProblems, loadDraft, loadTest, pendingSteps, recordingHints, setStepLooks, staleSteps, testExists, testPath, withDefaults, writeTest } from './test-file.mjs';
@@ -1519,7 +1520,9 @@ const recordTest = async (root, options, deps = {}) => {
         // Before the demonstration: if Docker failed only afterwards, the human's work would be wasted.
         const sandbox = await openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent, attach });
         const previous = exists ? spec : undefined;
-        const { execute, conversation, undecided } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, previous, conversation: options.conversation, headless });
+        // Without a window, a person at this terminal answers a decision that needs one; in CI or started by a session nobody does.
+        const terminal = headless ? deps.terminal ?? promptTerminal({ interactive }) : undefined;
+        const { execute, conversation, undecided } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, previous, conversation: options.conversation, headless, ...(terminal === undefined ? {} : { terminal }) });
         if (headless) ui.info(t('cli.recordHeadless', { test, env: target }));
         // Driven from the developer's Claude Code session: it follows an existing test plan without asking the human first.
         // A new test without a plan still starts with the human's demonstration; without a window the agent follows the plan.

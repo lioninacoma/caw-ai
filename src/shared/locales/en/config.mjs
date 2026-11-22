@@ -220,6 +220,7 @@ export default {
     'config.report.decisions.by.window': 'in the window',
     'config.report.decisions.by.session': 'by the session',
     'config.report.decisions.by.elicitation': 'by you in the session',
+    'config.report.decisions.by.terminal': 'by you in the terminal',
     'config.report.decisions.by.auto': 'by caw, nothing the test checks changes',
     'config.report.decisions.ignored': 'invalid answer ignored: {id}: {option}, an answer file without a valid proof (not from a session caw trusts)',
     'config.report.decisions.known': 'adopted as known, the baseline of the first recording: {list}',

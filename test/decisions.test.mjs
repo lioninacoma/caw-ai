@@ -11,6 +11,7 @@ import { createChat } from '../src/host/chat.mjs';
 import { DECISIONS, FREE, HUMAN, PHASE_DECISIONS, autoOption, decide, decisionOf, endOption, harmlessAdopt, notedOf } from '../src/host/decisions.mjs';
 import { ANSWER_FILE, DECISION_FILE, answerRefusal, createDesk, readDecision, writeAnswer } from '../src/host/decision-desk.mjs';
 import { fingerprint, forgetSpawnerKey, newKeyPair, signAnswer, spawnerHandover, spawnerKey, verifyAnswer } from '../src/host/decision-proof.mjs';
+import { promptLines, promptTerminal, terminalAsk } from '../src/host/decision-prompt.mjs';
 import { fixPhase } from '../src/host/bugfix.mjs';
 import { offerRecordRed, runFlow } from '../src/host/flows.mjs';
 import { sessionMcpHandler } from '../src/host/session-mcp.mjs';
@@ -273,6 +274,98 @@ test('Answer proof: only an MCP server the run trusts can answer; a file the ses
     assert.equal(verifyAnswer(newKeyPair(), [sessionKeys.publicKey], signed), false);
     assert.equal(verifyAnswer(runKeys, [sessionKeys.publicKey], { ...signed, seq: 2 }), false);
     assert.equal(verifyAnswer(runKeys, [sessionKeys.publicKey], { ...signed, message: 'x' }), false);
+});
+
+/** A terminal for the prompt: what caw writes, and lines the person types once a question is up. */
+const fakeTerminal = async () => {
+    const { PassThrough } = await import('node:stream');
+    const input = new PassThrough();
+    const output = new PassThrough();
+    let written = '';
+    output.on('data', (chunk) => { written += chunk; });
+    // Each line goes to its own question: one more question than lines typed so far.
+    const questions = () => written.split('Deine Antwort').length + written.split('Was soll sich ändern').length - 2;
+    let typed = 0;
+    const asked = () => until(() => questions() > typed);
+    return {
+        input,
+        output,
+        written: () => written,
+        asked,
+        type: async (line) => {
+            await asked();
+            typed += 1;
+            input.write(`${line}\n`);
+        },
+    };
+};
+
+test('Terminal: a run without a window asks a person at a terminal, not in CI or started by a session', () => {
+    const tty = { isTTY: true };
+    assert.deepEqual(promptTerminal({ env: {}, input: tty, output: tty }), { input: tty, output: tty });
+    assert.equal(promptTerminal({ env: { CI: 'true' }, input: tty, output: tty }), undefined);
+    assert.equal(promptTerminal({ env: {}, input: {}, output: tty }), undefined, 'stdin a pipe: started by a session');
+    assert.equal(promptTerminal({ env: {}, input: tty, output: {} }), undefined);
+    assert.equal(promptTerminal({ interactive: false, env: {}, input: tty, output: tty }), undefined);
+    assert.deepEqual(promptLines(decisionOf('recording.adopt', [{ id: 'adopt', label: 'Übernehmen' }, { id: 'discard', label: 'Verwerfen' }], { test: 'kauf', samePlan: true, known: ['Gespeichert'], expectChange: [] })), [
+        'Das entscheidet ein Mensch, recording.adopt: recording.adopt',
+        '  test: kauf, samePlan: true, known: Gespeichert',
+        '  1) Übernehmen (adopt, ändert, was der Test prüft)',
+        '  2) Verwerfen (discard)',
+    ]);
+});
+
+test('Terminal: the person answers by number, Enter ends it harmlessly, a plan is revised with a message; logged as terminal', async (t) => {
+    const dir = tempDir(t);
+    const term = await fakeTerminal();
+    const settled = [];
+    const stopped = [];
+    const desk = createDesk({ ...trust, dir, auto: true, pollMs: 5, ask: terminalAsk(term), onSettled: (entry) => settled.push(entry), onStop: (entry) => stopped.push(entry.id) });
+    const chat = createChat({ desk });
+    const changing = { samePlan: true, expectChange: [], known: ['Gespeichert'], removed: [], fixed: [], stale: [], seen: [] };
+    const adopt = [{ id: 'adopt', label: 'Übernehmen' }, { id: 'discard', label: 'Verwerfen' }];
+    const first = decide(chat, { id: 'recording.adopt', context: changing, question: 'Übernehmen?', options: adopt, card: { title: 'Aufnahme übernehmen?' } });
+    await term.type('7');
+    await term.type('1');
+    assert.equal(await first, 'adopt');
+    assert.match(term.written(), /Das entscheidet ein Mensch, recording\.adopt: Aufnahme übernehmen\?\n {2}samePlan: true, known: Gespeichert\n {2}1\) Übernehmen \(adopt, ändert, was der Test prüft\)\n {2}2\) Verwerfen \(discard\)\nDeine Antwort \(Nummer\) \[2\]: /);
+    assert.match(term.written(), /Antworte mit einer Nummer von 1 bis 2\./);
+    const second = decide(chat, { id: 'recording.adopt', context: changing, question: 'Übernehmen?', options: adopt, card: { title: 'x' } });
+    await term.type('');
+    assert.equal(await second, 'discard');
+    const plan = decide(chat, { id: 'plan.approve', via: 'plan', context: { changed: true }, card: { steps: [] }, options: [{ id: 'approve', label: 'Freigeben' }, { id: 'revise', label: 'Ändern' }] });
+    await term.type('revise');
+    await term.type('S1 genauer');
+    assert.deepEqual(await plan, { approved: false, feedback: 'S1 genauer' });
+    assert.deepEqual(settled.map(({ id, option: chosen, by }) => [id, chosen, by]), [['recording.adopt', 'adopt', 'terminal'], ['recording.adopt', 'discard', 'terminal'], ['plan.approve', 'revise', 'terminal']]);
+    assert.deepEqual(stopped, []);
+    // The terminal closes: nobody answers, the run stops at the decision as before.
+    const third = decide(chat, { id: 'recording.adopt', context: changing, question: 'Übernehmen?', options: adopt, card: { title: 'x' } });
+    await term.asked();
+    term.input.end();
+    assert.equal(await third, 'discard');
+    assert.deepEqual(stopped, ['recording.adopt']);
+    assert.equal(settled.at(-1).by, 'auto');
+    desk.close();
+});
+
+test('Terminal: the first answer wins; the session\'s through caw_decide withdraws the question in the terminal', async (t) => {
+    const dir = tempDir(t);
+    const term = await fakeTerminal();
+    const settled = [];
+    const desk = createDesk({ ...trust, dir, auto: true, pollMs: 5, ask: terminalAsk(term), onSettled: (entry) => settled.push(entry) });
+    const chat = createChat({ desk });
+    const green = decide(chat, { id: 'fix.green', context: { test: 'bug' }, card: { title: 'grün' }, options: [{ id: 'promote', label: 'Übernehmen' }, { id: 'later', label: 'Später' }] });
+    await term.asked();
+    const entry = readDecision(dir);
+    answerAs(dir, { seq: entry.seq, id: 'fix.green', option: 'promote', by: 'elicitation' });
+    assert.equal(await green, 'promote');
+    // Typed too late: the question is gone, nothing more is taken.
+    term.input.write('2\n');
+    await tick();
+    assert.deepEqual(settled.map(({ option: chosen, by }) => [chosen, by]), [['promote', 'elicitation']]);
+    assert.equal(answerRefusal(entry, { option: 'promote', by: 'terminal' }), undefined);
+    desk.close();
 });
 
 test('Answer proof: a run started by the MCP server reads its key once from stdin, never from a file', async () => {

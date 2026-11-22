@@ -38,6 +38,7 @@ export default {
     'chat.planApproved': 'Plan freigegeben.',
     'chat.answeredBySession': '{label}: von der Session beantwortet.',
     'chat.answeredInSession': '{label}: von dir in der Session bestätigt.',
+    'chat.answeredInTerminal': '{label}: von dir im Terminal beantwortet.',
     'chat.answeredAuto': '{label}: von caw gewählt, nichts ändert sich, was der Test prüft.',
     'chat.decision.revise': 'Änderung erbitten',
     'chat.waiting': 'Wartet im Chrome-Fenster auf dich: {status}',

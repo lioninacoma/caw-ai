@@ -13,10 +13,13 @@ import { fingerprint, newKeyPair, verifyAnswer } from './decision-proof.mjs';
 
 export const DECISION_FILE = 'decision.json';
 export const ANSWER_FILE = 'decision-answer.json';
-/** Who answered: the window's button, the session (caw_decide), the person in the session (elicitation), or caw itself. */
-export const ANSWERED_BY = ['window', 'session', 'elicitation', 'auto'];
-/** Who may take a `human` option: a person, in the window or confirming in the session. */
-const PERSON = ['window', 'elicitation'];
+/**
+ * Who answered: the window's button, the session (caw_decide), the person in the session (elicitation), the person in the
+ * terminal of a run without a window, or caw itself.
+ */
+export const ANSWERED_BY = ['window', 'session', 'elicitation', 'terminal', 'auto'];
+/** Who may take a `human` option: a person, in the window, confirming in the session or in the terminal. */
+const PERSON = ['window', 'elicitation', 'terminal'];
 
 const readJson = (file) => {
     try {
@@ -69,10 +72,13 @@ const ignoredOf = (answer) => {
  *                  key came, so no answer counts; undefined: the `trusted` keys
  * @param onIgnored ({ id, option, by, at }) an answer file without a valid proof was ignored
  * @param keys      the run's key pair; a new one by default
+ * @param ask       without a window: (entry, signal) -> { option, message? } or undefined, asks a person in the terminal for a
+ *                  decision that needs one (decision-prompt.mjs); the first answer wins, the session's too, and `signal` then
+ *                  withdraws the question. Undefined (no terminal, CI, started by a session): the decision waits `waitMs`
  * @returns { open(decision, inject), settle(decision, answer, by), close() }; `inject({ option, message?, picked?, by })`
  *          answers the decision in the chat and says whether it was still waiting
  */
-export const createDesk = ({ dir, onSettled = () => {}, auto = false, waitMs = 0, onStop = () => {}, onStuck = () => {}, pollMs = 250, trusted = () => [], starter, onIgnored = () => {}, keys = newKeyPair() }) => {
+export const createDesk = ({ dir, onSettled = () => {}, auto = false, waitMs = 0, onStop = () => {}, onStuck = () => {}, pollMs = 250, trusted = () => [], starter, onIgnored = () => {}, keys = newKeyPair(), ask }) => {
     const file = join(dir, DECISION_FILE);
     const answerFile = join(dir, ANSWER_FILE);
     // Where caw_decide finds the run's key, and whose answers the run takes: the session that started it, or any listening one.
@@ -129,7 +135,17 @@ export const createDesk = ({ dir, onSettled = () => {}, auto = false, waitMs = 0
             const option = autoOption(held.entry);
             // After the chat has the question up, as a click would come.
             if (option !== undefined) setImmediate(() => { if (stack.includes(held)) held.inject({ option, by: 'auto' }); });
-            else if (waitMs > 0) {
+            else if (ask !== undefined && held.entry.gate === HUMAN) {
+                // A person at the terminal: asked there, while the session may still answer through caw_decide.
+                const asking = new AbortController();
+                held.asking = asking;
+                const answered = (answer) => {
+                    if (!stack.includes(held) || asking.signal.aborted) return;
+                    if (answer === undefined || answerRefusal(held.entry, { ...answer, by: 'terminal' }) !== undefined) stop(held);
+                    else held.inject({ ...answer, by: 'terminal' });
+                };
+                Promise.resolve().then(() => ask(held.entry, asking.signal)).then(answered, () => answered(undefined));
+            } else if (waitMs > 0) {
                 held.timer = setTimeout(() => stop(held), waitMs);
                 held.timer.unref?.();
             } else setImmediate(() => stop(held));
@@ -139,6 +155,7 @@ export const createDesk = ({ dir, onSettled = () => {}, auto = false, waitMs = 0
             if (index === -1) return;
             const [held] = stack.splice(index, 1);
             clearTimeout(held.timer);
+            held.asking?.abort();
             const option = answerOption(answer);
             const gate = held.entry.options.find((offered) => offered.id === option)?.gate;
             const entry = { seq: held.entry.seq, id: held.entry.id, option, ...(gate === undefined ? {} : { gate }), by, at: new Date().toISOString(), ...notedOf(held.entry, option) };
@@ -154,7 +171,10 @@ export const createDesk = ({ dir, onSettled = () => {}, auto = false, waitMs = 0
         close: () => {
             clearInterval(poll);
             poll = null;
-            for (const held of stack.splice(0)) clearTimeout(held.timer);
+            for (const held of stack.splice(0)) {
+                clearTimeout(held.timer);
+                held.asking?.abort();
+            }
             if (existsSync(file) && readDecision(dir)?.state === 'waiting') writeJson(file, { state: 'closed', at: new Date().toISOString() });
         },
     };

@@ -121,6 +121,18 @@ export const autoOption = (decision) => {
 };
 
 /**
+ * A decision's context in one line for a person: its plain values (test, step, reason …); with `lists` also lists of plain
+ * values (the messages a recording knows, the steps it fixed).
+ */
+export const contextSummary = (context = {}, { lists = false } = {}) => Object.entries(context)
+    .map(([key, value]) => {
+        if (['string', 'number', 'boolean'].includes(typeof value)) return `${key}: ${String(value).slice(0, 200)}`;
+        const plain = lists && Array.isArray(value) ? value.filter((item) => ['string', 'number'].includes(typeof item)) : [];
+        return plain.length === 0 ? undefined : `${key}: ${plain.map((item) => String(item).slice(0, 100)).join('; ')}`;
+    })
+    .filter((line) => line !== undefined).join(', ');
+
+/**
  * Shows a decision in the chat and waits for its answer, from the window, the session (caw_decide) or a run without a window.
  * The chat gets the decision as its last argument; a chat that does not know it (a test's fake) shows the card as before.
  * @param via    how the chat shows it: choose (default), picks (a card with checkboxes), discuss (a failure the person can
@@ -129,7 +141,9 @@ export const autoOption = (decision) => {
  * @returns what the chat method returns
  */
 export const decide = (chat, { id, context = {}, options, card, question, kind = 'deciding', via = 'choose' }) => {
-    const decision = decisionOf(id, options, context);
+    // Its title, for a person asked outside the window (the terminal of a run without one).
+    const title = [card?.title, question].find((text) => typeof text === 'string' && text.trim() !== '');
+    const decision = { ...decisionOf(id, options, context), ...(title === undefined ? {} : { title: title.slice(0, 300) }) };
     if (via === 'picks') return chat.choosePicks(kind, question ?? card.title, options, card, decision);
     if (via === 'discuss') return chat.discuss(question, options, card, decision);
     if (via === 'advice') return chat.advice(card, options, decision);

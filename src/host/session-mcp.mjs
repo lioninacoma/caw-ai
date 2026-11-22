@@ -15,6 +15,7 @@ import { PROJECT_DIR, REF_PATTERN, RUN_DIR, SELECTION_FILE } from '../shared/nam
 import { listenerOf, newKey, registerListener } from '../shared/attach.mjs';
 import { findSessionAgent } from '../shared/session-agent.mjs';
 import { answerRefusal, readDecision, writeAnswer } from './decision-desk.mjs';
+import { contextSummary } from './decisions.mjs';
 import { fingerprint, isPublicKey, newKeyPair, signAnswer, spawnerHandover } from './decision-proof.mjs';
 import { cawCommand } from '../shared/invocation.mjs';
 import { cawTool, createMcpHandler } from '../sandbox/mcp.mjs';
@@ -298,11 +299,6 @@ const runNamed = (root, runId) => {
     const last = lastRun(root);
     return last?.runId === runId ? last : { runId, runDir };
 };
-
-/** A decision's context in one line for the person's form: its plain values (test, step, reason …). */
-const contextLine = (context = {}) => Object.entries(context)
-    .filter(([, value]) => ['string', 'number', 'boolean'].includes(typeof value))
-    .map(([key, value]) => `${key}: ${String(value).slice(0, 200)}`).join(', ');
 
 /** The paths (relative to the project, with /) of what a run left behind. */
 const artefactsOf = (root, runDir) => {
@@ -617,7 +613,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                 if (elicit === undefined) return answer(t('run.mcp.decideHuman', { option: offered.id, way: byHand }), { state: 'refused', reason: 'needs-human', ...about, byHand }, true);
                 // The client shows the person a form; the model cannot fill it in.
                 const reply = await elicit({
-                    message: t('run.mcp.decideAsk', { runId: target.runId, decision: waiting.id, label: offered.label, option: offered.id, context: contextLine(waiting.context) }),
+                    message: t('run.mcp.decideAsk', { runId: target.runId, decision: waiting.id, label: offered.label, option: offered.id, context: contextSummary(waiting.context) }),
                     requestedSchema: { type: 'object', properties: { confirm: { type: 'boolean', title: t('run.mcp.decideConfirm', { label: offered.label }), description: t('run.mcp.decideConfirmWhy') } }, required: ['confirm'] },
                 });
                 if (reply?.action !== 'accept' || reply.content?.confirm !== true) return answer(t('run.mcp.decideDeclined', { option: offered.id, way: byHand }), { state: 'declined', action: reply?.action ?? 'cancel', ...about, byHand });

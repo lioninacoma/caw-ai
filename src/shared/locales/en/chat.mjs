@@ -37,6 +37,7 @@ export default {
     'chat.planApproved': 'Plan approved.',
     'chat.answeredBySession': '{label}: answered by the session.',
     'chat.answeredInSession': '{label}: confirmed by you in the session.',
+    'chat.answeredInTerminal': '{label}: answered by you in the terminal.',
     'chat.answeredAuto': '{label}: taken by caw, nothing the test checks changes.',
     'chat.decision.revise': 'Ask for changes',
     'chat.waiting': 'Waiting for you in the Chrome window: {status}',
