@@ -468,7 +468,9 @@ export const keptCheck = (olds, step, check) => {
     return same.length === 0 || same.some((old) => old.recording.check === check) ? null : same[0];
 };
 
-export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true, reproduce, withDesign = false, suggestLooks = false }) => {
+export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true, reproduce, withDesign = false, suggestLooks = false, seams = {} }) => {
+    // Tests only: the browser session, the chat and the playback without Chrome (test/run-seam.test.mjs).
+    const { openRunSession: openSession = openRunSession, openChat: openWindowChat = openChat, playReplay: replayWith = playReplay } = seams;
     // Mutable: repairing in the same browser turns the test run into a run that fixes exactly this step.
     let repairing = repair === undefined ? undefined : givenSpec.steps.find(({ id }) => id === repair.id);
     // Re-recording from a step on: that step and all after it, as they are in the test file.
@@ -636,7 +638,7 @@ ${text}`) ?? 0;
     const aborted = new Promise((ok) => { abortSignal = ok; });
     const stopSignals = onAbortSignals(abortSignal);
     try {
-        session = await openRunSession({ root, config, spec, checked, runDir, headless, interactive: conversation !== undefined, agent: reproduce !== undefined, recorded: recordedBrowser(givenSpec.steps), servedTexts: hinting });
+        session = await openSession({ root, config, spec, checked, runDir, headless, interactive: conversation !== undefined, agent: reproduce !== undefined, recorded: recordedBrowser(givenSpec.steps), servedTexts: hinting });
         // Distinct fact names: otherwise "target" could mean a step's element and "version" the recording.
         // --attach: the person's own session answers. The header says whether it is there, the chat when that changes. Linked
         // when the session box is first used: at the start, or only after the handover (open, develop).
@@ -686,7 +688,7 @@ ${text}`) ?? 0;
         ui.note(error.message);
         abortSignal();
     };
-    const openConversation = () => openChat({ session, logPath: join(runDir, 'chat.log'), onAbort: abortSignal, onOpen: conversation.onChatOpen, onWaiting: ui.note, onTampered, transcript: conversation.transcript });
+    const openConversation = () => openWindowChat({ session, logPath: join(runDir, 'chat.log'), onAbort: abortSignal, onOpen: conversation.onChatOpen, onWaiting: ui.note, onTampered, transcript: conversation.transcript });
     if (conversation !== undefined && conversation.lazy !== true) {
         try {
             chat = await openConversation();
@@ -1203,7 +1205,7 @@ ${text}`) ?? 0;
         entryPoints = [];
         let again;
         try {
-            again = await playReplay({
+            again = await replayWith({
                 replay: plan,
                 handler: agentHandler,
                 session,
@@ -1871,7 +1873,7 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             // A page that does not answer in time is no candidate.
             return Promise.race([measured, new Promise((resolve) => { setTimeout(() => resolve(null), HINT_TIMEOUT_MS).unref?.(); })]);
         };
-        const play = playReplay({
+        const play = replayWith({
             replay,
             handler: agentHandler,
             session,
@@ -1991,7 +1993,7 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             const expectations = givenSpec.expectations.filter(({ id }) => before.steps.some((step) => step.action === 'check' && step.id === id));
             const started = Date.now();
             const ended = await Promise.race([
-                playReplay({
+                replayWith({
                     replay: before,
                     // Separate handler: its checks are the steps before, not the one Claude repairs.
                     handler: createAgentHandler({
@@ -2043,7 +2045,7 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             const expectations = givenSpec.expectations.filter(({ id }) => prefix.steps.some((step) => step.action === 'check' && step.id === id));
             const started = Date.now();
             const ended = await Promise.race([
-                playReplay({
+                replayWith({
                     replay: prefix,
                     // Its own handler: the checks of the steps on the way, not Claude's.
                     handler: createAgentHandler({ session, run: { expectations }, hosts: navigationHosts(config, checked.name), agentDir, onVerdict: () => {} }),
