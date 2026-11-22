@@ -39,6 +39,7 @@ import { locatorLabel } from './locator.mjs';
 import { recordLocator } from './record-locator.mjs';
 import { adviceView, applyEdits, applyToFiles, applyToSpec, adviceReader, changesFiles, configValue } from './advice.mjs';
 import { diagnose } from './diagnose.mjs';
+import { keptForms } from './effects.mjs';
 import { DEFAULT_DESIGN_FAIL, createDesignJudge, missingNeeds } from './design.mjs';
 import { frameworkOf } from './framework/index.mjs';
 import { demonstrate, feedLabel, itemLabel, recordableSteps } from './demonstrate.mjs';
@@ -2091,7 +2092,9 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
         const effects = learnedEffects({ spec: givenSpec, results: ended.results, effects: ended.effects, deviations: ended.deviations, target });
         // While learning, a line this run did not see is dropped (flicker goes that way, a regression in the first runs too): a run
         // that writes the effects names those lines in the terminal and the report. The verdict stays.
-        const dropped = learns ? droppedWhileLearning(givenSpec, effects) : [];
+        // A dropped response names the JSON fields that changed: the earlier forms' fields are kept on this machine.
+        const forms = learns ? keptForms(root, session.responseForms?.(), effects) : undefined;
+        const dropped = learns ? droppedWhileLearning(givenSpec, effects, { observed: ended.effects, forms }) : [];
         if (dropped.length > 0) {
             for (const { step, lines } of dropped) ui.info(t('run.effects.dropped', { step, lines: lines.join('; ') }));
             if (verdict !== null) {

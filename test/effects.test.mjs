@@ -143,3 +143,58 @@ test('learning: a line seen in earlier runs and missing now is dropped by the in
     assert.deepEqual(droppedWhileLearning(spec, new Map([['S1', after]])), [{ step: 'S1', lines: ['1 requests: POST /api/orders 201'] }]);
     assert.deepEqual(droppedWhileLearning(spec, new Map()), []);
 });
+
+test('learning: a dropped response names the JSON fields that came and went, not the hash of its form', async () => {
+    const { droppedEffects } = await import('../src/host/effects.mjs');
+    const { droppedWhileLearning } = await import('../src/host/replay.mjs');
+    // The form every earlier run saw and the one this run got: the same request, a field renamed, one more.
+    const forms = new Map();
+    const then = responseLine('PATCH /api/todos/#', { id: 1, title: 'a', legacy: 'x' }, forms);
+    const now = responseLine('PATCH /api/todos/#', { id: 1, title: 'a', note: 'b', tags: ['c'] }, forms);
+    assert.match(then, / form [0-9a-f]{10}$/, 'the recording keeps its line as before');
+    const before = { runs: 2, actions: [{ action: 1, responses: [then, 'GET /api/todos form 0123456789'] }] };
+    const observed = new Map([[1, { responses: [now] }]]);
+    const learned = learnEffects(before, observed);
+    const lines = droppedEffects(before, learned, { observed, forms });
+    assert.deepEqual(lines, [
+        '1 responses: PATCH /api/todos/# antwortet mit anderen JSON-Feldern: neu .note, .tags, .tags[]; weg .legacy',
+        '1 responses: GET /api/todos kam diesmal ohne JSON-Antwort',
+    ]);
+    assert.ok(lines.every((line) => !/form [0-9a-f]{10}/.test(line)), lines.join('\n'));
+    // Fields the same, only a marker changed; an earlier form this machine never saw.
+    const failed = responseLine('POST /api/x', { success: false }, forms);
+    const ok = responseLine('POST /api/x', { success: true }, new Map());
+    assert.deepEqual(droppedEffects({ runs: 1, actions: [{ action: 2, responses: [ok] }] }, { runs: 2, actions: [] }, { observed: new Map([[2, { responses: [failed] }]]), forms }),
+        ['2 responses: POST /api/x antwortet mit success=false statt success=true']);
+    const unknown = responseLine('POST /api/y', { a: 1 }, new Map());
+    const other = responseLine('POST /api/y', { b: 1 }, forms);
+    assert.deepEqual(droppedEffects({ runs: 1, actions: [{ action: 1, responses: [unknown] }] }, { runs: 2, actions: [] }, { observed: new Map([[1, { responses: [other] }]]), forms }),
+        ['1 responses: POST /api/y antwortet mit anderen JSON-Feldern (die früheren kennt dieser Rechner nicht): jetzt .b']);
+    // Per step of a run: this run's effects and the forms go along.
+    const plain = { id: 'S1', name: 'S1', do: 'd', expect: 'e' };
+    const spec = { id: 't', steps: [{ ...plain, recording: { hash: stepHash(plain), recordedOn: 'local', actions: [{ action: 'click', target: 'x' }], check: 'true', effects: before } }] };
+    assert.deepEqual(droppedWhileLearning(spec, new Map([['S1', learned]]), { observed: new Map([['S1', observed]]), forms }), [{ step: 'S1', lines }]);
+});
+
+test('learning: the fields of a learned response form are kept on this machine for the run that drops it', async () => {
+    const { keptForms } = await import('../src/host/effects.mjs');
+    const { mkdtempSync, readFileSync, existsSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const root = mkdtempSync(join(tmpdir(), 'caw-forms-'));
+    // The first run learns the form; a form it only saw (not learned) is not kept.
+    const first = new Map();
+    const learnedLine = responseLine('GET /a', { id: 1, legacy: 'x' }, first);
+    responseLine('GET /b', { only: 'seen' }, first);
+    keptForms(root, first, new Map([['S1', { runs: 1, actions: [{ action: 1, responses: [learnedLine] }] }]]));
+    const file = join(root, '.caw', 'response-forms.json');
+    assert.ok(existsSync(file));
+    assert.deepEqual(Object.values(JSON.parse(readFileSync(file, 'utf8'))), [['.id', '.legacy']], 'field paths only, no values');
+    // A later run (another process) gets a new form and drops the old line: it knows the earlier fields.
+    const later = new Map();
+    const now = responseLine('GET /a', { id: 1, note: 'y' }, later);
+    const forms = keptForms(root, later, new Map());
+    const { droppedEffects } = await import('../src/host/effects.mjs');
+    assert.deepEqual(droppedEffects({ runs: 1, actions: [{ action: 1, responses: [learnedLine] }] }, { runs: 2, actions: [] }, { observed: new Map([[1, { responses: [now] }]]), forms }),
+        ['1 responses: GET /a antwortet mit anderen JSON-Feldern: neu .note; weg .legacy']);
+});

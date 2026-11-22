@@ -1351,6 +1351,8 @@ export const openBrowserSession = async (spec) => {
 
         // Trail for an action's effect: console and shape of JSON responses, without values.
         const trail = [];
+        // The field paths of each response form seen (hash -> paths): a learning run names what changed in a form it drops.
+        const forms = new Map();
         raw.on('console', (message) => {
             const page = message.page();
             const url = message.location().url;
@@ -1372,7 +1374,7 @@ export const openBrowserSession = async (spec) => {
             const entry = { kind: 'response', line: null };
             trail.push(entry);
             response.text().then((body) => {
-                entry.line = responseLine(requestName(describedRequest(request), config.requestKeys ?? []), JSON.parse(body));
+                entry.line = responseLine(requestName(describedRequest(request), config.requestKeys ?? []), JSON.parse(body), forms);
             }).catch(() => {});
         });
         // The values of answered reads, for the look suggestion after a recording (look-hints.mjs): in memory only, never written
@@ -1607,6 +1609,8 @@ export const openBrowserSession = async (spec) => {
             network: { mark: () => network.mark(), since: (mark, end) => network.since(mark, end) },
             /** Console and responses for an action's effect: `mark()` before, `since(mark)` after. */
             trail: { mark: () => trail.length, since: (mark) => trail.slice(mark).filter(({ line }) => line !== null) },
+            /** The JSON response forms seen so far: hash -> field paths, never values. */
+            responseForms: () => forms,
             /** With servedTexts: the normalized values the app's reads answered so far (look-hints.mjs), else undefined. */
             ...(served === null ? {} : { served: () => served }),
             /** A warning that does not come from the browser, e.g. a deviating effect in a passed run. */

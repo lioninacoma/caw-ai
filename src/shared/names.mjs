@@ -16,6 +16,8 @@ export const CONTEXT_FILE = `${PROJECT_DIR}/caw.md`;
 export const RUN_DIR = '.caw';
 /** The element last selected in the workbench for the human's own Claude Code session, under RUN_DIR. */
 export const SELECTION_FILE = 'selection.json';
+/** The field paths of learned JSON response forms by their hash, under RUN_DIR: the recording keeps only the hash (effects.mjs). */
+export const FORMS_FILE = 'response-forms.json';
 /**
  * A reproduction's --ref: an id from another tool (a ticket), kept opaque and never resolved by caw. Narrow characters so it
  * is safe in a file, a table cell and a command line.

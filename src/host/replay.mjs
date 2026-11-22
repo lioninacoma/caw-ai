@@ -1534,12 +1534,14 @@ export const effectsLearning = (spec, target) => spec.steps
 
 /**
  * The lines a learning run drops from the effects it learns (droppedEffects), per step.
- * @param effects learnedEffects' result
+ * @param effects  learnedEffects' result
+ * @param observed this run's effects per step (playReplay) and `forms` (hash -> JSON field paths): a dropped response
+ *                 names the fields that changed
  * @returns [{ step, lines }]
  */
-export const droppedWhileLearning = (spec, effects) => spec.steps.flatMap((step) => {
+export const droppedWhileLearning = (spec, effects, { observed, forms } = {}) => spec.steps.flatMap((step) => {
     if (!effects.has(step.id)) return [];
-    const lines = droppedEffects(currentEffects(spec, step), effects.get(step.id));
+    const lines = droppedEffects(currentEffects(spec, step), effects.get(step.id), { observed: observed?.get(step.id), forms });
     return lines.length === 0 ? [] : [{ step: step.id, lines }];
 });
 

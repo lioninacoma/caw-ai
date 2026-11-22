@@ -3,9 +3,12 @@
 // Everything comes from the browser, with no knowledge of framework or environment, and without values: no field contents, no parameter values.
 
 import { createHash } from 'node:crypto';
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { t } from '../shared/i18n.mjs';
 import { CATALOGS } from '../shared/locales/index.mjs';
+import { FORMS_FILE, RUN_DIR } from '../shared/names.mjs';
 
 /**
  * Healthy runs until the effects count as learned. Until then, whatever fluctuates between runs is dropped; after that
@@ -133,12 +136,91 @@ export const jsonShape = (value, prefix = '', out = new Set(), depth = 0) => {
 
 const FAILURE_KEYS = /^(success|ok|error|errors|fehler|fehlermeldung)$/i;
 
-/** A JSON response as one line: request name, shape as short hash and business error markers of the top level. */
-export const responseLine = (name, body) => {
+/**
+ * A JSON response as one line: request name, shape as short hash and business error markers of the top level.
+ * @param forms a Map that keeps the shape's field paths by its hash, so a changed form can be named by its fields later
+ */
+export const responseLine = (name, body, forms) => {
     const hints = body === null || typeof body !== 'object' || Array.isArray(body) ? [] : Object.entries(body)
         .filter(([key]) => FAILURE_KEYS.test(key))
         .map(([key, value]) => `${key}=${typeof value === 'boolean' ? value : value === null || value === '' ? 'empty' : 'filled'}`);
-    return [name, `form ${shortHash([...jsonShape(body)].sort())}`, ...hints].join(' ');
+    const fields = [...jsonShape(body)].sort();
+    const hash = shortHash(fields);
+    forms?.set(hash, fields);
+    return [name, `form ${hash}`, ...hints].join(' ');
+};
+
+const FORM = /^(.*?) form ([0-9a-f]+)(?: (.*))?$/;
+const MAX_FORMS = 2000;
+const MAX_FIELDS = 6;
+
+/** A response line's parts: { name, hash, markers } or null for any other line. */
+const formOf = (line) => {
+    const found = FORM.exec(line);
+    return found === null ? null : { name: found[1], hash: found[2], markers: found[3] ?? '' };
+};
+
+/**
+ * The response forms a learning run needs from earlier runs: the recording keeps only a form's hash, so the field paths of
+ * the forms the effects learn are kept on this machine (`.caw/response-forms.json`, never values). Reads what earlier runs
+ * kept, adds the forms of this run's learned response lines and writes the file again (at most MAX_FORMS, the newest).
+ * @param current this run's forms (hash -> field paths)
+ * @param learned the effects this run learns (Map step -> { actions })
+ * @returns hash -> field paths, earlier and current
+ */
+export const keptForms = (root, current, learned) => {
+    const path = join(root, RUN_DIR, FORMS_FILE);
+    let kept = {};
+    try {
+        const read = JSON.parse(readFileSync(path, 'utf8'));
+        if (read !== null && typeof read === 'object' && !Array.isArray(read)) kept = read;
+    } catch {
+        // none yet, or unreadable: start anew
+    }
+    const known = new Map(Object.entries(kept).filter(([, fields]) => Array.isArray(fields)));
+    const hashes = new Set([...learned.values()].flatMap(({ actions = [] }) => actions.flatMap(({ responses = [] }) => responses.map((line) => formOf(line)?.hash))));
+    let added = false;
+    for (const [hash, fields] of current ?? []) {
+        if (!hashes.has(hash) || known.get(hash)?.join() === fields.join()) continue;
+        known.delete(hash);
+        known.set(hash, fields);
+        added = true;
+    }
+    if (added) {
+        try {
+            mkdirSync(join(root, RUN_DIR), { recursive: true });
+            writeFileSync(`${path}.tmp`, JSON.stringify(Object.fromEntries([...known].slice(-MAX_FORMS))));
+            renameSync(`${path}.tmp`, path);
+        } catch {
+            // not writable: the next run names the change without the earlier fields
+        }
+    }
+    return new Map([...known, ...(current ?? [])]);
+};
+
+/**
+ * A response line every earlier run saw and this run did not, in words: what changed between the form then and the form the
+ * same request answered with now (JSON fields that came and went, or a changed marker such as success=false).
+ * @param now   this run's response lines of the same action
+ * @param forms hash -> field paths, of earlier runs (as far as this machine kept them) and of this run
+ */
+const droppedResponse = (line, now, forms) => {
+    const then = formOf(line);
+    if (then === null) return line;
+    const other = now.map(formOf).find((form) => form !== null && form.name === then.name);
+    if (other === undefined) return t('session.effects.formGone', { name: then.name });
+    const listed = (fields) => (fields.length <= MAX_FIELDS ? fields : [...fields.slice(0, MAX_FIELDS), t('session.effects.formMore', { count: fields.length - MAX_FIELDS })]).join(', ');
+    const before = forms.get(then.hash);
+    const after = forms.get(other.hash);
+    if (then.hash === other.hash || (before !== undefined && after !== undefined && before.join() === after.join())) {
+        return t('session.effects.formMarkers', { name: then.name, now: other.markers || '-', then: then.markers || '-' });
+    }
+    if (after === undefined) return t('session.effects.formOther', { name: then.name });
+    if (before === undefined) return t('session.effects.formUnknown', { name: then.name, fields: listed(after) });
+    const added = after.filter((field) => !before.includes(field));
+    const removed = before.filter((field) => !after.includes(field));
+    const parts = [...(added.length === 0 ? [] : [t('session.effects.formAdded', { fields: listed(added) })]), ...(removed.length === 0 ? [] : [t('session.effects.formRemoved', { fields: listed(removed) })])];
+    return t('session.effects.formChanged', { name: then.name, changes: parts.join('; ') });
 };
 
 const unique = (lines) => [...new Set(lines)].slice(0, MAX_LINES);
@@ -212,14 +294,18 @@ export const learnEffects = (recorded, observed) => {
  * regression in the first runs goes the same way, so the run names them. The console only collects, it never drops.
  * @param recorded the effects before the run (undefined: the first run, nothing to drop)
  * @param learned  learnEffects' result
+ * @param observed this run's effects of the step (action number -> lists) and `forms` (hash -> JSON field paths, see
+ *                 responseLine): with them a dropped response says which fields came and went instead of its form's hash
  * @returns lines `<action> <list>: <line>`
  */
-export const droppedEffects = (recorded, learned) => {
+export const droppedEffects = (recorded, learned, { observed = new Map(), forms = new Map() } = {}) => {
     if (recorded === undefined || learned === null || learned === undefined) return [];
     return recorded.actions.flatMap((entry) => {
         const now = learned.actions.find(({ action }) => action === entry.action) ?? {};
+        const seen = observed.get(entry.action)?.responses ?? [];
         return EFFECT_LISTS.filter((list) => list !== 'console')
-            .flatMap((list) => (entry[list] ?? []).filter((line) => !(now[list] ?? []).includes(line)).map((line) => `${entry.action} ${list}: ${line}`));
+            .flatMap((list) => (entry[list] ?? []).filter((line) => !(now[list] ?? []).includes(line))
+                .map((line) => `${entry.action} ${list}: ${list === 'responses' ? droppedResponse(line, seen, forms) : line}`));
     });
 };
 
