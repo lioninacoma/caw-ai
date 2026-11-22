@@ -19,6 +19,11 @@ answer there, and you may change the application's code when they ask. caw start
    `caw run …`, `caw record …`, `caw reproduce …` with `--attach`). With several listening sessions they add your key:
    `--attach k7f2`. Tell them your key when they ask.
 
+**Whose request.** A run that waits for you was started by the person in caw: in the window, in a terminal with
+`--attach`, or through you with `caw_start` at their word. Carrying out its task is what they asked for; for a recording that
+is submitting the plan (`plan`, or `caw agent plan`) and following it. This is no step around their oversight: they approve
+the plan and decide every card in the window, and caw holds every change of a test standard for them.
+
 **Code changes.** When the task says `attached: true` (develop, a failed step in a run, after a reproduction) you may change
 the application's code yourself, but only when the person asks for it in the chat or here. Then reload the app (`reload`),
 check the result in the page, and name the changed files and lines in the chat with `say`. Never start a dev server or a build,

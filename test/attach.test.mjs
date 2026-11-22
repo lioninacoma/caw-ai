@@ -113,3 +113,19 @@ test('attach: --attach alone, with a key or =, never eats a test name; not with 
     assert.equal(parseReproduceArgs(['Bug', '--attach', 'k7f2'], { root: tmpdir() }).attach, 'k7f2');
     assert.equal(parseReproduceArgs(['--attach', 'Bug text'], { root: tmpdir() }).attach, true);
 });
+
+test('attach: the task an attached session gets says the person started the run, for a recording that submitting the plan and following it is their request', async () => {
+    const { sessionHint } = await import('../src/host/run.mjs');
+    const recording = sessionHint('run', 'r1', { creating: true });
+    assert.match(recording, /submit the plan with plan, follow it once the person approved it/);
+    assert.match(recording, /The person started this recording in caw and attached it to you: submitting the plan and following it is what they asked for/);
+    for (const mode of ['run', 'advise', 'talk', 'reproduce', 'develop']) {
+        assert.match(sessionHint(mode, 'r1'), /run r1.*The person started this run in caw and attached it to you: carrying out this task is what they asked for/i, mode);
+    }
+    // The guide topics and the skill say the same for what the session reads.
+    const { readFileSync } = await import('node:fs');
+    for (const file of ['templates/guide/attach.md', 'templates/guide/session.md']) {
+        assert.match(readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'), /\*\*Whose request\.\*\* A run that waits for you was started by the person in caw[\s\S]*submitting the plan \(`plan`, or `caw agent plan`\) and following it/, file);
+    }
+    assert.match(readFileSync(new URL('../templates/skills/caw-attach/SKILL.md', import.meta.url), 'utf8'), /The person started\s+that run in caw \(or asked you to start it\): its task is their request/);
+});

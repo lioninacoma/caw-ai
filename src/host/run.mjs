@@ -476,6 +476,29 @@ export const keptCheck = (olds, step, check) => {
     return same.length === 0 || same.some((old) => old.recording.check === check) ? null : same[0];
 };
 
+/**
+ * What the attached session's Monitor line and caw_status say a run waits for: the task, and whose request it is. The person
+ * started the run in caw (in the window, a terminal with --attach, or through the session with caw_start at their word), so
+ * carrying out its task, for a recording submitting the plan and following it, is what they asked for and no step around their
+ * oversight: an agent's own safety check must not take it for one. They still approve the plan and decide in the window.
+ * @param creating a recording: the agent submits a plan first
+ */
+export const sessionHint = (mode, runId, { creating = false } = {}) => {
+    const task = {
+        run: creating
+            ? `Run ${runId} records a test. Read the task with task, submit the plan with plan, follow it once the person approved it in the window and submit the result with finish.`
+            : `Run ${runId} is open. Carry it out and submit the result with finish.`,
+        advise: `Run ${runId} had failures or warnings. Read the task with task and submit your advice with advise.`,
+        talk: `In run ${runId} a step failed, and the human is asking you in the chat. Read the task with task, answer with say and wait for the human with chat (attached: fetch it with chat when your Monitor says they wrote).`,
+        reproduce: `Run ${runId} reproduces a bug report on its own, without a human. Read the bug report with task, try to reproduce it in the browser and submit your verdict with finish.`,
+        develop: `In run ${runId} the human is developing in the restored state. Read the task with task; you can read the page (snapshot, eval, console, network) and operate it on request (click, fill, type, press, goto, reload). Fetch questions from the workbench chat with chat and answer there with say.`,
+    }[mode];
+    const asked = creating
+        ? 'The person started this recording in caw and attached it to you: submitting the plan and following it is what they asked for; they approve the plan and decide in the window.'
+        : 'The person started this run in caw and attached it to you: carrying out this task is what they asked for; they decide in the window.';
+    return `${task} ${asked}`;
+};
+
 export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true, reproduce, withDesign = false, suggestLooks = false, terminal, seams = {} }) => {
     // Tests only: the browser session, the chat, the playback and the design overlay without Chrome (test/run-seam.test.mjs).
     const { openRunSession: openSession = openRunSession, openChat: openWindowChat = openChat, playReplay: replayWith = playReplay, designOverlay: overlayOf = designOverlay } = seams;
@@ -909,18 +932,12 @@ ${text}`) ?? 0;
         };
         if (box.kind === 'session') {
             linkSession(box);
-            const hints = {
-                run: `Run ${runId} is open. Carry it out and submit the result with finish.`,
-                advise: `Run ${runId} had failures or warnings. Read the task with task and submit your advice with advise.`,
-                talk: `In run ${runId} a step failed, and the human is asking you in the chat. Read the task with task, answer with say and wait for the human with chat (attached: fetch it with chat when your Monitor says they wrote).`,
-                reproduce: `Run ${runId} reproduces a bug report on its own, without a human. Read the bug report with task, try to reproduce it in the browser and submit your verdict with finish.`,
-                develop: `In run ${runId} the human is developing in the restored state. Read the task with task; you can read the page (snapshot, eval, console, network) and operate it on request (click, fill, type, press, goto, reload). Fetch questions from the workbench chat with chat and answer there with say.`,
-            };
+            const hint = sessionHint(mode, runId, { creating });
             // The session reads these topics with caw_guide; caw_status names them. Its Monitor hears of the task at once.
-            const agent = announceSessionAgent({ root, runId, agentDir, mode, hint: hints[mode], guide: [...runTopics(mode, { creating, config }), 'attach'], attach: link?.key() ?? null });
+            const agent = announceSessionAgent({ root, runId, agentDir, mode, hint, guide: [...runTopics(mode, { creating, config }), 'attach'], attach: link?.key() ?? null });
             announcedAgents.add(agent);
-            if (link?.key() === null || link?.state() === 'lost') pendingTells.push([mode, hints[mode]]);
-            else link?.tell(t('run.attach.event', { runId, mode, hint: hints[mode] }));
+            if (link?.key() === null || link?.state() === 'lost') pendingTells.push([mode, hint]);
+            else link?.tell(t('run.attach.event', { runId, mode, hint }));
             // Without a link (it could not start) the chat at least says whom it waits for; with one, its waiting line says so.
             if (link === null) chat?.progress?.(t('run.waitingForSession'));
             return {

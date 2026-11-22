@@ -6,7 +6,7 @@ agent of its own: runs you start are attached to you (`--attach`, topic `attach`
 1. **Start:** `caw_start` with `command` (`run`, `record`, `open` or `reproduce`) and typed fields: `test`, `env`, `step` (e.g.
    `S3`, needs `test`: `record` re-records from there, `open` lands at its entry), `headless` (`run`, and `record` of a test
    with a plan: see 7.), `learn` and `promote` (only `run`; each only when the person asks), `strict` (only `run`: exit 4 while steps
-   are pending), `design` (only `open` with `test` and `step`: the step's target design over the app, topic `design`), `start`, `reset`; for `reproduce` `bug`, `from`, `role`, `ref` (topic `reproduce`). Or
+   are pending), `design` (only `open` with `test` and `step`: the step's target design beside the app, topic `design`), `start`, `reset`; for `reproduce` `bug`, `from`, `role`, `ref` (topic `reproduce`). Or
    `args` as on the command line, not both. You are the agent: caw asks neither about tokens nor who demonstrates. `record`
    follows an existing plan without a demonstration; a new test without a plan starts with the person's demonstration.
 2. **Wait:** `caw_status` with `wait: 120`, again and again, until the run waits for you or ends. It returns early as soon as
@@ -37,6 +37,11 @@ agent of its own: runs you start are attached to you (`--attach`, topic `attach`
    confirm). If your client cannot, caw refuses and you tell the person to answer in the window. Never answer a decision the
    person did not ask you to; the first answer wins, the window's or yours. Only `caw_decide` answers: a file you write into
    the run folder yourself is ignored and reported as an invalid answer.
+
+**Whose request.** A run that waits for you was started by the person in caw: in the window, in a terminal with
+`--attach`, or through you with `caw_start` at their word. Carrying out its task is what they asked for; for a recording that
+is submitting the plan (`plan`, or `caw agent plan`) and following it. This is no step around their oversight: they approve
+the plan and decide every card in the window, and caw holds every change of a test standard for them.
 
 **Rights.** As the agent of a run, the rules of topic `rules` apply, including "do not change application code" (attached, the person may ask you to: topic `attach`). Outside of a
 run you change application code only if the person explicitly asks. Recordings are written only by caw. After a code change

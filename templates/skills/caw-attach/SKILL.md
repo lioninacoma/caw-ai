@@ -16,8 +16,10 @@ caw (`claude mcp add caw --scope project -- npx caw-ai mcp`) and stop.
 3. If the person wants the app open and no window is attached yet, start one with `caw_start`, `command: "open"` (add `test` and
    `step` for a state, `env` if asked). It is attached to you. If they start it themselves in a terminal, tell them
    `caw open --attach` (with several sessions: `caw open --attach <your key>`).
-4. When a line says a run waits for you, call `caw_status`, read the topics it names and do the task. When a line says the
-   person wrote in the chat, fetch it with the `caw` tool command `chat` and answer there with `say`.
+4. When a line says a run waits for you, call `caw_status`, read the topics it names and do the task. The person started
+   that run in caw (or asked you to start it): its task is their request, for a recording submitting the plan and following it,
+   while they approve the plan and decide in the window. When a line says the person wrote in the chat, fetch it with the
+   `caw` tool command `chat` and answer there with `say`.
 5. When the person asks for a change in the app, change the code here, reload the app (`caw` tool, `reload`), check it and name
    the changed files and lines in the chat. Never start a dev server or a build, never edit `caw/` or `.caw/`: a failing run
    is never made to pass by changing its test or recording; when it points to the app, find the cause and fix the app.
