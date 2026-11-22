@@ -86,7 +86,7 @@ npx caw record create-ticket@S2 --env local # re-record from S2 to the end, S1 s
 
 ## Pending steps
 
-Steps you write at the end without recording them yet are **pending**: the part of the test still to be built, e.g. while you develop the feature they describe. They are the unrecorded steps after the last recorded one.
+Steps you write at the end without recording them yet are **pending**: the part of the test still to be built, e.g. while you develop the feature they describe. They are the unrecorded steps after the last recorded one. When the first of them has a [target design](#target-design), a run that ends healthy before it judges that design at its entry and names the verdict (`pendingDesign` in `result.json`: `step`, `file`, `verdict` and the deviations); that fails nothing.
 
 ```bash
 npx caw run create-ticket --env local          # S1–S3 play, exit 0, "Pending, not recorded yet: S4, S5"
@@ -121,9 +121,26 @@ to `caw/tests` and `caw/recordings` without `red` ([commands](commands.md#promot
 
 A step can name the screen it should end on: `design: design/order-form.html`. Only people write `design` and `needs` into the test file (or have their Claude Code session link a design with `caw_design` when they ask); the agent's plan may not carry them, and when caw rewrites a step (fix, re-record) it keeps them.
 
-After the step's check passed, caw renders the `.html` design in a separate headless browser without scripts or network, at the step's recorded viewport, and compares its structure with the app's page: controls (role, label, flags), view lines (headings, buttons, links, landmarks) and per control `font-size`, `font-weight`, `color`, `background-color`, `border-radius` and `padding`. List rows, free text, numbers and whether a field is filled are data and are left out. Something missing or a differing style fails the step with kind `design`; controls that only the app has are reported but do not fail. The replay goes on, the step gets no retry and learns no effects in that run. With `design.fail: []` in the config it only warns.
+After the step's check passed, caw renders the `.html` design in a separate headless browser without scripts or network, at the step's recorded viewport, and compares it with the app's page. A step whose design is met looks like the design, except for data:
 
-`result.json` holds per judged step `design: { file, verdict, missing, extra, styleDiffs }` under `steps`. A passed step that met its design says so: in the terminal after its time (`✓ S5  Leave a note  2.6s · design met`), in `report.md` in its note (`Design met: design/note.html`). With `visual.screenshots` every passed step also gets `screenshot` (`step-S3.png` in the `agent` folder, the step's screen at its recorded viewport), with `look: true` `visual`: `verdict` (`learning`, `same` or `changed`) and the changed style lines as `styles`.
+- **Structure:** controls (role, label, flags) and view lines (headings, buttons, links, landmarks).
+- **Static texts:** headings, labels, paragraphs and other texts that are not data. A different text in the same place is named as `text: heading "Note" → "Notes"`, a text that is gone as missing.
+- **Looks:** per control `font-size`, `font-weight`, `color`, `background-color`, `border-radius`, `padding` and its first `font-family`; per text its first `font-family`, `font-size`, `font-weight`, `font-style` and `color`; per block (an element with a background, a border or a shadow: cards, sections, chips, separators) its `background`, its border, `border-radius` and whether it has a `shadow`.
+- **Layout:** the elements in document order (controls, texts, blocks, images, data areas). For each neighbour pair the design's relation must hold (below, above, right of, left of, inside) with the same gap; an element below its neighbour keeps its indent in its block; controls keep their width and height (a select only its height: its width follows its options), blocks without data their width, images both. Lines read `gap button "Save" → block "Note": 19px → 43px`, `block "Note": below button "Save" → above button "Save"`, `textarea "Note": height 79px → 72px`. Positions are compared from neighbour to neighbour, never absolute: a title that wraps onto two lines makes everything below it move, but no gap changes. Within 1 CSS pixel a gap, indent or size counts as the same; the same design and the same app state rendered again differed by at most 0.01 px, the design and an app implementing it exactly by 0.01 px.
+
+Something missing, a changed text, a differing style or layout fails the step with kind `design`; controls that only the app has are reported but do not fail (a design usually leaves out the app's frame). The replay goes on, the step gets no retry and learns no effects in that run. With `design.fail: []` in the config it only warns.
+
+#### What is data
+
+The same rule holds in the design and in the app. Data keeps its place in the layout and its font, but its text is not compared:
+
+- an **area**: a list or table with its rows and entries (`ul`, `ol`, `table`, `li`, `tr` and the roles `list`, `grid`, `table`, `listbox`, `tree`, `row`, `listitem`, `option`, …), and any element marked `data-caw-data` (in the design, in the app or both). It counts as one element; nothing inside it is compared, also not its controls;
+- a **value**: what a field holds, an `<output>`, and a text that is the value of a field on the same page (a saved note shown above its field);
+- a text with a **digit** (numbers, IDs, dates, counters, a title with `{{runTag}}`) or with a value the run remembered or its run tag; a heading or link named that way is left out of the view lines too.
+
+A sample text in the design that is data in the app but has no digit (a name, a status): mark it `data-caw-data` in the design and in the app.
+
+`result.json` holds per judged step `design: { file, verdict, missing, extra, styleDiffs, layoutDiffs, textDiffs }` under `steps`. A passed step that met its design says so: in the terminal after its time (`✓ S5  Leave a note  2.6s · design met`), in `report.md` in its note (`Design met: design/note.html`). With `visual.screenshots` every passed step also gets `screenshot` (`step-S3.png` in the `agent` folder, the step's screen at its recorded viewport), with `look: true` `visual`: `verdict` (`learning`, `same` or `changed`) and the changed style lines as `styles`.
 
 ### Visual regression
 

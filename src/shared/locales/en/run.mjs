@@ -178,6 +178,8 @@ export default {
     'run.pendingStep': 'pending: not recorded yet',
     'run.needs.ready': '{step} is ready to record: {command}',
     'run.needs.missing': '{step} is not ready to record yet, missing on the page: {list}',
+    'run.pendingDesign.met': 'Target design of {step} at its entry: met ({file}). It counts once {step} is recorded.',
+    'run.pendingDesign.notMet': 'Target design of {step} at its entry: not met yet (fails nothing): {details}',
     'run.failedBefore': '{id} failed before {target} was reached: {reason}',
 
     // Flows in the chat

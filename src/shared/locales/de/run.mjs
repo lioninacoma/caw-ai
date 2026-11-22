@@ -178,6 +178,8 @@ export default {
     'run.pendingStep': 'offen: noch nicht aufgenommen',
     'run.needs.ready': '{step} ist bereit zum Aufnehmen: {command}',
     'run.needs.missing': '{step} ist noch nicht bereit zum Aufnehmen, auf der Seite fehlt: {list}',
+    'run.pendingDesign.met': 'Zielbild von {step} an seinem Einstieg: erfüllt ({file}). Es zählt, sobald {step} aufgenommen ist.',
+    'run.pendingDesign.notMet': 'Zielbild von {step} an seinem Einstieg: noch nicht erfüllt (lässt nichts scheitern): {details}',
     'run.failedBefore': '{id} ist gescheitert, bevor {target} an der Reihe war: {reason}',
 
     // Flows in the chat

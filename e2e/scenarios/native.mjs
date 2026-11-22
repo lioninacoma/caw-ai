@@ -975,9 +975,10 @@ scenario('N13', 'Pending steps: run passes with S1–S2 and names S3, S4; --stri
 // and the needs of a pending S3.
 
 const DESIGNED = 'rec-design';
-// The fixture's own font and a default button: the same controls and styles as the site after S2. Free text and the rest of the
-// page are left out on purpose: what only the app has does not fail.
-const MATCHING = '<!doctype html><html lang="en"><head><style>body{font:14px system-ui,sans-serif;margin:16px}</style></head><body><main><h1>Errands</h1><p>Sample text</p><button>Save</button></main></body></html>';
+// The top of the site after S2 as a design tool exports it: the fixture's own font and section, the same texts, controls and
+// layout; one sample errand (list rows are data). The navigation and the rest of the page are left out on purpose: what only
+// the app has does not fail.
+const MATCHING = '<!doctype html><html lang="en"><head><style>body{font:14px system-ui,sans-serif;margin:16px}section{border:1px solid #ccc;margin:8px 0;padding:8px}</style></head><body><main><h1>Errands</h1><p role="status">Saved</p><section aria-label="Errand list"><label>New errand <input></label> <button>Add</button> <button>Save</button><ul><li><span>Errand Sample</span> <button>Complete</button></li></ul></section></main></body></html>';
 const OTHER = '<!doctype html><html lang="en"><head><style>body{font:14px system-ui,sans-serif;margin:16px}button{background:#e5533a;color:#fff}</style></head><body><main><h1>Errands</h1><button>Save</button><button>Export</button></main></body></html>';
 
 scenario('N18', 'Target design: a matching .html passes, another fails S2 with kind design and the replay goes on; needs of the pending S3', async () => {
@@ -1567,5 +1568,83 @@ ${finishOf(['S1'])}`;
         for (const dir of ['caw/tests', 'caw/recordings']) rmSync(join(native, dir, `${DECIDE}.yaml`), { force: true });
         // caw_decide registered this process as a listening session, so the run trusted its proof: gone again for what follows.
         for (const { key } of liveListeners(native)) unregisterListener(native, key);
+    }
+});
+
+// ---- N23: "write a test for this design", the recipe of guide topic design as a scripted session. The person's request
+// covers linking the design and building the screen; "building" is the fixture's restyle switch (Archive bold), restarting
+// the dev server is the person's (here: the switch). Reach first (S1 recorded headless), then S2 pending with its design:
+// run judges it at S2's entry (pendingDesign) until met, record --headless the whole test, run --strict green, design met.
+
+const DESIGN_TDD = 'rec-design-tdd';
+const DESIGN_TDD_FILE = 'design/n23-archive.html';
+// The Danger section as a design tool exports it: the fixture's font and section, Archive bold. Undo only appears after
+// archiving: a design of S2's screen leaves it out, so its entry and its end both meet it (what only the app has does not fail).
+const ARCHIVE_DESIGN = '<!doctype html><html lang="en"><head><style>body{font:14px system-ui,sans-serif;margin:16px}section{border:1px solid #ccc;margin:8px 0;padding:8px}</style></head><body><main><section aria-label="Danger"><button>Show message</button> <button>Delete all</button> <button style="font-weight:700">Archive</button></section></main></body></html>';
+const REACH_PLAN = HEADLESS_PLAN.replace('ohne Fenster aufgenommen.', 'und archivieren, nach einem Zielbild.');
+const ARCHIVE_STEP = `
+  - id: S2
+    name: Archivieren
+    do: Archiviere die Besorgungen.
+    expect: Der Status zeigt "Archived".`;
+const S2_COMMANDS = `$A click '#archive'
+$A check S2 "document.getElementById('status').textContent==='Archived'"`;
+
+scenario('N23', 'Recipe "write a test for this design": reach recorded headless, the pending step\'s design judged at its entry until built, record --headless, run --strict green with the design met', async () => {
+    const agent = (plan, ids, commands) => `A='caw agent'
+${tag}
+${planOf(plan)}
+$A plan --file /tmp/p.yaml > /dev/null
+${commands}
+${finishOf(ids)}`;
+    const file = (plan) => `id: ${DESIGN_TDD}\nenvironments: [test]\nwrites: true\n${plan}\n`;
+    const mcp = sessionMcpHandler({ root: native });
+    await mcp({ jsonrpc: '2.0', id: 0, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {} } });
+    let id = 1;
+    const tool = async (name, args) => (await mcp({ jsonrpc: '2.0', id: id++, method: 'tools/call', params: { name, arguments: args } })).result;
+    rmSync(join(native, 'caw/recordings', `${DESIGN_TDD}.yaml`), { force: true });
+    try {
+        await renameSwitch(false);
+        await restyleSwitch(false);
+        // 1. The design into caw/design; the reach of the screen as the plan so far, validated and recorded without a window.
+        const put = await tool('caw_design', { action: 'put', file: DESIGN_TDD_FILE, content: ARCHIVE_DESIGN });
+        verify('caw_design put: written', put.isError !== true, put.content[0].text);
+        writeFileSync(join(native, 'caw/tests', `${DESIGN_TDD}.yaml`), file(REACH_PLAN));
+        const valid = (await tool('caw_validate', {})).structuredContent.tests.find((test) => test.id === DESIGN_TDD);
+        verify('caw_validate: the reach is valid', valid !== undefined && valid.problems.length === 0, JSON.stringify(valid));
+        const reach = await record(native, [DESIGN_TDD, ...recordArgs, '--headless'], { interactive: false, containerCommand: ['bash', '-c', agent(REACH_PLAN, ['S1'], S1_COMMANDS)] });
+        verify('reach recorded headless: exit 0, adopted by caw', reach === 0 && written(DESIGN_TDD), String(reach));
+
+        // 2. The step the design is for at the end (pending), its design linked on the person's request.
+        writeFileSync(join(native, 'caw/tests', `${DESIGN_TDD}.yaml`), file(`${REACH_PLAN}${ARCHIVE_STEP}`));
+        const linked = await tool('caw_design', { action: 'link', test: DESIGN_TDD, step: 'S2', file: DESIGN_TDD_FILE, personAsked: true });
+        verify('caw_design link: S2 has the design', linked.isError !== true && loadTest(native, DESIGN_TDD).steps[1].design === DESIGN_TDD_FILE, linked.content[0].text);
+
+        // 3. Not built yet: the run passes with S2 pending and names what differs at S2's entry.
+        const unbuilt = await runQuietly(DESIGN_TDD, ['--headless']);
+        const before = newestRunOf(native, DESIGN_TDD).result;
+        verify('pending S2: exit 0, its design judged at its entry, not met', unbuilt.code === 0 && before?.pendingDesign?.step === 'S2' && before.pendingDesign.verdict === 'not-met', `${unbuilt.code} ${JSON.stringify(before?.pendingDesign)}`);
+        verify('the deviation names the style to build', (before?.pendingDesign?.styleDiffs ?? []).includes('button "Archive": font-weight 700 → 400'), JSON.stringify(before?.pendingDesign));
+
+        // 4. Built (the dev server restarted with the change): met at the entry.
+        await restyleSwitch(true);
+        const built = await runQuietly(DESIGN_TDD, ['--headless']);
+        const after = newestRunOf(native, DESIGN_TDD).result;
+        verify('built: the design of S2 met at its entry', built.code === 0 && after?.pendingDesign?.verdict === 'met', `${built.code} ${JSON.stringify(after?.pendingDesign)}`);
+
+        // 5. The whole test recorded without a window, then the strict run: green and the design met with nothing differing.
+        const whole = `${REACH_PLAN}${ARCHIVE_STEP}`;
+        const recorded = await record(native, [DESIGN_TDD, ...recordArgs, '--headless'], { interactive: false, containerCommand: ['bash', '-c', agent(whole, ['S1', 'S2'], `${S1_COMMANDS}\n${S2_COMMANDS}`)] });
+        verify('whole test recorded headless: exit 0, S2 recorded', recorded === 0 && loadTest(native, DESIGN_TDD).steps[1].recording !== undefined, String(recorded));
+        const strict = await runQuietly(DESIGN_TDD, ['--headless', '--strict']);
+        const green = newestRunOf(native, DESIGN_TDD).result;
+        const s2 = (green?.steps ?? []).find((step) => step.id === 'S2');
+        verify('run --strict: exit 0, nothing pending', strict.code === 0 && (green?.pending ?? []).length === 0, `${strict.code} ${strict.note}`);
+        verify('S2 passed with its design met, no deviation', s2?.status === 'pass' && s2.design?.verdict === 'met'
+            && ['missing', 'styleDiffs', 'layoutDiffs', 'textDiffs'].every((key) => (s2.design[key] ?? []).length === 0), JSON.stringify(s2));
+    } finally {
+        await restyleSwitch(false).catch(() => {});
+        rmSync(join(native, 'caw', DESIGN_TDD_FILE), { force: true });
+        for (const dir of ['caw/tests', 'caw/recordings']) rmSync(join(native, dir, `${DESIGN_TDD}.yaml`), { force: true });
     }
 });

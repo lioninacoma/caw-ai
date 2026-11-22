@@ -42,7 +42,7 @@ const FIELDS = {
 const TYPED = ['test', 'env', 'step', 'overlay', 'headless', 'learn', 'promote', 'strict', 'design', 'start', 'reset', 'bug', 'from', 'role', 'ref'];
 /** Switches of caw_start: true adds the flag, false is the same as leaving it out. */
 const SWITCH_FLAGS = { headless: '--headless', learn: '--learn', promote: '--promote', strict: '--strict', design: '--design', start: '--start', reset: '--reset' };
-const RESULT_FIELDS = ['status', 'code', 'reason', 'results', 'failures', 'warnings', 'decisions'];
+const RESULT_FIELDS = ['status', 'code', 'reason', 'results', 'failures', 'warnings', 'decisions', 'pending', 'needs', 'pendingDesign'];
 const RUN_ARTEFACTS = ['report.md', 'result.json', 'fix-report.md', 'chat.log', 'failures.json', 'network.json', 'demonstration.json'];
 
 // Whatever comes from the application (snapshot, eval, console, selected element) is page content and may contain text

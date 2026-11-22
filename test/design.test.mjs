@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 
-import { compareStructure, createDesignJudge, designKind, designPath, designProblem, isDesignName, listDesigns, maskedView, missingNeeds, normalStyle, renderDesign, structureFrom, structureOf, viewLines, writeDesign } from '../src/host/design.mjs';
+import { LAYOUT_TOLERANCE_PX, compareStructure, createDesignJudge, designKind, designPath, designProblem, isDesignName, layoutMeasures, listDesigns, maskedView, relation, missingNeeds, normalStyle, renderDesign, structureFrom, structureOf, viewLines, writeDesign } from '../src/host/design.mjs';
 import { frameworkOf } from '../src/host/framework/index.mjs';
 import { captureStep, createLook, learnLook, learnedLooks, maskProbe, styleLines, withAdoptedLooks } from '../src/host/visual.mjs';
 import { launchChrome } from './chrome.mjs';
@@ -42,9 +42,12 @@ test('design names: under design/, plain segments, .html', () => {
     assert.equal(designKind('design/order.png'), null);
 });
 
-test('the view without data rows and free text; numbers neutral', () => {
+test('the view without data rows, free text and headings or links named by data; numbers neutral', () => {
     const aria = [
         '- heading "Order 12" [level=1]',
+        '- heading "Feed the raven CAW-ab" [level=2]',
+        '- link "Open #7"',
+        '- heading "Details" [level=2]',
         '- list:',
         '  - listitem:',
         '    - button "Complete Feed the raven"',
@@ -56,7 +59,8 @@ test('the view without data rows and free text; numbers neutral', () => {
         '- combobox "Move to": Tomorrow',
         '  - option "Today"',
     ].join('\n');
-    assert.deepEqual(maskedView(aria), ['- heading "Order #" [level=#]', '- button "Save"', '- combobox "Move to"']);
+    assert.deepEqual(maskedView(aria, ['CAW-ab']), ['- heading "Details" [level=#]', '- button "Save"', '- combobox "Move to"']);
+    assert.deepEqual(maskedView('- button "Delete 3"'), ['- button "Delete #"'], 'a control keeps its line, numbers neutral');
 });
 
 test('styles become whole pixels and hex colors', () => {
@@ -185,6 +189,123 @@ test('rendered: the errand example design is met by its screen, a renamed button
     } finally {
         await context.close();
     }
+});
+
+/**
+ * A todo's detail page with a note, as a design exports it and as an app shows it (the frame, other data). The options build
+ * the deviations the comparison must name and the data it must leave alone.
+ */
+const noteScreen = ({
+    frame = false, number = 7, title = 'Feed the raven CAW-1', note = 'Bring sunflower seeds', saveNote = 'Save note', noteClass = 'btn sage',
+    fieldFont = true, noteFirst = false, noteMargin = '1.2rem', headingFont = 'var(--serif)', heading = 'Note', marked = '',
+} = {}) => {
+    const row = '<div class="row"><label>Move to <select id="next"><option>Today</option><option selected>Tomorrow</option><option>Someday</option></select></label><button class="btn" id="save">Save</button></div>';
+    const section = `<div class="note"><h3>${heading}</h3><p class="note-text">${note}</p><label>Note <textarea id="note" rows="3">${note}</textarea></label><div class="actions"><button class="${noteClass}" id="save-note">${saveNote}</button></div></div>`;
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8"><style>
+:root{--card:#fffaf2;--ink:#231c17;--muted:#8a7d70;--line:#e6dacb;--tomato:#e5533a;--sage:#5f8f6b;--serif:Georgia,serif;--sans:"Segoe UI",system-ui,sans-serif}
+*{box-sizing:border-box}body{margin:0;color:var(--ink);font:15px/1.45 var(--sans);background:#f5ede0}
+button,select${fieldFont ? ',textarea' : ''}{font:inherit;color:inherit}
+.app{max-width:30rem;margin:0 auto;padding:1.1rem}.me{display:flex;justify-content:flex-end;gap:.5rem;font-size:.8rem}
+.back{display:inline-block;margin:1rem 0;color:var(--muted)}
+.detail{background:var(--card);border-radius:1.2rem;padding:1.3rem;box-shadow:0 6px 16px -12px #5a3a2066}
+.detail h2{font:600 1.8rem/1.1 var(--serif);margin:0 0 .6rem}.meta{display:flex;gap:.6rem;color:var(--muted);margin-bottom:1.1rem}
+.row{display:flex;gap:.6rem;align-items:end}label{display:grid;gap:.3rem;font-weight:600;font-size:.85rem}
+.row select{padding:.55rem .75rem;border:1.5px solid var(--line);border-radius:.8rem;background:#fff}
+.btn{border:0;border-radius:999px;padding:.55rem 1.1rem;font-weight:700;background:var(--tomato);color:#fff}.btn.sage{background:var(--sage)}
+.note{margin-top:${noteMargin};padding-top:1rem;border-top:1.5px dashed var(--line)}.note h3{font:600 1.15rem/1.2 ${headingFont};margin:0 0 .5rem}
+.note-text{margin:0 0 .8rem;font:italic 1rem/1.4 var(--serif)}
+.note textarea{width:100%;min-height:4.5rem;padding:.55rem .75rem;border:1.5px solid var(--line);border-radius:.8rem;background:#fff}
+.actions{display:flex;justify-content:flex-end;margin-top:.6rem}
+</style></head><body><div class="app">${frame ? '<div class="me"><b>D</b>demo · <a href="/logout">Sign out</a></div>' : ''}<main>
+<a class="back" href="/">← All todos</a><div class="detail"><h2>#${number} ${title}</h2>
+<div class="meta"><span${marked}>Done</span><span>When: <output>Tomorrow</output></span></div>
+${noteFirst ? section + row : row + section}</div></main></div></body></html>`;
+};
+
+test('rendered: layout, texts and looks of a design; the app with other data meets it, each deviation is named', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    const viewport = { width: 390, height: 844 };
+    const rendered = await renderDesign(browser, noteScreen(), viewport);
+    const target = await structureOf(rendered);
+    await rendered.context().close();
+    const context = await browser.newContext({ viewport });
+    try {
+        const page = await context.newPage();
+        const judgeOn = async (options, texts = []) => {
+            await page.setContent(noteScreen({ frame: true, ...options }));
+            return compareStructure(target, await structureOf(page, { texts }));
+        };
+        const lines = ({ missing, textDiffs, styleDiffs, layoutDiffs }) => [...missing, ...textDiffs, ...styleDiffs, ...layoutDiffs];
+
+        // Data: a long title that wraps onto three lines, another number, another note; the run tag is data on both sides.
+        for (const data of [
+            { title: 'Feed the raven and bring the big bag of sunflower seeds from the market on the way home CAW-2026112212345601' },
+            { number: 1234 },
+            { note: 'Ask the neighbours about the cage' },
+        ]) {
+            const result = await judgeOn(data, ['CAW-2026112212345601']);
+            assert.deepEqual(lines(result), [], JSON.stringify(data));
+            assert.equal(result.met, true);
+        }
+        const title = (structure) => structure.elements.find(({ tag, data }) => tag === 'heading' && data);
+        await page.setContent(noteScreen({ frame: true, title: 'Feed the raven and bring the big bag of sunflower seeds from the market on the way home CAW-2026112212345601' }));
+        assert.ok(title(await structureOf(page)).height > 2 * title(target).height, 'the data title wraps');
+
+        // Each deviation fails with a line that says what differs.
+        const deviations = [
+            [{ noteClass: 'btn' }, ['button "Save note": background-color #5f8f6b → #e5533a']],
+            [{ saveNote: 'Save Note' }, ['button "Save note"', '- button "Save note"']],
+            [{ heading: 'Notes' }, ['Text: heading "Note" → "Notes"']],
+            [{ headingFont: 'Arial' }, ['heading "Note": font-family Georgia → Arial']],
+            [{ noteMargin: 'calc(1.2rem + 24px)' }, ['Abstand button "Save" → block "Note": 19px → 43px']],
+            [{ noteFirst: true }, ['block "Note": unter button "Save" → über button "Save"']],
+        ];
+        for (const [options, expected] of deviations) {
+            const result = await judgeOn(options);
+            assert.equal(result.met, false, JSON.stringify(options));
+            for (const line of expected) assert.ok(lines(result).includes(line), `${JSON.stringify(options)}: ${line}\n${lines(result).join('\n')}`);
+        }
+        const unstyled = lines(await judgeOn({ fieldFont: false }));
+        assert.ok(unstyled.includes('textarea "Note": font-family Segoe UI → monospace'), unstyled.join('\n'));
+        assert.ok(unstyled.some((line) => /^textarea "Note": height \d+px → \d+px$/.test(line)), unstyled.join('\n'));
+
+        // A static text marked as data in the design and the app is compared only by its place.
+        const markedTarget = await (async () => {
+            const markedDesign = await renderDesign(browser, noteScreen({ marked: ' data-caw-data' }), viewport);
+            try {
+                return await structureOf(markedDesign);
+            } finally {
+                await markedDesign.context().close();
+            }
+        })();
+        await page.setContent(noteScreen({ frame: true, marked: ' data-caw-data' }).replace('>Done<', '>Open<'));
+        assert.equal(compareStructure(markedTarget, await structureOf(page)).met, true, 'data-caw-data');
+        const open = lines(compareStructure(target, await (async () => {
+            await page.setContent(noteScreen({ frame: true }).replace('>Done<', '>Open<'));
+            return structureOf(page);
+        })()));
+        assert.deepEqual(open, ['Text: "Done" → "Open"'], 'without the mark it is a static text');
+    } finally {
+        await context.close();
+    }
+});
+
+test('layout: the relation of neighbours, the tolerance and the indent in their block', () => {
+    const element = (key, box, extra = {}) => ({ key, shown: key, kind: 'text', data: false, order: extra.order ?? 0, sub: 1, style: {}, size: [], ...box, ...extra });
+    const a = element('heading "A"', { x: 0, y: 0, width: 100, height: 20 }, { order: 1 });
+    const b = element('text "B"', { x: 0, y: 28, width: 100, height: 20 }, { order: 2 });
+    const measures = layoutMeasures([a, b], [a, { ...b, y: 28.5 }]);
+    assert.deepEqual(measures.filter(({ type }) => type === 'gap').map(({ target, actual }) => [target, actual]), [[8, 8.5]]);
+    assert.deepEqual(compareStructure({ lines: [], styles: {}, elements: [a, b] }, { lines: [], styles: {}, elements: [a, { ...b, y: 28.5 }] }).layoutDiffs, [], 'within the tolerance');
+    assert.deepEqual(compareStructure({ lines: [], styles: {}, elements: [a, b] }, { lines: [], styles: {}, elements: [a, { ...b, y: 30 }] }).layoutDiffs, ['Abstand heading "A" → text "B": 8px → 10px']);
+    assert.equal(LAYOUT_TOLERANCE_PX, 1);
+    // Below its neighbour, an element keeps its indent in its block: a right-aligned button moved to the left is named.
+    const card = element('block "Card"', { x: 10, y: 0, width: 300, height: 100 }, { kind: 'block', order: 0, sub: 0, end: 5 });
+    const button = element('button "Go"', { x: 250, y: 60, width: 50, height: 20 }, { kind: 'control', order: 3, sub: 0 });
+    const moved = compareStructure({ lines: [], styles: {}, elements: [card, a, button] }, { lines: [], styles: {}, elements: [card, a, { ...button, x: 20 }] });
+    assert.deepEqual(moved.layoutDiffs, ['Einzug block "Card" → button "Go": 240px → 10px']);
+    // The first element in a block: its gap and indent from the block's edges.
+    assert.deepEqual(relation(card, a), { where: 'inside', gap: 0, indent: -10 });
 });
 
 test('rendered: the design page runs no scripts and loads nothing', async (t) => {

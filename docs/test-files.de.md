@@ -86,7 +86,7 @@ npx caw record create-ticket@S2 --env local # ab S2 bis zum Ende neu aufnehmen, 
 
 ## Offene Schritte
 
-Schritte, die du ans Ende schreibst und noch nicht aufnimmst, sind **offen**: der Teil des Tests, der noch entsteht, etwa während du die Funktion entwickelst, die sie beschreiben. Es sind die nicht aufgenommenen Schritte nach dem letzten aufgenommenen.
+Schritte, die du ans Ende schreibst und noch nicht aufnimmst, sind **offen**: der Teil des Tests, der noch entsteht, etwa während du die Funktion entwickelst, die sie beschreiben. Es sind die nicht aufgenommenen Schritte nach dem letzten aufgenommenen. Hat der erste von ihnen ein [Zielbild](#zielbild), beurteilt ein Lauf, der vor ihm gesund endet, diesen Entwurf an seinem Einstieg und nennt das Urteil (`pendingDesign` in `result.json`: `step`, `file`, `verdict` und die Abweichungen); das lässt nichts scheitern.
 
 ```bash
 npx caw run create-ticket --env local          # S1–S3 laufen, Exit 0, „Offen, noch nicht aufgenommen: S4, S5“
@@ -122,9 +122,26 @@ git). Nur Entwürfe dürfen `red` tragen; in `caw/tests` lehnt `validate` es ab.
 
 Ein Schritt kann den Bildschirm nennen, auf dem er enden soll: `design: design/order-form.html`. `design` und `needs` schreiben nur Menschen in die Testdatei (oder lassen ihre Claude-Code-Session einen Entwurf mit `caw_design` verknüpfen, wenn sie darum bitten); der Plan des Agenten darf sie nicht enthalten, und wenn caw einen Schritt neu schreibt (beheben, neu aufnehmen), bleiben sie erhalten.
 
-Nachdem die Prüfung des Schritts bestanden hat, rendert caw den `.html`-Entwurf in einem eigenen headless Browser ohne Skripte und Netz, im aufgenommenen Viewport des Schritts, und vergleicht seine Struktur mit der Seite der App: Bedienelemente (Rolle, Beschriftung, Merkmale), Ansichtszeilen (Überschriften, Buttons, Links, Bereiche) und je Bedienelement `font-size`, `font-weight`, `color`, `background-color`, `border-radius` und `padding`. Listenzeilen, freier Text, Zahlen und ob ein Feld gefüllt ist, sind Daten und bleiben außen vor. Fehlt etwas oder weicht ein Stil ab, scheitert der Schritt mit kind `design`; Bedienelemente, die nur die App hat, werden genannt, lassen aber nichts scheitern. Das Abspielen geht weiter, der Schritt wird nicht wiederholt und lernt in diesem Lauf keine Wirkungen. Mit `design.fail: []` in der Config warnt er nur.
+Nachdem die Prüfung des Schritts bestanden hat, rendert caw den `.html`-Entwurf in einem eigenen headless Browser ohne Skripte und Netz, im aufgenommenen Viewport des Schritts, und vergleicht ihn mit der Seite der App. Ist der Entwurf erfüllt, sieht der Schritt aus wie der Entwurf, bis auf Daten:
 
-`result.json` führt je beurteiltem Schritt `design: { file, verdict, missing, extra, styleDiffs }` unter `steps`. Ein bestandener Schritt, der sein Zielbild erfüllt, sagt es: im Terminal nach seiner Zeit (`✓ S5  Leave a note  2.6s · Zielbild erfüllt`), in `report.md` in seiner Notiz (`Zielbild erfüllt: design/note.html`). Mit `visual.screenshots` bekommt außerdem jeder bestandene Schritt `screenshot` (`step-S3.png` im Ordner `agent`, der Bildschirm des Schritts im aufgenommenen Viewport), mit `look: true` `visual`: `verdict` (`learning`, `same` oder `changed`) und die geänderten Style-Zeilen als `styles`.
+- **Struktur:** Bedienelemente (Rolle, Beschriftung, Merkmale) und Ansichtszeilen (Überschriften, Buttons, Links, Bereiche).
+- **Feste Texte:** Überschriften, Beschriftungen, Absätze und andere Texte, die keine Daten sind. Ein anderer Text an derselben Stelle heißt `Text: heading "Note" → "Notes"`, ein fehlender Text steht unter Fehlt.
+- **Aussehen:** je Bedienelement `font-size`, `font-weight`, `color`, `background-color`, `border-radius`, `padding` und seine erste `font-family`; je Text seine erste `font-family`, `font-size`, `font-weight`, `font-style` und `color`; je Block (ein Element mit Hintergrund, Rahmen oder Schatten: Karten, Abschnitte, Chips, Trenner) sein `background`, sein Rahmen, `border-radius` und ob er einen `shadow` hat.
+- **Layout:** die Elemente in Dokumentreihenfolge (Bedienelemente, Texte, Blöcke, Bilder, Datenbereiche). Für jedes Nachbarpaar muss die Lage aus dem Entwurf gelten (unter, über, rechts von, links von, in) mit demselben Abstand; ein Element unter seinem Nachbarn behält seinen Einzug in seinem Block; Bedienelemente behalten Breite und Höhe (eine Auswahlliste nur die Höhe: ihre Breite folgt ihren Optionen), Blöcke ohne Daten ihre Breite, Bilder beides. Zeilen lauten `Abstand button "Save" → block "Note": 19px → 43px`, `block "Note": unter button "Save" → über button "Save"`, `textarea "Note": height 79px → 72px`. Lagen werden von Nachbar zu Nachbar verglichen, nie absolut: Ein Titel, der auf zwei Zeilen umbricht, schiebt alles darunter, ändert aber keinen Abstand. Innerhalb von 1 CSS-Pixel gilt ein Abstand, Einzug oder Maß als gleich; derselbe Entwurf und derselbe App-Zustand neu gerendert wichen um höchstens 0,01 px ab, der Entwurf und eine App, die ihn genau umsetzt, um 0,01 px.
+
+Fehlt etwas, ändert sich ein Text oder weichen Stil oder Layout ab, scheitert der Schritt mit kind `design`; Bedienelemente, die nur die App hat, werden genannt, lassen aber nichts scheitern (ein Entwurf lässt den Rahmen der App meist weg). Das Abspielen geht weiter, der Schritt wird nicht wiederholt und lernt in diesem Lauf keine Wirkungen. Mit `design.fail: []` in der Config warnt er nur.
+
+#### Was Daten sind
+
+Dieselbe Regel gilt im Entwurf und in der App. Daten behalten ihren Platz im Layout und ihre Schrift, ihr Text wird aber nicht verglichen:
+
+- ein **Bereich**: eine Liste oder Tabelle mit ihren Zeilen und Einträgen (`ul`, `ol`, `table`, `li`, `tr` und die Rollen `list`, `grid`, `table`, `listbox`, `tree`, `row`, `listitem`, `option`, …) und jedes Element mit `data-caw-data` (im Entwurf, in der App oder in beiden). Er zählt als ein Element; nichts darin wird verglichen, auch nicht seine Bedienelemente;
+- ein **Wert**: was ein Feld enthält, ein `<output>` und ein Text, der der Wert eines Felds auf derselben Seite ist (eine gespeicherte Notiz über ihrem Feld);
+- ein Text mit einer **Ziffer** (Zahlen, IDs, Daten, Zähler, ein Titel mit `{{runTag}}`) oder mit einem Wert, den der Lauf gemerkt hat, oder seinem Run-Tag; eine so benannte Überschrift oder ein so benannter Link fällt auch aus den Ansichtszeilen.
+
+Ein Beispieltext im Entwurf, der in der App Daten ist, aber keine Ziffer hat (ein Name, ein Status): im Entwurf und in der App mit `data-caw-data` markieren.
+
+`result.json` führt je beurteiltem Schritt `design: { file, verdict, missing, extra, styleDiffs, layoutDiffs, textDiffs }` unter `steps`. Ein bestandener Schritt, der sein Zielbild erfüllt, sagt es: im Terminal nach seiner Zeit (`✓ S5  Leave a note  2.6s · Zielbild erfüllt`), in `report.md` in seiner Notiz (`Zielbild erfüllt: design/note.html`). Mit `visual.screenshots` bekommt außerdem jeder bestandene Schritt `screenshot` (`step-S3.png` im Ordner `agent`, der Bildschirm des Schritts im aufgenommenen Viewport), mit `look: true` `visual`: `verdict` (`learning`, `same` oder `changed`) und die geänderten Style-Zeilen als `styles`.
 
 ### Visuelle Regression
 

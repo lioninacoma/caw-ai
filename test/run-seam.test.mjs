@@ -244,6 +244,26 @@ test('Seam: open --design lists the deviations anew after F5, a reload of the wi
     assert.equal(h.notices.filter((text) => /neu aufgelistet/.test(text)).length, 3);
 });
 
+test('Seam: the target design of the first pending step, judged at its entry, is named and written to result.json; the run still passes', async () => {
+    const judged = { step: 'S3', file: 'design/s3.html', verdict: 'not-met', missing: ['button "Speichern"'], extra: [], styleDiffs: [], layoutDiffs: ['Abstand heading "Notiz" → textarea "Notiz": 8px → 32px'], textDiffs: [] };
+    let given;
+    const withPending = async (args) => {
+        given = args.replay.pendingDesign;
+        return { ...await playback()(args), pendingDesign: judged };
+    };
+    const h = harness({ seams: { playReplay: withPending } });
+    const spec = testOf();
+    const pending = { id: 'S3', name: 'Schritt S3', do: 'tun', expect: 'S3 da', design: 'design/s3.html' };
+    spec.steps.push(pending);
+    spec.expectations.push({ id: 'S3', text: pending.expect });
+    const code = await runFlow({ spec, canFix: true, execute: h.execute, adopt: h.adopt, log: () => {}, openSandbox: async () => null });
+    assert.equal(code, EXIT.pass, 'a preview fails nothing');
+    assert.deepEqual(given, { step: 'S3', file: 'design/s3.html' }, 'the replay carries the pending step\'s design');
+    const { step, file, verdict, missing, layoutDiffs } = h.result().pendingDesign;
+    assert.deepEqual({ step, file, verdict, missing, layoutDiffs }, { step: 'S3', file: 'design/s3.html', verdict: 'not-met', missing: ['button "Speichern"'], layoutDiffs: judged.layoutDiffs });
+    assert.ok(h.notices.some((text) => /^Zielbild von S3 an seinem Einstieg: noch nicht erfüllt \(lässt nichts scheitern\): design\/s3\.html Fehlt: button "Speichern"\. Layout weicht ab: Abstand/.test(text)), h.notices.join('\n'));
+});
+
 test('Seam: the first pending step ready to record is named with the record command for the run\'s environment', async () => {
     // A page where the needed button is there once and reachable.
     const handle = { evaluate: async () => true, dispose: async () => {} };

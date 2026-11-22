@@ -28,7 +28,8 @@ const neutral = (text) => text.replace(/\d+/g, '#');
 /**
  * Runs in the browser: state of the visible controls, without values.
  * @param style also a few computed styles per control, for comparing against a target design (design.mjs): then each entry
- *              is { line, style? } instead of the line
+ *              is { line, style?, at? } instead of the line; without `look` also where the control is (`at`: its number in
+ *              document order, box, font-family) and controls inside an area marked data-caw-data are left out
  * @param look  for a learned look (visual.mjs): { ignore } with the config's visualIgnore selectors. Then exactly the controls
  *              in what maskProbe (visual.mjs) counts as changing data are left out: rows except header rows, list entries except those of
  *              navigation, menus, tab lists and toolbars, articles and cards, and what `ignore` finds. A list with one entry more
@@ -93,14 +94,22 @@ export function controlsProbe({ style: withStyle = false, look = null } = {}) {
         for (let entry = node.closest(ENTRY); entry !== null; entry = up(entry, ENTRY)) if (entry.closest(NAVIGATION) === null) return true;
         return false;
     };
-    const counted = (node) => (look === null ? node.closest(ROW) === null : !masked(node));
+    // For a target design (style without look), an area the design or the app marks as data (data-caw-data) is data too.
+    const counted = (node) => (look === null ? node.closest(ROW) === null && !(withStyle && node.closest('[data-caw-data]') !== null) : !masked(node));
+    // Where a control is, for the layout of a target design (design.mjs layoutProbe numbers the elements the same way).
+    const order = new Map(withStyle && look === null ? [...document.body.querySelectorAll('*')].map((node, index) => [node, index]) : []);
+    const round = (value) => Math.round(value * 100) / 100;
+    const placeOf = (node, style) => {
+        const rect = node.getBoundingClientRect();
+        return { order: order.get(node), x: round(rect.left + scrollX), y: round(rect.top + scrollY), width: round(rect.width), height: round(rect.height), fontFamily: style.fontFamily, select: node.tagName === 'SELECT' || node.getAttribute('role') === 'combobox' };
+    };
     const controls = [...document.querySelectorAll('input, select, textarea, button, [role=button], [role=tab], [role=checkbox], [role=combobox], [role=textbox]')]
         .filter((node) => node.type !== 'hidden' && seen(node) && counted(node))
         .map((node) => {
             const line = `${node.getAttribute('role') ?? node.tagName.toLowerCase()} "${labelOf(node)}" ${flags(node).join(',')}`.trim();
             if (!withStyle) return line;
             const style = getComputedStyle(node);
-            return { line, style: { fontSize: style.fontSize, fontWeight: style.fontWeight, color: style.color, backgroundColor: style.backgroundColor, borderRadius: style.borderRadius, padding: style.padding } };
+            return { line, style: { fontSize: style.fontSize, fontWeight: style.fontWeight, color: style.color, backgroundColor: style.backgroundColor, borderRadius: style.borderRadius, padding: style.padding }, ...(order.has(node) ? { at: placeOf(node, style) } : {}) };
         });
     const lists = [...document.querySelectorAll('[role=grid], [role=treegrid], [role=listbox], [role=tree], [role=table], table')]
         .filter((node) => seen(node) && (node.parentElement?.closest('[role=grid], [role=treegrid], [role=listbox], [role=tree], [role=table], table') ?? null) === null)

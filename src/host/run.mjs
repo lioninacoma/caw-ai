@@ -40,7 +40,7 @@ import { recordLocator } from './record-locator.mjs';
 import { adviceView, applyEdits, applyToFiles, applyToSpec, adviceReader, changesFiles, configValue } from './advice.mjs';
 import { diagnose } from './diagnose.mjs';
 import { keptForms } from './effects.mjs';
-import { DEFAULT_DESIGN_FAIL, createDesignJudge, missingNeeds } from './design.mjs';
+import { DEFAULT_DESIGN_FAIL, createDesignJudge, designText, missingNeeds } from './design.mjs';
 import { frameworkOf } from './framework/index.mjs';
 import { demonstrate, feedLabel, itemLabel, recordableSteps } from './demonstrate.mjs';
 import { CLAUDE_TIMEOUT_MIN, claudeFailureReason, parseEnvFile } from './linux.mjs';
@@ -1996,7 +1996,7 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
         const cawDir = join(root, PROJECT_DIR);
         const visual = visualSettings(config);
         const looking = !opening && (visual.screenshots || givenSpec.steps.some(({ look: on }) => on === true));
-        const designJudge = Object.keys(replay.designs ?? {}).length === 0 || opening ? null : createDesignJudge({
+        const designJudge = (Object.keys(replay.designs ?? {}).length === 0 && replay.pendingDesign === undefined) || opening ? null : createDesignJudge({
             cawDir,
             launch: () => chromium.launch({ ...browserLaunch(config), headless: true }),
             read: (path) => readFileSync(path, 'utf8'),
@@ -2067,6 +2067,16 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             const { step } = replay.needs;
             reportBase.needs = { step, ready: missing.length === 0, missing };
             const text = missing.length === 0 ? t('run.needs.ready', { step, command: `${cawCommand()} record ${spec.id}@${step} --env ${target}` }) : t('run.needs.missing', { step, list: missing.join('; ') });
+            ui.info(text);
+            chat?.notice(text);
+        }
+        // Its target design at its entry (playReplay): how far the screen is built, before it can be recorded. Fails nothing.
+        if (ended.pendingDesign !== undefined) {
+            const { step, file, verdict: judged, missing = [], extra = [], styleDiffs = [], layoutDiffs = [], textDiffs = [], note: why } = ended.pendingDesign;
+            reportBase.pendingDesign = { step, file, verdict: judged, ...(judged === 'met' || judged === 'not-met' ? { missing, extra, styleDiffs, layoutDiffs, textDiffs } : { note: why }) };
+            const text = judged === 'met' ? t('run.pendingDesign.met', { step, file })
+                : judged === 'not-met' ? t('run.pendingDesign.notMet', { step, details: designText(ended.pendingDesign) })
+                    : why;
             ui.info(text);
             chat?.notice(text);
         }

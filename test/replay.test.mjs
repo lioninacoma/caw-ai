@@ -925,6 +925,34 @@ test('the replay carries the designs of recorded steps and the needs of the firs
     const replay = replayOf(spec);
     assert.deepEqual(replay.designs, { S1: { file: 'design/a.html', viewport: { width: 390, height: 844 } } });
     assert.deepEqual(replay.needs, { step: 'S3', locators: ['getByRole("button", { name: "Save" })'] }, 'only the first pending step');
+    assert.equal(replay.pendingDesign, undefined, 'S3 has no design');
+    const designed = replayOf({ ...spec, steps: [spec.steps[0], spec.steps[1], { ...spec.steps[2], design: 'design/s3.html' }, { ...spec.steps[3], design: 'design/s4.html' }] });
+    assert.deepEqual(designed.pendingDesign, { step: 'S3', file: 'design/s3.html', viewport: { width: 390, height: 844 } }, 'the first pending step, at the recorded size');
+});
+
+test('design of the first pending step: judged at its entry when the run ended healthy, with the run tag as data; it fails nothing', async () => {
+    const playPending = async ({ failS2 = false } = {}) => {
+        const given = [];
+        const judgeDesign = async (design) => {
+            given.push(design);
+            return { file: design.file, verdict: 'not-met', missing: [], extra: [], styleDiffs: [], layoutDiffs: ['Abstand a → b: 8px → 32px'], textDiffs: [] };
+        };
+        const handler = async (command) => (command.action === 'check' ? { pass: !(failS2 && command.id === 'S2'), value: true } : 'ok');
+        const clock = fakeClock();
+        const played = await playReplay({
+            replay: { steps: TWO_STEPS, designs: {}, pendingDesign: { step: 'S3', file: 'design/s3.html', viewport: { width: 390, height: 844 } } },
+            handler, session: { ...fakeSession(), warn: () => {} }, base: 'https://portal.example', stepTimeoutMs: 1000, sleep: clock.sleep, now: clock.now, judgeDesign, runTag: 'CAW-2026112212000000',
+        });
+        return { played, given };
+    };
+    const { played, given } = await playPending();
+    assert.deepEqual(given, [{ file: 'design/s3.html', viewport: { width: 390, height: 844 }, step: 'S3', texts: ['CAW-2026112212000000', 'caw-2026112212000000'] }]);
+    assert.equal(played.pendingDesign.step, 'S3');
+    assert.equal(played.pendingDesign.verdict, 'not-met');
+    assert.ok([...played.results.values()].every(({ status }) => status === 'pass'), 'no step fails for it');
+    const failed = await playPending({ failS2: true });
+    assert.deepEqual(failed.given, [], 'a run that did not end healthy does not reach the entry');
+    assert.equal(failed.played.pendingDesign, undefined);
 });
 
 /** Plays two checks that pass; S1 has a design that the judge decides. */
@@ -937,19 +965,21 @@ const playDesign = async ({ verdict, designFail, retries, failS2 = false }) => {
         return command.action === 'check' ? { pass: !(failS2 && command.id === 'S2'), value: true } : 'ok';
     };
     const judged = [];
+    const texts = [];
     const judgeDesign = async (design) => {
         judged.push(design.file);
+        texts.push(design.texts);
         return verdict === 'not-met'
-            ? { file: design.file, verdict, missing: ['button "Speichern"'], extra: [], styleDiffs: ['button "Abbrechen": color #ffffff → #000000'] }
-            : { file: design.file, verdict, missing: [], extra: [], styleDiffs: [] };
+            ? { file: design.file, verdict, missing: ['button "Speichern"'], extra: [], styleDiffs: ['button "Abbrechen": color #ffffff → #000000'], layoutDiffs: ['Abstand heading "Notiz" → textarea "Notiz": 8px → 32px'], textDiffs: ['Text: heading "Notiz" → "Notizen"'] }
+            : { file: design.file, verdict, missing: [], extra: [], styleDiffs: [], layoutDiffs: [], textDiffs: [] };
     };
     const clock = fakeClock();
     const played = await playReplay({
         replay: { steps: TWO_STEPS, designs: { S1: { file: 'design/s1.html' } }, ...(retries === undefined ? {} : { retries }) },
-        handler, session, base: 'https://portal.example', stepTimeoutMs: 1000, sleep: clock.sleep, now: clock.now, judgeDesign,
+        handler, session, base: 'https://portal.example', stepTimeoutMs: 1000, sleep: clock.sleep, now: clock.now, judgeDesign, runTag: 'CAW-2026112212000000',
         ...(designFail === undefined ? {} : { designFail }),
     });
-    return { ...played, warnings, seen, judged };
+    return { ...played, warnings, seen, judged, texts };
 };
 
 test('design: a design not met fails its step with kind design, the replay goes on without a retry', async () => {
@@ -962,9 +992,11 @@ test('design: a design not met fails its step with kind design, the replay goes 
     assert.equal(played.results.get('S2').status, 'pass', 'S2 still ran');
     assert.ok(!played.seen.includes('reload'), 'no new attempt');
     assert.deepEqual(played.judged, ['design/s1.html']);
+    assert.deepEqual(played.texts, [['CAW-2026112212000000', 'caw-2026112212000000']], 'the run tag is data on both sides');
+    assert.match(played.results.get('S1').note, /Texte weichen ab: Text: heading "Notiz" → "Notizen"\..*Layout weicht ab: Abstand heading "Notiz" → textarea "Notiz": 8px → 32px\./);
     const [record] = stepRecords({ ids: ['S1'], ...played });
     assert.equal(record.kind, 'design');
-    assert.deepEqual(record.design, { file: 'design/s1.html', verdict: 'not-met', missing: ['button "Speichern"'], extra: [], styleDiffs: ['button "Abbrechen": color #ffffff → #000000'] });
+    assert.deepEqual(record.design, { file: 'design/s1.html', verdict: 'not-met', missing: ['button "Speichern"'], extra: [], styleDiffs: ['button "Abbrechen": color #ffffff → #000000'], layoutDiffs: ['Abstand heading "Notiz" → textarea "Notiz": 8px → 32px'], textDiffs: ['Text: heading "Notiz" → "Notizen"'] });
     const failed = failedStep({ ...played, expectations: [{ id: 'S1' }, { id: 'S2' }] });
     assert.equal(failed.kind, 'design');
     assert.equal(failed.id, 'S1');
@@ -1005,7 +1037,7 @@ test('design and look: one capture per passed check for the look; their kinds fa
     assert.equal(played.broken, null, 'the replay went on');
     assert.deepEqual(warnings, [{ step: 'S2', type: 'visual', text: 'Aussehen geändert' }]);
     const records = stepRecords({ ids: ['S1', 'S2'], ...played });
-    assert.deepEqual(records[0].design, { file: 'design/s1.html', verdict: 'not-met', missing: ['button "Speichern"'], extra: [], styleDiffs: [] });
+    assert.deepEqual(records[0].design, { file: 'design/s1.html', verdict: 'not-met', missing: ['button "Speichern"'], extra: [], styleDiffs: [], layoutDiffs: [], textDiffs: [] });
     assert.equal(records[0].screenshot, 'step-S1.png');
     assert.deepEqual(records[1].visual, { verdict: 'changed', styles: ['1 button weniger'] });
     assert.ok(played.seenLooks.has('S2'));

@@ -276,8 +276,8 @@ export const designOverlay = async ({ cawDir, file, viewport, page, launch, secr
         const rendered = await renderDesign(browser, readFileSync(path, 'utf8'), viewport);
         try {
             const image = await rendered.screenshot({ scale: 'css' });
-            const { missing, styleDiffs } = compareStructure(await structureOf(rendered), await structureOf(page, { secrets }));
-            const rows = [...missing.map((line) => ({ text: t('session.design.missingRow', { line }) })), ...styleDiffs.map((text) => ({ text }))];
+            const { missing, textDiffs, styleDiffs, layoutDiffs } = compareStructure(await structureOf(rendered), await structureOf(page, { secrets }));
+            const rows = [...missing.map((line) => ({ text: t('session.design.missingRow', { line }) })), ...[...textDiffs, ...styleDiffs, ...layoutDiffs].map((text) => ({ text }))];
             return { src: `data:image/png;base64,${image.toString('base64')}`, width: viewport.width, rows };
         } finally {
             await rendered.context().close().catch(() => {});
