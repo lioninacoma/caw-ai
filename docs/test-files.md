@@ -97,7 +97,7 @@ npx caw run create-ticket --env local --strict # exit 4 while anything is pendin
 
 `run` plays the recorded steps and passes without the pending ones; `list` shows `pending (S4, S5)`, `report.md` and `result.json` (`pending`, and `status: "pending"` under `steps`) name them, the workbench shows them as not reached. Only the tail counts: an unrecorded step before a recorded one, a step changed after recording and a test with nothing recorded still stop with exit 4, so editing a step's text never quietly drops its check from CI.
 
-When the first pending step has `needs`, a run that ends healthy checks them on the page (about 2 s each): all there, it says `S4 is ready to record: caw record create-ticket@S4`; otherwise it lists the missing ones. `result.json` has them under `needs`.
+When the first pending step has `needs`, a run that ends healthy checks them on the page (about 2 s each): all there, it says `S4 is ready to record: caw record create-ticket@S4 --env local`; otherwise it lists the missing ones. `result.json` has them under `needs`.
 
 ## Drafts
 

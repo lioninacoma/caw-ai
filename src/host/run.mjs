@@ -2037,7 +2037,7 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             const missing = await missingNeeds(session.framework ?? frameworkOf(config), () => session.page().mainFrame(), replay.needs.locators);
             const { step } = replay.needs;
             reportBase.needs = { step, ready: missing.length === 0, missing };
-            const text = missing.length === 0 ? t('run.needs.ready', { step, command: `${cawCommand()} record ${spec.id}@${step}` }) : t('run.needs.missing', { step, list: missing.join('; ') });
+            const text = missing.length === 0 ? t('run.needs.ready', { step, command: `${cawCommand()} record ${spec.id}@${step} --env ${target}` }) : t('run.needs.missing', { step, list: missing.join('; ') });
             ui.info(text);
             chat?.notice(text);
         }

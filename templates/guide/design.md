@@ -33,4 +33,4 @@ toggles it).
 **Implement until it is met.** Change the application's code (when the person asked you to), then let the person run the test
 (`caw_start` `run`) or run it yourself when they asked. A failed `design` step names what is missing and which styles differ:
 build exactly that. The test file stays as it is; there is nothing to fix in the step. When the first pending step's `needs`
-are all on the page at the end of a run, caw says it is ready to record: `caw record <test>@S<n>`.
+are all on the page at the end of a run, caw says it is ready to record: `caw record <test>@S<n> --env <env>`.

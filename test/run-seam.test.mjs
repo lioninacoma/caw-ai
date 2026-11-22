@@ -243,6 +243,22 @@ test('Seam: open --design lists the deviations anew after F5, a reload of the wi
     assert.equal(h.notices.filter((text) => /neu aufgelistet/.test(text)).length, 3);
 });
 
+test('Seam: the first pending step ready to record is named with the record command for the run\'s environment', async () => {
+    // A page where the needed button is there once and reachable.
+    const handle = { evaluate: async () => true, dispose: async () => {} };
+    const frame = { getByRole: () => ({ elementHandles: async () => [handle] }) };
+    const session = () => ({ ...fakeSession(), framework: { targets: () => true }, page: () => ({ mainFrame: () => frame }) });
+    const h = harness({ session });
+    const spec = testOf();
+    const pending = { id: 'S3', name: 'Schritt S3', do: 'tun', expect: 'S3 da', needs: ["getByRole('button', { name: 'Speichern' })"] };
+    spec.steps.push(pending);
+    spec.expectations.push({ id: 'S3', text: pending.expect });
+    const code = await runFlow({ spec, canFix: true, execute: h.execute, adopt: h.adopt, log: () => {}, openSandbox: async () => null });
+    assert.equal(code, EXIT.pass);
+    assert.equal(h.result().needs.ready, true);
+    assert.ok(h.notices.some((text) => /S3 ist bereit zum Aufnehmen: .*record kauf@S3 --env dev$/.test(text)), h.notices.join('\n'));
+});
+
 /** open <test>@<step> --design in the seam: ends developing at once; @returns the harness after the run. */
 const openDesign = async (spec, at, designOverlay) => {
     const bench = benchSession();
