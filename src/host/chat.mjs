@@ -132,8 +132,10 @@ export const tailLines = (read, onLine, intervalMs = TAIL_MS) => {
  *                (about: the element label), or a card: plan, failure, decision, advice, tokens (about: the card)
  * @param status  shows the state, see STATES; plus the options when the human has to decide
  * @param onAbort the human aborts the whole run
+ * @param desk    the run's decisions (decision-desk.mjs): each decision a card waits for is opened there and settled with who
+ *                answered; the desk may answer it itself (the session through caw_decide, a run without a window)
  */
-export const createChat = ({ show: shown = () => {}, status = () => {}, onAbort = () => {} } = {}) => {
+export const createChat = ({ show: shown = () => {}, status = () => {}, onAbort = () => {}, desk } = {}) => {
     // Actions of one kind in a row fold into one line ("Read 2 files"); anything else shown in between starts a new one.
     let fold = null;
     const show = (who, ...rest) => {
@@ -166,16 +168,33 @@ export const createChat = ({ show: shown = () => {}, status = () => {}, onAbort 
     };
     // The question of a waiting card goes along: the terminal names it instead of a general status.
     const publish = () => status(state(), choice?.options, choice?.question);
+    // The decision of the plan card, and who answered the decision being settled when it was not the window.
+    let planDecision = null;
+    let answeredBy = null;
+    /** A decision waits: the desk knows it, and may answer it from outside the window. */
+    const opened = (decision) => {
+        if (decision !== undefined && decision !== null) desk?.open(decision, (answer) => external(decision, answer));
+    };
+    const settled = (decision, answer) => {
+        const by = answeredBy ?? 'window';
+        answeredBy = null;
+        if (decision !== undefined && decision !== null) desk?.settle(decision, answer, by);
+    };
     /** Ends a wait for the human. */
     const answerPlan = (answer) => {
         const resolve = planAnswer;
+        const decision = planDecision;
         planAnswer = null;
+        planDecision = null;
         element = null;
+        if (resolve !== null) settled(decision, answer);
         resolve?.(answer);
     };
     const answerChoice = (id) => {
         const resolve = choice?.resolve;
+        const decision = choice?.decision;
         choice = null;
+        if (resolve !== undefined) settled(decision, id);
         resolve?.(id);
         if (choice === null && queued !== null && !ended) {
             choice = queued;
@@ -200,8 +219,9 @@ export const createChat = ({ show: shown = () => {}, status = () => {}, onAbort 
     /**
      * Waits for a button under a card (choose, choosePicks).
      * @param picks the ids of the card's checkboxes: the answer is then { choice, picked }
+     * @param decision the decision as data (decisions.mjs), for the desk
      */
-    const ask = (kind, question, options, card, picks) => {
+    const ask = (kind, question, options, card, picks, decision) => {
         if (ended) return Promise.resolve(null);
         // In the middle of a conversation (e.g. the token notice before Claude answers): the conversation reopens afterwards.
         const parked = TALK_KINDS.includes(choice?.kind) ? choice : null;
@@ -209,6 +229,7 @@ export const createChat = ({ show: shown = () => {}, status = () => {}, onAbort 
             choice = {
                 kind,
                 options,
+                decision,
                 ...(picks === undefined ? {} : { picks }),
                 // What the human sees: a decision card asks its own question, a result card says what happened; `question`
                 // is then only for the log.
@@ -224,7 +245,43 @@ export const createChat = ({ show: shown = () => {}, status = () => {}, onAbort 
             else if (card.kind === 'tokens') show('tokens', question, card);
             else show('decision', question, card);
             publish();
+            opened(decision);
         });
+    };
+    /**
+     * Answers the waiting decision from outside the window: the session through caw_decide, or caw in a run without a window.
+     * The chat shows who answered; the window's buttons give way to what comes next.
+     * @returns whether `decision` was still the one waiting and the answer fits it
+     */
+    const external = (decision, { option, message, picked, by }) => {
+        if (ended) return false;
+        const said = (label) => show('notice', t(by === 'elicitation' ? 'chat.answeredInSession' : by === 'auto' ? 'chat.answeredAuto' : 'chat.answeredBySession', { label }));
+        if (choice === null && planAnswer !== null && planDecision === decision) {
+            if (option === 'approve') {
+                said(t('chat.page.approvePlan'));
+                answeredBy = by;
+                answerPlan({ approved: true });
+            } else if (option === 'revise' && typeof message === 'string') {
+                said(t('chat.decision.revise'));
+                show('human', message.trim().slice(0, MAX_TEXT));
+                answeredBy = by;
+                answerPlan({ approved: false, feedback: message.trim().slice(0, MAX_TEXT) });
+            } else return false;
+            publish();
+            return true;
+        }
+        if (choice === null || choice.decision !== decision) return false;
+        const offered = choice.options.find((candidate) => candidate.id === option);
+        if (offered === undefined) return false;
+        said(offered.label);
+        answeredBy = by;
+        if (choice.picks === undefined) answerChoice(option);
+        else {
+            const ticked = new Set(Array.isArray(picked) ? picked : []);
+            answerChoice({ choice: option, picked: choice.picks.filter((pick) => ticked.has(pick)) });
+        }
+        publish();
+        return true;
     };
     const claudeText = (who, raw) => {
         const text = String(raw ?? '').trim().slice(0, MAX_TEXT);
@@ -323,12 +380,14 @@ export const createChat = ({ show: shown = () => {}, status = () => {}, onAbort 
          * Presents the plan and waits: { approved: true } or { approved: false, feedback }.
          * @param view { repairing, notes, steps } from planView; logged as text
          */
-        plan: (view) => {
+        plan: (view, decision) => {
             if (ended) return Promise.resolve({ approved: false, feedback: null });
             return new Promise((resolve) => {
                 planAnswer = resolve;
+                planDecision = decision ?? null;
                 show('plan', view.steps.map(({ id, name, expect }) => `${id} ${name}: ${expect}`).join(' | '), view);
                 publish();
+                opened(decision);
             });
         },
         /**
@@ -338,13 +397,13 @@ export const createChat = ({ show: shown = () => {}, status = () => {}, onAbort 
          *             title is `question`; otherwise `question` then only goes to the log
          * @returns the option id, null if the window closes or the human aborts
          */
-        choose: (kind, question, options, card) => ask(kind, question, options, card),
+        choose: (kind, question, options, card, decision) => ask(kind, question, options, card, undefined, decision),
         /**
          * Like choose, with checkboxes in a decision card: `card.picks` { title, text, items: [{ id, label }] }, none ticked.
          * @returns { choice, picked: [id] } in the card's order; choice null if the window closes or the human aborts
          */
-        choosePicks: async (kind, question, options, card) => {
-            const answer = await ask(kind, question, options, card, card.picks.items.map(({ id }) => id));
+        choosePicks: async (kind, question, options, card, decision) => {
+            const answer = await ask(kind, question, options, card, card.picks.items.map(({ id }) => id), decision);
             return answer !== null && typeof answer === 'object' ? answer : { choice: answer ?? null, picked: [] };
         },
         /**
@@ -352,7 +411,7 @@ export const createChat = ({ show: shown = () => {}, status = () => {}, onAbort 
          * @param view from adviceView; logged as its title
          * @returns the option id, null if the window closes
          */
-        advice: (view, options) => {
+        advice: (view, options, decision) => {
             if (ended) return Promise.resolve(null);
             // In the middle of a conversation: the card comes in between, then the conversation reopens.
             const parked = TALK_KINDS.includes(choice?.kind) ? choice : null;
@@ -360,6 +419,7 @@ export const createChat = ({ show: shown = () => {}, status = () => {}, onAbort 
                 choice = {
                     kind: 'reviewing',
                     options,
+                    decision,
                     resolve: (id) => {
                         if (parked !== null && !ended) choice = parked;
                         resolve(id);
@@ -368,6 +428,7 @@ export const createChat = ({ show: shown = () => {}, status = () => {}, onAbort 
                 };
                 show('advice', `${({ app: 'Application', outside: 'Outside' })[view.side] ?? 'Test'}: ${view.title}`, view);
                 publish();
+                opened(decision);
             });
         },
         /**
@@ -376,14 +437,15 @@ export const createChat = ({ show: shown = () => {}, status = () => {}, onAbort 
          * @param card     the failure as a card; `question` then only goes to the log
          * @returns { choice } with the id, { message } with the text, null if the window closes
          */
-        discuss: (question, options, card) => {
+        discuss: (question, options, card, decision) => {
             if (ended) return Promise.resolve(null);
             return new Promise((resolve) => {
-                offer({ kind: 'discussing', options, resolve: (answer) => resolve(typeof answer === 'string' ? { choice: answer } : answer) });
+                offer({ kind: 'discussing', options, decision, resolve: (answer) => resolve(typeof answer === 'string' ? { choice: answer } : answer) });
                 // The test run is over: between two answers the chat no longer shows it as running.
                 if (background === 'testing') background = null;
                 if (question !== undefined) show(card === undefined ? 'result' : 'failure', question, card ?? { kind: 'result', tone: 'ask', title: question });
                 publish();
+                opened(decision);
             });
         },
         /**
@@ -1040,8 +1102,9 @@ export const writeChat = async (context, frame, html) => {
  * @param onWaiting   receives a line for the terminal once the chat waits for the human: once per such state
  * @param onTampered  receives a CawError 'chat-tampered' once the page under test has replaced or reloaded the chat frame. The
  *                    chat is closed by then (every open decision ends without an answer); the run ends with that error.
+ * @param desk        the run's decisions (decision-desk.mjs)
  */
-export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, onTampered, transcript = [] }) => {
+export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, onTampered, transcript = [], desk }) => {
     // `doc()` is the chat document, the frame in the workbench (a new one after a reload); `chatWindow` is the surrounding workbench.
     const bench = session.workbench ?? null;
     if (bench === null) throw new CawError('chat-failed', t('chat.error.noWorkbench'));
@@ -1114,6 +1177,7 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
             if (picking && !PICK_STATES.includes(state)) quiet(cancelPick(session));
         },
         onAbort,
+        desk,
     });
     const pick = async () => {
         if (picking) {
@@ -1239,5 +1303,24 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
         onAbort?.();
     });
     await onOpen?.(doc());
+    return chat;
+};
+
+/**
+ * The conversation of a run without a window (record --headless): the same decisions and cards, in the transcript only. Nobody
+ * clicks: the desk answers what is provably harmless and stops at what needs a person; nobody writes either, so the agent finds
+ * no messages and cannot ask anyone to show something.
+ */
+export const createHeadlessChat = ({ logPath, desk, transcript = [] }) => {
+    const chat = createChat({
+        show: (who, text, about) => {
+            const at = Date.now();
+            if (LOGGED.has(who)) appendFileSync(logPath, `${new Date(at).toISOString()} ${who}: ${String(text).replaceAll('\n', ' ')}\n`);
+            transcript.push([who, text, about ?? null, at]);
+        },
+        desk,
+    });
+    chat.headless = true;
+    chat.working = () => {};
     return chat;
 };

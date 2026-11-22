@@ -36,6 +36,10 @@ export default {
     'chat.status.starting.label': '{agent} startet',
 
     'chat.planApproved': 'Plan freigegeben.',
+    'chat.answeredBySession': '{label}: von der Session beantwortet.',
+    'chat.answeredInSession': '{label}: von dir in der Session bestätigt.',
+    'chat.answeredAuto': '{label}: von caw gewählt, nichts ändert sich, was der Test prüft.',
+    'chat.decision.revise': 'Änderung erbitten',
     'chat.waiting': 'Wartet im Chrome-Fenster auf dich: {status}',
     'chat.error.noWorkbench': 'Der Chat läuft nur in der Werkbank, und dieser Lauf hat keine.',
     'chat.error.alreadyOpen': 'Der Chat ist in dieser Werkbank schon offen.',

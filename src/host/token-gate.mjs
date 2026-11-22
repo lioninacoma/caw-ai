@@ -3,9 +3,10 @@
 
 import { t } from '../shared/i18n.mjs';
 import { readPrefs, writePref } from '../shared/prefs.mjs';
+import { decide } from './decisions.mjs';
 
 /**
- * @param chat  () => the current chat or null; without a chat (CI, --no-chat) there is nothing to ask
+ * @param chat  () => the current chat or null; without a chat (CI, --no-chat) or a window (record --headless) there is nothing to ask
  * @returns async ({ decline }) => true if Claude may start. `decline` labels the refusal button with what it does
  *          (continue without Claude, or cancel the run).
  */
@@ -13,12 +14,12 @@ export const createTokenGate = ({ chat, prefs = readPrefs, save = (value) => wri
     let agreed = false;
     return async ({ decline = t('run.tokens.withoutClaude') } = {}) => {
         const current = chat();
-        if (agreed || current === null || current === undefined || !current.available() || prefs().tokenNotice === 'off') return true;
-        const choice = await current.choose('choosing', t('run.tokens.question'), [
+        if (agreed || current === null || current === undefined || current.headless === true || !current.available() || prefs().tokenNotice === 'off') return true;
+        const choice = await decide(current, { id: 'tokens', kind: 'choosing', question: t('run.tokens.question'), options: [
             { id: 'go', label: t('run.tokens.go'), primary: true },
             { id: 'always', label: t('run.tokens.always') },
             { id: 'stop', label: decline },
-        ], { kind: 'tokens', text: t('run.tokens.detail') });
+        ], card: { kind: 'tokens', text: t('run.tokens.detail') } });
         if (choice === 'always') {
             save('off');
             current.progress?.(t('run.tokens.remembered'));

@@ -24,7 +24,9 @@ import { personalContextPath, readPersonalContext, shownPath } from '../shared/p
 import { prefsDir, readPrefs } from '../shared/prefs.mjs';
 import { renderReport, renderReproduceReport } from '../shared/report.mjs';
 import { readReproduction, draftId, draftTestPlan, draftHint, coverageIn } from './reproduce.mjs';
-import { openChat, parseClaudeLog, tailLines } from './chat.mjs';
+import { createHeadlessChat, openChat, parseClaudeLog, tailLines } from './chat.mjs';
+import { decide } from './decisions.mjs';
+import { createDesk } from './decision-desk.mjs';
 import { describeCode } from './code-source.mjs';
 import { CONFIG_FILE, CONTEXT_FILE, DRAFT_DIR, ENV_FILE, PROJECT_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
 import { humanFields, redStep, renderPlan, renderTest, retryProblems, writeTest } from './test-file.mjs';
@@ -61,6 +63,8 @@ const CHANNEL_DIR = '.channel';
 const CLAUDE_LOG = 'claude.log';
 // How long the window stays open after the last decision, with a countdown, unless the human closes it.
 const LINGER_MS = 15000;
+// Without a window: how long an attached session may still bring the person's consent to a decision (caw_decide).
+const DECISION_WAIT_MS = 10 * 60 * 1000;
 // The look suggestion reads a quiet page after a passed check: it only has to measure.
 const HINT_TIMEOUT_MS = 5000;
 const ADVICE_LOG = 'claude-advice.log';
@@ -573,10 +577,14 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     const checkAdvice = adviceReader();
     const adviceNotes = [];
     const adviceOf = () => (decided.length === 0 && adviceNotes.length === 0 ? {} : { advice: { items: decided, ...(adviceNotes.length === 0 ? {} : { note: adviceNotes.join(' ') }) } });
+    // The decisions of this run and who took them (decision-desk.mjs); a run without a window names the one it left open.
+    const decisionLog = [];
+    let undecided = null;
+    const decisionsOf = () => ({ ...(decisionLog.length === 0 ? {} : { decisions: [...decisionLog] }), ...(undecided === null ? {} : { openDecision: undecided }) });
     // If Claude gives advice while repairing and then submits a verdict, the advice stays in the report.
     const writeResult = (outcome) => {
         // Redacted as for Claude: the role password and secret remembered values never end up in result.json or report.md.
-        verdict = redactDeep({ ...outcome, ...reportBase, writes: session?.writes() ?? [], thirdParty: session?.thirdParty?.() ?? [], warnings: session?.warnings?.() ?? [], ...(session?.overlay?.() ? { overlay: session.overlay() } : {}), ...adviceOf() }, session?.secrets?.() ?? []);
+        verdict = redactDeep({ ...outcome, ...reportBase, writes: session?.writes() ?? [], thirdParty: session?.thirdParty?.() ?? [], warnings: session?.warnings?.() ?? [], ...(session?.overlay?.() ? { overlay: session.overlay() } : {}), ...adviceOf(), ...decisionsOf() }, session?.secrets?.() ?? []);
         writeFileSync(join(runDir, 'result.json'), JSON.stringify(verdict, null, 2));
         // report.md is shared: in the team language if caw has it, whatever the reader's terminal speaks.
         writeFileSync(join(runDir, 'report.md'), inLanguage(teamLanguage(config), () => (reproduce === undefined ? renderReport : renderReproduceReport)(verdict)));
@@ -602,10 +610,18 @@ ${text}`) ?? 0;
         writeFileSync(join(runDir, 'result.json'), JSON.stringify(verdict, null, 2));
         writeFileSync(join(runDir, 'report.md'), inLanguage(teamLanguage(config), () => (reproduce === undefined ? renderReport : renderReproduceReport)(verdict)));
     };
+    /** A decision was taken after the result was written: result.json and report.md list it. */
+    const noteDecisions = () => {
+        if (verdict === null) return;
+        verdict = redactDeep({ ...verdict, ...decisionsOf() }, session?.secrets?.() ?? []);
+        writeFileSync(join(runDir, 'result.json'), JSON.stringify(verdict, null, 2));
+        writeFileSync(join(runDir, 'report.md'), inLanguage(teamLanguage(config), () => (reproduce === undefined ? renderReport : renderReproduceReport)(verdict)));
+    };
     const finishRun = () => {
         ui.verdict(verdict, { report: posix.join(relativeRun, 'report.md'), reportUrl: pathToFileURL(join(runDir, 'report.md')).href, elapsed: (Date.now() - startedAt) / 1000, names: stepNames(), durations: durations() });
         // Missing saved sign-in or a TODO left in the config means nothing ran: an invalid invocation (3), not the environment (2).
         if (verdict.status === 'error' && NOTHING_RAN.has(verdict.code)) return EXIT.rejected;
+        if (verdict.status === 'error' && verdict.code === 'decision-needed') return EXIT.decision;
         return EXIT[verdict.status];
     };
 
@@ -688,7 +704,28 @@ ${text}`) ?? 0;
         ui.note(error.message);
         abortSignal();
     };
-    const openConversation = () => openWindowChat({ session, logPath: join(runDir, 'chat.log'), onAbort: abortSignal, onOpen: conversation.onChatOpen, onWaiting: ui.note, onTampered, transcript: conversation.transcript });
+    // Every decision of the run waits in its folder too (decision.json): caw_status shows it, caw_decide answers it. Without a
+    // window caw takes only the provably harmless itself; what needs a person stops the run, unless an attached session may
+    // still bring the person's consent for a while.
+    const desk = createDesk({
+        dir: runDir,
+        auto: headless,
+        waitMs: headless && sandbox?.kind === 'session' ? DECISION_WAIT_MS : 0,
+        onSettled: (entry) => {
+            decisionLog.push(entry);
+            if (entry.by !== 'window') ui.info(t('run.decision.taken', { id: entry.id, option: entry.option, by: t(`config.report.decisions.by.${entry.by}`) }));
+            noteDecisions();
+        },
+        onStop: (entry) => {
+            undecided = { id: entry.id, context: entry.context, options: entry.options, gate: entry.gate };
+            ui.warn(t('run.decision.open', { id: entry.id }));
+            noteDecisions();
+        },
+        onStuck: () => abortSignal(),
+    });
+    const openConversation = () => (headless
+        ? Promise.resolve(createHeadlessChat({ logPath: join(runDir, 'chat.log'), desk, transcript: conversation.transcript }))
+        : openWindowChat({ session, logPath: join(runDir, 'chat.log'), onAbort: abortSignal, onOpen: conversation.onChatOpen, onWaiting: ui.note, onTampered, transcript: conversation.transcript, desk }));
     if (conversation !== undefined && conversation.lazy !== true) {
         try {
             chat = await openConversation();
@@ -936,7 +973,14 @@ ${text}`) ?? 0;
                 const view = adviceView(item, result.spec, session?.failures?.() ?? [], config);
                 // A cause outside the project has nothing to apply here: the card only says where it is.
                 const applicable = item.side === 'app' && item.edits !== undefined;
-                const answer = await chat.advice(view, item.side === 'test' ? [ACCEPT, REJECT] : applicable ? [APPLY, { ...NEXT, primary: false }] : [NEXT]);
+                const about = {
+                    side: item.side,
+                    title: item.title,
+                    ...(item.change?.kind === undefined ? {} : { change: item.change.kind }),
+                    ...(applicable ? { files: [...new Set(item.edits.map(({ file }) => file))] } : {}),
+                    ...(item.where === undefined ? {} : { where: item.where }),
+                };
+                const answer = await decide(chat, { id: 'advice.item', via: 'advice', context: about, card: view, options: item.side === 'test' ? [ACCEPT, REJECT] : applicable ? [APPLY, { ...NEXT, primary: false }] : [NEXT] });
                 if (item.side === 'outside' && answer !== null) result.outside.push({ where: item.where, title: item.title });
                 let decision = 'shown';
                 if (answer === null) decision = 'open';
@@ -1462,12 +1506,15 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
         }
         link?.tell(t('run.attach.ended', { runId }));
         link?.stop();
+        desk.close();
         stopSignals();
         await session.close();
-        return { exitCode, verdict, report: posix.join(relativeRun, 'report.md'), runId, ...found };
+        return { exitCode, verdict, report: posix.join(relativeRun, 'report.md'), runId, ...found, ...(undecided === null ? {} : { undecided }) };
     };
     const writeInterrupted = (ended) => {
-        if (ended === 'browser-closed') writeResult({ status: 'error', code: 'browser-closed', reason: t('run.interrupted.browserClosed') });
+        // Without a window a decision only a person can take ended the run (the plan): nothing was written.
+        if (undecided !== null) writeResult({ status: 'error', code: 'decision-needed', reason: t('run.decision.needed', { id: undecided.id }) });
+        else if (ended === 'browser-closed') writeResult({ status: 'error', code: 'browser-closed', reason: t('run.interrupted.browserClosed') });
         else if (tampered !== null) writeResult({ status: 'error', code: tampered.code, reason: tampered.message });
         else writeResult({ status: 'error', code: 'aborted', reason: t('run.interrupted.aborted') });
     };
@@ -1563,7 +1610,17 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             const ownReadOnly = repairing === undefined && plan === null && sessionFollowsOwnPlan({ agent: box?.kind, previous, proposed: composed });
             if (ownReadOnly) chat.notice(t('run.plan.sessionReadOnly'));
             const previousSteps = new Map((range ?? (repairing === undefined ? [] : [repairing])).map((step) => [step.id, step]));
-            const answer = unchanged || ownReadOnly ? { approved: true } : await chat.plan(planView({ ...composed, heard: parsed.heard }, { repairing: repairing !== undefined, rerecord: repair?.rerecord === true, ...(range === undefined ? {} : { from: repair.id }), previous: previousSteps, humanNotes }));
+            // As data: a plan is changed unless it is the test file's own (the same steps and writing), and approving a changed or
+            // writing plan is the person's (decisions.mjs).
+            const asFile = repairing === undefined && previous !== undefined && previous.writes === composed.writes
+                && composed.steps.length === previous.steps.length && composed.steps.every((step, index) => samePlanStep(step, previous.steps[index]));
+            const planDecision = {
+                id: 'plan.approve',
+                via: 'plan',
+                context: { test: composed.id, steps: composed.steps.map(({ id }) => id), changed: !asFile, writes: composed.writes === true, ...(repairing === undefined ? {} : { [range === undefined ? 'step' : 'from']: repair.id }) },
+                options: [{ id: 'approve', label: t('chat.page.approvePlan') }, { id: 'revise', label: t('chat.decision.revise') }],
+            };
+            const answer = unchanged || ownReadOnly ? { approved: true } : await decide(chat, { ...planDecision, card: planView({ ...composed, heard: parsed.heard }, { repairing: repairing !== undefined, rerecord: repair?.rerecord === true, ...(range === undefined ? {} : { from: repair.id }), previous: previousSteps, humanNotes }) });
             if (!answer.approved) return answer;
             const redo = plan === null ? [] : invalidatedChecks(plan, composed, recorder);
             const checksNow = () => recorder.steps.filter(({ action }) => action === 'check').length;
@@ -1707,6 +1764,7 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             if (command?.action === 'plan') return proposePlan(command);
             if (plan === null && NEEDS_PLAN.has(command?.action)) throw new CawError('plan-required', `Submit the plan first: caw agent plan --file <${PLAN_FILE}>. Reading works without it, e.g. snapshot.`);
             if (command?.action === 'check') checkOrder(command);
+            if (command?.action === 'ask-operator' && chat.headless === true) throw new CawError('ask-refused', 'Nobody is at this run (record --headless): there is no human to show you anything. Follow the plan with what the page offers, or finish with the step as fail.');
             if (command?.action === 'ask-operator') return askOperator(command);
             if (command?.action === 'recording') return recorder.list();
             if (command?.action === 'finish') return finishAndDrop(command);

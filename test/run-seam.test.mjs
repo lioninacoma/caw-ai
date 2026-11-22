@@ -56,8 +56,9 @@ const harness = ({ fail, answers = [] }) => {
     mkdirSync(join(root, 'caw'), { recursive: true });
     const wishes = [...answers];
     const decisions = [];
-    const openChat = async () => {
+    const openChat = async ({ desk }) => {
         const chat = createChat({
+            desk,
             show: (who, text, about) => {
                 if (['result', 'failure', 'decision'].includes(who)) decisions.push({ who, text, card: about });
             },
@@ -105,6 +106,10 @@ test('Seam: a passed check run of a new recording waits for adopting, then write
     assert.equal(h.adopted[0].only, undefined);
     assert.equal(h.result().status, 'pass');
     assert.ok(existsSync(join(h.root, h.runs[0].report)));
+    // The decision as data: logged with who took it, and answered in the run folder.
+    assert.deepEqual(h.result().decisions.map(({ id, option, by }) => [id, option, by]), [['recording.adopt', 'adopt', 'window']]);
+    const file = JSON.parse(readFileSync(join(h.root, h.runs[0].report.replace(/report\.md$/, 'decision.json')), 'utf8'));
+    assert.deepEqual([file.state, file.id, file.option, file.by], ['answered', 'recording.adopt', 'adopt', 'window']);
 });
 
 test('Seam: a failed step in a test run waits on the failure card; closing ends with fail and writes nothing', async () => {
@@ -118,6 +123,7 @@ test('Seam: a failed step in a test run waits on the failure card; closing ends 
     const result = h.result();
     assert.equal(result.status, 'fail');
     assert.equal(result.steps.find(({ id }) => id === 'S2').status, 'fail');
+    assert.deepEqual(result.decisions.map(({ id, option }) => [id, option]), [['step.failed', 'close']]);
 });
 
 test('Seam: a draft red at its step in the check run offers the red proof; adopting saves it with the run', async () => {

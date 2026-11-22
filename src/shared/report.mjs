@@ -164,7 +164,22 @@ const diagnosisLines = ({ step, text, findings = [], requests = [], recorded }) 
 /** An error code such as `unreachable`, as opposed to the describeCode line ("dev server localhost:4174, …"). */
 export const isErrorCode = (value) => typeof value === 'string' && /^[a-z][a-z0-9-]*$/.test(value);
 
-export const renderReport = ({ status, reason, note, testId, target, testedCode, expectations = [], results = [], failures = [], warnings = [], writes = [], thirdParty = [], dropped = [], effectsDropped = [], advice, diagnosis, overlay, personalContext, afterHandover = [], pending = [], steps = [] }) => {
+/**
+ * The decisions the run waited for and who took them (window, session, the person in the session, caw itself), and the one a
+ * run without a window left open for a person.
+ */
+const decisionLines = (decisions, openDecision) => {
+    const lines = [];
+    if (decisions.length > 0) {
+        lines.push('', `## ${t('config.report.decisions')}`, '');
+        for (const { id, option, by } of decisions) lines.push(`- ${id}: ${option} (${t(`config.report.decisions.by.${by}`)})`);
+    }
+    if (openDecision !== undefined) {
+        lines.push('', `## ${t('config.report.openDecision')}`, '', t('config.report.openDecision.text', { id: openDecision.id, options: openDecision.options.map(({ id, gate }) => `${id} (${gate})`).join(', ') }));
+    }
+    return lines;
+};
+export const renderReport = ({ status, reason, note, testId, target, testedCode, expectations = [], results = [], failures = [], warnings = [], writes = [], thirdParty = [], dropped = [], effectsDropped = [], advice, diagnosis, overlay, personalContext, afterHandover = [], pending = [], steps = [], decisions = [], openDecision }) => {
     const lines = [
         t('config.report.title', { testId: String(testId), target: String(target), status: String(status) }),
         '',
@@ -223,6 +238,7 @@ export const renderReport = ({ status, reason, note, testId, target, testedCode,
         lines.push('', `## ${t('config.report.afterHandover')}`, '', t('config.report.afterHandover.intro'), '');
         for (const { type, text, origin, url, count } of afterHandover) lines.push(`- ${warningLabel(type)}: ${text}${origin || url ? ` (${origin ?? url})` : ''}${count > 1 ? ` (${count}x)` : ''}`);
     }
+    lines.push(...decisionLines(decisions, openDecision));
     return `${lines.join('\n')}\n`;
 };
 

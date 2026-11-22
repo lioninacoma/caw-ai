@@ -560,7 +560,7 @@ test('caw_start reproduce: the bug report goes into a file, the session is the a
     writeTest(root, fixDraft());
     const now = (await call('caw_status')).structuredContent;
     assert.equal(now.phase, 'reproduced');
-    assert.deepEqual(now.next, { tool: 'caw_start', command: 'record', test: 'bug-x' });
+    assert.deepEqual(now.next, { tool: 'caw_start', command: 'record', test: 'bug-x', decision: 'reproduced.record' });
 });
 
 /** A draft from caw reproduce, recorded; `red` once its red proof is saved. */
@@ -586,14 +586,14 @@ test('caw_status and caw_reproductions: phase and next of a draft on its way fro
     const row = async () => (await call('caw_reproductions')).structuredContent.reproductions[0];
 
     writeTest(root, fixDraft());
-    assert.deepEqual([(await row()).phase, (await row()).next], ['reproduced', { tool: 'caw_start', command: 'record', test: 'bug-x' }]);
+    assert.deepEqual([(await row()).phase, (await row()).next], ['reproduced', { tool: 'caw_start', command: 'record', test: 'bug-x', decision: 'reproduced.record' }]);
     assert.deepEqual([(await row()).expected, (await row()).cause], ['Total: 5', 'server.mjs:12 rechnet ohne Preise.']);
 
     // Recorded red: the agent fixes the app, then runs the draft again.
     writeTest(root, fixDraft({ step: 'S2', run: '2026-11-18T13-00-00-000Z-bug-x' }));
     run('2026-11-18T13-00-00-000Z-bug-x', { status: 'fail' });
     last('2026-11-18T13-00-00-000Z-bug-x', 'bug-x');
-    const red = { do: 'fix-app', red: { step: 'S2', name: 'S2', expect: 'Total: 5.', check: 'checkS2()', cause: 'server.mjs:12 rechnet ohne Preise.' }, then: { tool: 'caw_start', command: 'run', test: 'bug-x' } };
+    const red = { do: 'fix-app', red: { step: 'S2', name: 'S2', expect: 'Total: 5.', check: 'checkS2()', cause: 'server.mjs:12 rechnet ohne Preise.' }, then: { tool: 'caw_start', command: 'run', test: 'bug-x' }, decision: 'fix.guide' };
     assert.deepEqual((await row()).next, red);
     const status = (await call('caw_status')).structuredContent;
     assert.deepEqual([status.phase, status.next], ['red', red], 'caw_status of the run of the draft');
@@ -601,7 +601,7 @@ test('caw_status and caw_reproductions: phase and next of a draft on its way fro
     // Green after the fix: promote.
     run('2026-11-18T14-00-00-000Z-bug-x', { status: 'pass', results: [{ id: 'S2', status: 'pass' }] });
     last('2026-11-18T14-00-00-000Z-bug-x', 'bug-x');
-    const green = { tool: 'caw_start', command: 'run', test: 'bug-x', promote: true };
+    const green = { tool: 'caw_start', command: 'run', test: 'bug-x', promote: true, decision: 'fix.green' };
     assert.deepEqual([(await row()).phase, (await row()).next], ['green', green]);
     assert.deepEqual((await call('caw_status')).structuredContent.next, green);
 

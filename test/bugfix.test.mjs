@@ -16,8 +16,8 @@ const draft = { id: 'bug-x', draft: true, writes: false, notes: '', steps: [step
 const red = { ...draft, red: { step: 'S2', run: '2026-11-20T09-00-00-000Z-bug-x', head: 'abc1234' } };
 
 test('fixPhase: reproduced until the red proof, red until a later run passes, green then, promoted once the draft moved', () => {
-    assert.deepEqual(fixPhase({ id: 'bug-x', draft }), { phase: 'reproduced', next: { tool: 'caw_start', command: 'record', test: 'bug-x' } });
-    const fix = { do: 'fix-app', red: { step: 'S2', name: 'Schritt S2', expect: 'Total: 5.', check: 'checkS2()', cause: 'server.mjs:12' }, then: { tool: 'caw_start', command: 'run', test: 'bug-x' } };
+    assert.deepEqual(fixPhase({ id: 'bug-x', draft }), { phase: 'reproduced', next: { tool: 'caw_start', command: 'record', test: 'bug-x', decision: 'reproduced.record' } });
+    const fix = { do: 'fix-app', red: { step: 'S2', name: 'Schritt S2', expect: 'Total: 5.', check: 'checkS2()', cause: 'server.mjs:12' }, then: { tool: 'caw_start', command: 'run', test: 'bug-x' }, decision: 'fix.guide' };
     assert.deepEqual(fixPhase({ id: 'bug-x', draft: red, cause: 'server.mjs:12' }), { phase: 'red', next: fix });
     // The red run itself and older runs do not count; a later red run keeps it red.
     const runs = [{ runId: '2026-11-20T09-00-00-000Z-bug-x', status: 'fail' }, { runId: '2026-11-19T09-00-00-000Z-bug-x', status: 'pass' }];
@@ -26,7 +26,7 @@ test('fixPhase: reproduced until the red proof, red until a later run passes, gr
     // A later pass that never judged the red step (an open at its entry) keeps it red too.
     assert.equal(fixPhase({ id: 'bug-x', draft: red, runs: [{ runId: '2026-11-21T09-00-00-000Z-bug-x', status: 'pass', results: [{ id: 'S1', status: 'pass' }] }, ...runs] }).phase, 'red');
     const fixed = [{ id: 'S1', status: 'pass' }, { id: 'S2', status: 'pass' }];
-    assert.deepEqual(fixPhase({ id: 'bug-x', draft: red, runs: [{ runId: '2026-11-21T09-00-00-000Z-bug-x', status: 'pass', results: fixed }, ...runs] }), { phase: 'green', next: { tool: 'caw_start', command: 'run', test: 'bug-x', promote: true } });
+    assert.deepEqual(fixPhase({ id: 'bug-x', draft: red, runs: [{ runId: '2026-11-21T09-00-00-000Z-bug-x', status: 'pass', results: fixed }, ...runs] }), { phase: 'green', next: { tool: 'caw_start', command: 'run', test: 'bug-x', promote: true, decision: 'fix.green' } });
     // Without the draft: promoted when caw/tests has it from this draft, with the fix report if it is still there.
     assert.deepEqual(fixPhase({ id: 'bug-x', promoted: true, fixReport: '.caw/runs/r/fix-report.md' }), { phase: 'promoted', next: { done: true, fixReport: '.caw/runs/r/fix-report.md' } });
     assert.deepEqual(fixPhase({ id: 'bug-x', promoted: true }), { phase: 'promoted', next: { done: true } });

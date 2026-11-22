@@ -9,6 +9,7 @@ import { join, relative } from 'node:path';
 import { DRAFT_DIR } from '../shared/names.mjs';
 import { REPRODUCE_RUN, runsWithResult } from './runs.mjs';
 import { draftPath, loadDraft, testPath } from './test-file.mjs';
+import { PHASE_DECISIONS } from './decisions.mjs';
 
 export const FIX_PHASES = ['reproduced', 'red', 'green', 'promoted'];
 export const FIX_REPORT = 'fix-report.md';
@@ -39,18 +40,20 @@ export const redOf = (draft, cause) => {
  * @param promoted  caw/tests has the test and it came from this draft (a fix report or a reproduction names it)
  * @param fixReport the fix report of the promotion, relative to the project
  * @param cause     the cause the reproduction suspected
- * @returns { phase, next } or undefined when there is no draft and nothing was promoted
+ * @returns { phase, next } or undefined when there is no draft and nothing was promoted. 
+ext.decision names the window's card at
+ *          that phase (decisions.mjs PHASE_DECISIONS): a run that waits on it is answered with caw_decide, not started anew
  */
 export const fixPhase = ({ id, draft, runs = [], promoted = false, fixReport, cause }) => {
     if (draft === undefined) return promoted ? { phase: 'promoted', next: { done: true, ...(fixReport === undefined ? {} : { fixReport }) } } : undefined;
     const run = { tool: 'caw_start', command: 'run', test: id };
-    if (draft.red === undefined) return { phase: 'reproduced', next: { tool: 'caw_start', command: 'record', test: id } };
+    if (draft.red === undefined) return { phase: 'reproduced', next: { tool: 'caw_start', command: 'record', test: id, decision: PHASE_DECISIONS.reproduced } };
     // Run ids start with their time: a later id is a later run. Only a run after the red proof shows the fix, and only if it
     // judged the red step and passed it: an open at the red step's entry passes without ever checking it.
     const newest = runs.find(({ runId }) => runId > draft.red.run);
     const judged = Array.isArray(newest?.results) && newest.results.some((item) => item?.id === draft.red.step && item.status === 'pass');
-    if (newest?.status === 'pass' && judged) return { phase: 'green', next: { ...run, promote: true } };
-    return { phase: 'red', next: { do: 'fix-app', red: redOf(draft, cause), then: run } };
+    if (newest?.status === 'pass' && judged) return { phase: 'green', next: { ...run, promote: true, decision: PHASE_DECISIONS.green } };
+    return { phase: 'red', next: { do: 'fix-app', red: redOf(draft, cause), then: run, decision: PHASE_DECISIONS.red } };
 };
 
 /** The reproduction that wrote this draft: its cause, if the run folder is still there. */

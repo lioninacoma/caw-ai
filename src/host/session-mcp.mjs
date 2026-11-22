@@ -14,6 +14,7 @@ import { AGENT_NAME, t } from '../shared/i18n.mjs';
 import { PROJECT_DIR, REF_PATTERN, RUN_DIR, SELECTION_FILE } from '../shared/names.mjs';
 import { listenerOf, newKey, registerListener } from '../shared/attach.mjs';
 import { findSessionAgent } from '../shared/session-agent.mjs';
+import { readDecision } from './decision-desk.mjs';
 import { cawTool, createMcpHandler } from '../sandbox/mcp.mjs';
 import { SESSION_INSTRUCTIONS, activeExtensions, guideIndex, guideTopic, listedTopics } from './guide.mjs';
 
@@ -42,7 +43,7 @@ const SWITCH_FLAGS = { headless: '--headless', learn: '--learn', promote: '--pro
 const renamedField = (input) => {
     if (input?.target !== undefined) throw new Error(t('run.mcp.fieldRenamed', { field: 'target', now: 'env' }));
 };
-const RESULT_FIELDS = ['status', 'code', 'reason', 'results', 'failures', 'warnings'];
+const RESULT_FIELDS = ['status', 'code', 'reason', 'results', 'failures', 'warnings', 'decisions'];
 const RUN_ARTEFACTS = ['report.md', 'result.json', 'fix-report.md', 'chat.log', 'failures.json', 'network.json', 'demonstration.json'];
 
 // Whatever comes from the application (snapshot, eval, console, selected element) is page content and may contain text
@@ -293,16 +294,31 @@ const artefactsOf = (root, runDir) => {
     return found.map((file) => shown(root, file));
 };
 
+/**
+ * The decision a run waits for (decision-desk.mjs), as long as its process lives: { seq, id, context, options, gate, since }.
+ * @param run lastRun's pointer; its pid is the run's process
+ */
+export const waitingDecision = (run, { alive = isAlive } = {}) => {
+    if (run === undefined) return undefined;
+    const found = readDecision(run.runDir);
+    if (found?.state !== 'waiting' || (Number.isInteger(run.pid) && !alive(run.pid))) return undefined;
+    return Object.fromEntries(Object.entries(found).filter(([key]) => key !== 'state'));
+};
+
 /** The structured part of caw_status. */
 const statusData = (root, { waiting, running, log, fixState }) => {
     const meta = log === undefined ? undefined : readJson(`${log}.json`);
     const run = lastRun(root);
+    const decision = waitingDecision(run);
     let state = 'idle';
     if (waiting !== undefined) state = 'waiting';
+    else if (decision !== undefined) state = 'deciding';
     else if (running !== undefined) state = 'running';
     else if (log !== undefined || run !== undefined) state = 'ended';
     const data = { state };
     if (waiting !== undefined) data.waiting = { runId: waiting.runId, mode: waiting.mode, hint: waiting.hint, guide: Array.isArray(waiting.guide) ? waiting.guide : [] };
+    // A card waits for an answer: what it is, what it offers and which answers need the person (gate human).
+    if (decision !== undefined) data.waiting = { ...(data.waiting ?? { runId: run.runId }), decision };
     if (log !== undefined) data.log = shown(root, log);
     if (meta !== undefined) data.started = { command: meta.command, args: meta.args, pid: meta.pid, startedAt: meta.startedAt };
     if (run !== undefined) {
@@ -324,6 +340,8 @@ const statusData = (root, { waiting, running, log, fixState }) => {
                 const fix = fixState(root, run.test);
                 if (fix !== undefined) Object.assign(data, fix);
             }
+            // A run without a window stopped at a decision only a person takes: which, and what it offered.
+            if (result.openDecision !== undefined) data.openDecision = result.openDecision;
             const last = Array.isArray(result.results) ? result.results.at(-1) : undefined;
             if (last !== undefined) data.lastStep = { id: last.id, status: last.status, ...(last.note === undefined ? {} : { note: last.note }) };
         }
@@ -500,10 +518,12 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                         : t('run.mcp.busy', { pid: running.pid }))
                     : `Run ${waiting.runId} is waiting for you (${waiting.mode}). Task: ${waiting.hint} Read caw_guide with the topics ${(waiting.guide ?? []).join(', ') || 'agent'} first, then work with the caw tool. ${DATA_NOTE}`;
                 const data = statusData(root, { waiting, running, log, fixState });
+                const decision = data.waiting?.decision;
+                const deciding = decision === undefined ? '' : `\n${t('run.mcp.deciding', { runId: data.runId, id: decision.id, options: decision.options.map(({ id, gate }) => `${id} (${gate})`).join(', ') })}`;
                 const result = data.result?.status === undefined ? '' : `\n${t('run.mcp.lastRun', { runId: data.runId, status: data.result.status })}`;
                 // What counts as a change for `wait`: the run state and result, and caw-ai's own last message (not every replay step).
-                const mark = JSON.stringify([data.state, data.runId, data.result?.status, lines.filter((line) => line.startsWith('[caw]')).at(-1)]);
-                return { mark, text: `${head}${result}${tail === '' ? '' : `\n\n${t('run.mcp.output', { log })}\n${tail}`}`, data };
+                const mark = JSON.stringify([data.state, data.runId, data.result?.status, data.waiting?.decision?.seq, lines.filter((line) => line.startsWith('[caw]')).at(-1)]);
+                return { mark, text: `${head}${deciding}${result}${tail === '' ? '' : `\n\n${t('run.mcp.output', { log })}\n${tail}`}`, data };
             };
             // wait: return as soon as something changes, at the latest after `wait` seconds; one call instead of many polls.
             const seconds = Number.isInteger(input.wait) ? Math.min(Math.max(input.wait, 0), MAX_STATUS_WAIT_S) : 0;

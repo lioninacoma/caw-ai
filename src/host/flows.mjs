@@ -11,6 +11,8 @@ import { locatorLabel, locatorText } from './locator.mjs';
 import { redStep, staleSteps } from './test-file.mjs';
 import { redOf } from './bugfix.mjs';
 import { withAdoptedLooks, withLooks } from './visual.mjs';
+import { decide as decideOn } from './decisions.mjs';
+import { samePlanStep } from './test-plan.mjs';
 
 // Labels as getters: the language is not settled at import time. Copies via spread are only made at runtime.
 const button = (id, key, extra = {}) => ({ id, get label() { return t(key); }, ...extra });
@@ -20,7 +22,7 @@ const adoptButton = (count, extra = {}) => ({ ...ADOPT, label: t('run.button.ado
 // Discarding cannot be undone: it needs a second click, like Cancel in the chat header.
 const DISCARD = { id: 'discard', get label() { return t('run.button.discardDraft'); }, get confirm() { return t('run.button.discardSure'); } };
 const FIX = button('fix', 'run.button.fix', { primary: true });
-const RERECORD = button('fix', 'run.button.rerecord', { primary: true });
+const RERECORD = button('rerecord', 'run.button.rerecord', { primary: true });
 const RERUN = button('rerun', 'run.button.rerun', { primary: true });
 // Ends regularly with the result of the run. Cancel in the chat header ends immediately, as an error without a result.
 const CLOSE = button('close', 'run.button.close');
@@ -62,8 +64,23 @@ const closed = (text) => (/[.!?]$/.test(text) ? text : `${text}.`);
  * The fix card adds rows and the guided bug fix a phase (chat.mjs).
  */
 const resultCard = (tone, title, text, muted) => ({ kind: 'result', tone, title, ...(text ? { text } : {}), ...(muted ? { muted } : {}) });
-/** Waits for a button under a result card. */
-const decide = (chat, card, options) => chat.choose('deciding', card.title, options, card);
+/** Waits for a button under a result card: decision `id` with its language-neutral `context` (decisions.mjs). */
+const decide = (chat, id, context, card, options) => decideOn(chat, { id, context, card, options });
+
+/** The test file as it was when the run started: does the current plan still say the same (steps and writing)? */
+const samePlan = (previous, current) => previous !== undefined && previous.writes === current.writes
+    && previous.steps.length === current.steps.length && current.steps.every((step, index) => samePlanStep(step, previous.steps[index]));
+
+/** Which decision a failed step is: its kind and what the card offers first decide. */
+const failureId = ({ design, look, useTarget, effectOnly }) => {
+    if (design) return 'design.unmet';
+    if (look) return 'look.adopt';
+    if (useTarget !== null) return 'target.use';
+    return effectOnly ? 'effect.accept' : 'step.failed';
+};
+
+/** The red step of a draft for a decision's context: step, expected result, check and suspected cause, as the card lists them. */
+const redContext = (red) => ({ step: red.step, ...(red.expect === undefined ? {} : { expect: red.expect }), ...(red.check === undefined ? {} : { check: red.check }), ...(red.cause === undefined ? {} : { cause: red.cause }) });
 
 /** Why a run did not pass, in one sentence for the chat. */
 const failureText = (verdict) => {
@@ -138,13 +155,13 @@ const createFixer = ({ sandbox, openSandbox }) => {
             return null;
         }
     };
-    const cannotFix = (chat) => (message) => decide(chat, resultCard('warn', t('run.flow.cannotFix'), `${withoutDot(message)}.`), [ONLY_CLOSE]);
+    const cannotFix = (chat) => (message) => decide(chat, 'agent.unavailable', {}, resultCard('warn', t('run.flow.cannotFix'), `${withoutDot(message)}.`), [ONLY_CLOSE]);
     return {
         sandbox: () => box,
         open,
         /** A step whose plan changed through advice needs a new recording. @returns the step or null */
         offerChanged: async ({ id, title }, chat) => {
-            const choice = await decide(chat, resultCard('next', t('run.flow.offerChanged', { id }), t('run.flow.offerChangedWhy', { id, title: withoutDot(title) })), [RERECORD, CLOSE]);
+            const choice = await decide(chat, 'plan.changed', { step: id }, resultCard('next', t('run.flow.offerChanged', { id }), t('run.flow.offerChangedWhy', { id, title: withoutDot(title) })), [RERECORD, CLOSE]);
             if (choice !== RERECORD.id) return null;
             return await open(chat, cannotFix(chat)) === null ? null : { id, reason: t('run.flow.planChanged', { title: withoutDot(title) }), rerecord: true };
         },
@@ -214,6 +231,21 @@ const createFixer = ({ sandbox, openSandbox }) => {
             if (design) options = canAsk ? [BUILD_DESIGN, CLOSE] : [ONLY_CLOSE];
             const adoptable = (failed.looks?.size ?? 0) > 0;
             if (look) options = [...(adoptable ? [ADOPT_LOOK] : []), ...(canAsk ? [adoptable ? secondary(ASK) : ASK] : []), !adoptable && !canAsk ? ONLY_CLOSE : CLOSE];
+            // The same failure as data: the session reads it from caw_status and answers with caw_decide.
+            const decision = {
+                id: failureId({ design, look, useTarget, effectOnly }),
+                context: {
+                    test: spec.id,
+                    step: failed.id,
+                    reason: withoutDot(failed.reason),
+                    kind: failed.kind ?? 'check',
+                    ...(diagnosis === undefined ? {} : { diagnosis: { side: diagnosis.side, strength: diagnosis.strength } }),
+                    ...(proposal === undefined ? {} : { proposal: { action: proposal.action, from: proposal.from, to: proposal.to } }),
+                    ...(adoptable ? { looks: [...failed.looks.keys()] } : {}),
+                    ...(repeated ? { repeated: true } : {}),
+                    failures: hardFailures(verdict).length,
+                },
+            };
             /** The config now allows all hard failures: a check run without Claude is enough, no fix. */
             const recheck = async (advice) => {
                 chat.notice(t('run.flow.ignoredRecheck'));
@@ -223,7 +255,7 @@ const createFixer = ({ sandbox, openSandbox }) => {
             for (;;) {
                 // If the human adopts a config change in the conversation that allows all failures, it continues without another click.
                 const changed = talker === null || talker.over() || talker.configChanged === undefined ? null : talker.configChanged().then(() => ({ configChanged: true }));
-                const answer = await Promise.race([chat.discuss(question, options, question === undefined ? undefined : card), ...(changed === null ? [] : [changed])]);
+                const answer = await Promise.race([decideOn(chat, { ...decision, via: 'discuss', question, options, card: question === undefined ? undefined : card }), ...(changed === null ? [] : [changed])]);
                 question = undefined;
                 if (answer?.configChanged === true) {
                     if (cleared?.() === true) return recheck(await talker.end());
@@ -258,7 +290,7 @@ const createFixer = ({ sandbox, openSandbox }) => {
                 if (repairHere === undefined) return { advice, target: { ...failed, ...context } };
                 const repaired = await repairHere({ sandbox: box, reason: failed.reason, ...context });
                 if (repaired.candidate === undefined) {
-                    await decide(chat, resultCard('fail', t('run.flow.noNewRecording', { id: failed.id }), `${failureText(repaired.verdict)}.`, t('run.flow.planUnchanged')), [ONLY_CLOSE]);
+                    await decide(chat, 'recording.none', { test: spec.id, step: failed.id }, resultCard('fail', t('run.flow.noNewRecording', { id: failed.id }), `${failureText(repaired.verdict)}.`, t('run.flow.planUnchanged')), [ONLY_CLOSE]);
                 }
                 return { advice: advice ?? repaired.repairAdvice ?? null, target: null, repaired: { ...repaired, id: failed.id, reason: failed.reason } };
             }
@@ -302,7 +334,7 @@ const inPhase = (phase, card) => ({ ...card, phase });
  * @returns { next: 'record' } or the outcome for the chat
  */
 export const offerRecordRed = async (chat, draft) => {
-    const choice = await decide(chat, inPhase('reproduced', resultCard('next', t('run.guide.reproducedTitle', { file: draft.file }), t('run.guide.reproducedText'), t('run.guide.laterHint', { command: draft.record }))), [RECORD_RED, LATER]);
+    const choice = await decide(chat, 'reproduced.record', { draft: draft.file }, inPhase('reproduced', resultCard('next', t('run.guide.reproducedTitle', { file: draft.file }), t('run.guide.reproducedText'), t('run.guide.laterHint', { command: draft.record }))), [RECORD_RED, LATER]);
     return choice === RECORD_RED.id ? { next: 'record' } : { outcome: t('run.guide.later', { command: draft.record }) };
 };
 
@@ -325,7 +357,7 @@ const guideFix = async (chat, { red, test, again = false, title, adviseFix, stor
         options = [RETEST, LATER];
     };
     for (;;) {
-        const choice = await chat.choose('deciding', card.title, options, inPhase('fix', card));
+        const choice = await decideOn(chat, { id: 'fix.guide', context: { test, red: redContext(red), ...(again ? { again: true } : {}) }, options, card: inPhase('fix', card) });
         if (choice === FIX_BY_AGENT.id) {
             const advised = await adviseFix();
             if (advised === null) {
@@ -417,6 +449,26 @@ const decisionCard = (current, changes, seen, warnings = [], { fresh = [], whole
 };
 
 /**
+ * The same decision as data for the session and a run without a window: what would be adopted and everything that makes it
+ * more than recording the plan already in the file (decisions.mjs harmlessAdopt).
+ */
+const adoptContext = (current, changes, seen, warnings = [], { fresh = [], whole = false, expectChange = [], looks = [], previous } = {}) => ({
+    test: current.id,
+    whole,
+    steps: current.steps.length,
+    samePlan: samePlan(previous, current),
+    writes: current.writes === true,
+    expectChange: [...changes.flatMap((change) => change.expectChange ?? []), ...expectChange].map(({ id, before, after }) => ({ step: id, before, after })),
+    known: [...new Set([...fresh, ...changes.flatMap((change) => change.fresh)])],
+    removed: changes.flatMap(({ removed = [] }) => removed),
+    fixed: changedIds(changes),
+    stale: staleSteps(current).map(({ id }) => id),
+    seen: [...new Set(seen)],
+    warnings: warnings.length,
+    looks,
+});
+
+/**
  * The steps a recording's check run offers for `look: true` (look-hints.mjs), as the card's checkboxes: none ticked, the human
  * ticks what really shows fixed data.
  */
@@ -450,8 +502,10 @@ const changeNote = (changes) => {
  *                     recording; without it nothing is suggested
  * @param guide        a draft with a window (the guided bug fix): { cause, rerun }; once its red proof is saved the card offers the
  *                     fix, and testing again is `rerun()`, a run of the draft in a new window of this process (its exit code)
+ * @param previous     the test file as it was before: adopting a recording of the same plan that changes nothing it checks is
+ *                     harmless (decisions.mjs harmlessAdopt), which a run without a window may do on its own
  */
-export const fixFlow = async ({ draft, target = null, changes: done = [], whole = false, expectChange = [], fresh = [], discardCode, seenFailures = [], sandbox, openSandbox, execute, adopt, markLooks, log, head = () => undefined, advising: advisingFirst = true, guide }) => {
+export const fixFlow = async ({ draft, target = null, changes: done = [], whole = false, expectChange = [], fresh = [], discardCode, seenFailures = [], sandbox, openSandbox, execute, adopt, markLooks, log, head = () => undefined, advising: advisingFirst = true, guide, previous }) => {
     const fixer = createFixer({ sandbox, openSandbox });
     const changes = [...done];
     const seen = [...seenFailures];
@@ -510,7 +564,7 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
                     offered = repairAdvice === undefined ? await takeAdvice(concluded) : await absorb(repairAdvice, chat);
                     if (offered !== null) return { next: 'claude' };
                     if (failed) ({ next: offered, recheck: rechecking = false } = await settle(concluded));
-                    else await decide(chat, resultCard('fail', t('run.flow.noNewRecording', { id }), `${failureText(verdict)}.`, t('run.flow.planUnchanged')), [ONLY_CLOSE]);
+                    else await decide(chat, 'recording.none', { test: current.id, step: id }, resultCard('fail', t('run.flow.noNewRecording', { id }), `${failureText(verdict)}.`, t('run.flow.planUnchanged')), [ONLY_CLOSE]);
                     if (rechecking) return { next: 'check' };
                     return offered === null ? undefined : { next: 'claude' };
                 },
@@ -552,7 +606,7 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
                     red = true;
                     const id = redStep(current);
                     const proof = resultCard('info', t('run.flow.redTitle', { id }), t('run.flow.redText', { id }), t('run.flow.redMuted', { test: current.id }));
-                    choice = await decide(chat, guide === undefined ? proof : inPhase('red', proof), [adoptButton(current.steps.length), DISCARD]);
+                    choice = await decide(chat, 'red.proof', { test: current.id, step: id, run: runId }, guide === undefined ? proof : inPhase('red', proof), [adoptButton(current.steps.length), DISCARD]);
                     if (choice !== ADOPT.id) return { outcome: t('run.flow.discarded') };
                     current = withRed(current, runId, head);
                     saved = adopt(current, undefined, {});
@@ -586,10 +640,11 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
                     const looks = suggesting ? (concluded.lookCandidates ?? []).filter((id) => current.steps.some((step) => step.id === id && step.look !== true)) : [];
                     const text = decisionText(current, changes, seen, verdict.warnings, { fresh, whole, expectChange, looks });
                     const card = decisionCard(current, changes, seen, verdict.warnings, { fresh, whole, expectChange });
+                    const context = adoptContext(current, changes, seen, verdict.warnings, { fresh, whole, expectChange, looks, previous });
                     let picked = [];
-                    if (looks.length === 0) choice = await chat.choose('deciding', text, options, card);
-                    else ({ choice, picked } = await chat.choosePicks('deciding', text, options, { ...card, picks: lookPicks(current, looks) }));
-                    if (choice === 'rerecord-next' && await fixer.open(chat, (message) => decide(chat, resultCard('warn', t('run.flow.cannotFix'), `${withoutDot(message)}.`), [ONLY_CLOSE])) !== null) {
+                    if (looks.length === 0) choice = await decideOn(chat, { id: 'recording.adopt', context, question: text, options, card });
+                    else ({ choice, picked } = await decideOn(chat, { id: 'recording.adopt', context, question: text, options, card: { ...card, picks: lookPicks(current, looks) }, via: 'picks' }));
+                    if (choice === 'rerecord-next' && await fixer.open(chat, (message) => decide(chat, 'agent.unavailable', {}, resultCard('warn', t('run.flow.cannotFix'), `${withoutDot(message)}.`), [ONLY_CLOSE])) !== null) {
                         offered = { id: stale.id, reason: t('run.flow.stillStale'), rerecord: true };
                         return { next: 'claude' };
                     }
@@ -617,7 +672,7 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
                 }
                 // All steps passed, but hard failures: if they are only script errors, they can be ignored and the run repeated.
                 const ignorable = concluded.ignore !== undefined;
-                const answer = await decide(chat, resultCard('fail', t('run.flow.checkFailed'), `${failureText(verdict)}.${findingsText(verdict)}`, t('run.flow.planUnchanged')),
+                const answer = await decide(chat, 'check.failed', { test: current.id, failures: hardFailures(verdict).length }, resultCard('fail', t('run.flow.checkFailed'), `${failureText(verdict)}.${findingsText(verdict)}`, t('run.flow.planUnchanged')),
                     ignorable ? [IGNORE_ERRORS, { ...ONLY_CLOSE, primary: false }] : [ONLY_CLOSE]);
                 if (ignorable && answer === IGNORE_ERRORS.id) {
                     const added = concluded.ignore();
@@ -667,20 +722,21 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
  * @param sandbox  Docker, token and image
  * @param execute  a single run, returns { exitCode, verdict, candidate, failed }
  * @param guide    a draft: the guided bug fix after its red proof (fixFlow)
+ * @param previous the test file being recorded again, if there is one (fixFlow)
  */
-export const recordFlow = async ({ sandbox, execute, adopt, markLooks, log, head, guide }) => {
+export const recordFlow = async ({ sandbox, execute, adopt, markLooks, log, head, guide, previous }) => {
     const recorded = await execute({
         sandbox,
         conclude: async ({ verdict, candidate, chat }) => {
             // The recording is done: the check run comes in a new window.
             if (candidate !== undefined) return { next: 'check' };
-            await decide(chat, resultCard('fail', t('run.flow.noRecording'), `${failureText(verdict)}.`, t('run.flow.oldPlanUnchanged')), [ONLY_CLOSE]);
+            await decide(chat, 'recording.none', { test: previous?.id }, resultCard('fail', t('run.flow.noRecording'), `${failureText(verdict)}.`, t('run.flow.oldPlanUnchanged')), [ONLY_CLOSE]);
             return undefined;
         },
     });
     if (recorded.candidate === undefined) return recorded.exitCode;
     // The check run of a recording costs no further tokens unless asked: advice only comes once a step gets fixed.
-    return fixFlow({ draft: recorded.candidate, whole: true, expectChange: recorded.expectChange ?? [], fresh: recorded.fresh ?? [], seenFailures: hardFailures(recorded.verdict), sandbox, execute, adopt, markLooks, log, head, advising: false, guide });
+    return fixFlow({ draft: recorded.candidate, whole: true, expectChange: recorded.expectChange ?? [], fresh: recorded.fresh ?? [], seenFailures: hardFailures(recorded.verdict), sandbox, execute, adopt, markLooks, log, head, advising: false, guide, previous });
 };
 
 /**
@@ -808,7 +864,7 @@ export const runFlow = async (options) => {
                         // A picked step: its entry, everything before it done. Without a step the whole test up to its last restorable step.
                         const about = { test, step: step ?? last ?? t('run.develop.allSteps'), role };
                         const key = step === undefined ? 'run.develop.confirmRestore' : 'run.develop.confirmEntry';
-                        answer = await chat.choose('deciding', t(role ? key : `${key}NoRole`, about), [openPicked(step ?? last), CANCEL_RESTORE]);
+                        answer = await decideOn(chat, { id: 'state.restore', context: { test, step: step ?? last ?? null, ...(role === undefined ? {} : { role }) }, question: t(role ? key : `${key}NoRole`, about), options: [openPicked(step ?? last), CANCEL_RESTORE] });
                     } finally {
                         confirming = false;
                     }
@@ -873,7 +929,7 @@ export const runFlow = async (options) => {
                         rerun = await guideFix(chat, { red: redBundle(current, guide.cause), test: current.id, again: known, title, adviseFix, store: (advised) => keep(advised, chat, { offer: false }) });
                         return rerun ? windowAfter() : { outcome: t('run.guide.later', { command: `${cawCommand()} run ${current.id}` }) };
                     }
-                    await decide(chat, resultCard('info', t(known ? 'run.flow.stillRedTitle' : 'run.flow.redTitle', { id }), t(known ? 'run.flow.stillRedText' : 'run.flow.redText', { id }), t('run.flow.stillRedMuted', { test: current.id })), [ONLY_CLOSE]);
+                    await decide(chat, 'red.still', { test: current.id, step: id }, resultCard('info', t(known ? 'run.flow.stillRedTitle' : 'run.flow.redTitle', { id }), t(known ? 'run.flow.stillRedText' : 'run.flow.redText', { id }), t('run.flow.stillRedMuted', { test: current.id })), [ONLY_CLOSE]);
                     return undefined;
                 }
                 /** After Claude's advice. @returns true if that settles everything */
@@ -885,7 +941,7 @@ export const runFlow = async (options) => {
                         // Only what really changed: whoever rejected the code change and only adopted the config reads it that way.
                         const app = appFilesOf(advised.files);
                         const what = app.length > 0 ? t('run.flow.appChanged', { files: app.join(', ') }) : t('run.flow.filesChanged', { files: advised.files.join(', ') });
-                        rerun = await decide(chat, resultCard('next', t('run.flow.rerunTitle'), t('run.flow.rerunOffer', { id: failed.id, what })), [RERUN, CLOSE]) === RERUN.id;
+                        rerun = await decide(chat, 'advice.rerun', { test: current.id, step: failed.id, files: advised.files }, resultCard('next', t('run.flow.rerunTitle'), t('run.flow.rerunOffer', { id: failed.id, what })), [RERUN, CLOSE]) === RERUN.id;
                         return true;
                     }
                     return false;
@@ -896,14 +952,14 @@ export const runFlow = async (options) => {
                 // environment passed too, while this window waits.
                 if (!failed && guide !== undefined && verdict.status === 'pass' && current.red !== undefined) {
                     const id = current.red.step;
-                    if (await decide(chat, inPhase('green', resultCard('next', t('run.guide.greenTitle', { id }), t('run.guide.greenText', { test: current.id }))), [PROMOTE, LATER]) !== PROMOTE.id) {
+                    if (await decide(chat, 'fix.green', { test: current.id, step: id }, inPhase('green', resultCard('next', t('run.guide.greenTitle', { id }), t('run.guide.greenText', { test: current.id }))), [PROMOTE, LATER]) !== PROMOTE.id) {
                         return { outcome: t('run.guide.later', { command: `${cawCommand()} run ${current.id} --promote` }) };
                     }
                     learnFrom(concluded);
                     chat.progress(t('run.guide.promoting'));
                     const promoted = await guide.promote({ runId: concluded.runId });
                     if (promoted.ok) return { outcome: t('run.guide.promoted', promoted) };
-                    await decide(chat, inPhase('promoted', resultCard('fail', t('run.guide.refusedTitle'), closed(withoutDot(promoted.reason)), t('run.guide.refusedMuted', { test: current.id }))), [ONLY_CLOSE]);
+                    await decide(chat, 'fix.refused', { test: current.id }, inPhase('promoted', resultCard('fail', t('run.guide.refusedTitle'), closed(withoutDot(promoted.reason)), t('run.guide.refusedMuted', { test: current.id }))), [ONLY_CLOSE]);
                     return undefined;
                 }
                 if (!failed) {
@@ -917,7 +973,7 @@ export const runFlow = async (options) => {
                         let card = resultCard('info', t('run.flow.runPassedTitle'), details);
                         if (verdict.status !== 'pass') card = resultCard('fail', t('run.flow.runFailedTitle'), details);
                         else if (findingsText(verdict) !== '') card = resultCard('warn', t(hardFailures(verdict).length > 0 ? 'run.flow.runErrorsTitle' : 'run.flow.runWarnedTitle'), details);
-                        await decide(chat, card, [ONLY_CLOSE]);
+                        await decide(chat, 'run.result', { test: current.id, status: verdict.status }, card, [ONLY_CLOSE]);
                     }
                     return;
                 }
@@ -971,7 +1027,7 @@ export const runFlow = async (options) => {
         log(t('run.flow.rerunning'));
         return runFlow({ ...options, spec: current, openSandbox: fixer.sandbox() === undefined ? openSandbox : async () => fixer.sandbox() });
     }
-    const shared = { discardCode: EXIT.fail, sandbox: fixer.sandbox(), openSandbox, execute, adopt, log, head };
+    const shared = { discardCode: EXIT.fail, sandbox: fixer.sandbox(), openSandbox, execute, adopt, log, head, previous: spec };
     if (repaired !== null) {
         return fixFlow({ ...shared, draft: carry(repaired.candidate, current, repaired.id), changes: [changeOf(repaired)], seenFailures: hardFailures(repaired.verdict) });
     }

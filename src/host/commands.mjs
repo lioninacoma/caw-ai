@@ -24,6 +24,7 @@ import { maskArgs, parseJsonc, projectImage, renderDockerfile, templatePath, too
 import { describeCode } from './code-source.mjs';
 import { ignoreAuthDir, requireTestUser } from './test-users.mjs';
 import { ensureMcpEntry } from './mcp-entry.mjs';
+import { decide } from './decisions.mjs';
 import { projectPath } from './project-path.mjs';
 import { changedFiles, shortHead } from './git.mjs';
 import { brokenChain, checkTest, draftIds, draftPath, environmentProblems, loadDraft, loadTest, pendingSteps, recordingHints, setStepLooks, staleSteps, testExists, testPath, withDefaults, writeTest } from './test-file.mjs';
@@ -817,7 +818,7 @@ const quoted = (message) => t('cli.dialogQuoted', { message });
 const askDialog = async (chat, { type, message, defaultValue }) => {
     if (type === 'prompt') {
         const card = { kind: 'result', tone: 'ask', title: t('cli.dialogValue'), text: quoted(message), muted: t('cli.dialogPrompt', { value: defaultValue ?? '' }) };
-        const answer = await chat.choose('discussing', card.title, [DIALOG_OK(), DIALOG_CANCEL()], card);
+        const answer = await decide(chat, { id: 'app.dialog', context: { type, message }, kind: 'discussing', options: [DIALOG_OK(), DIALOG_CANCEL()], card });
         if (answer === null) return null;
         if (typeof answer === 'object') return { accept: true, value: answer.message };
         return answer === 'ok' ? { accept: true, value: defaultValue ?? '' } : { accept: false };
@@ -827,7 +828,7 @@ const askDialog = async (chat, { type, message, defaultValue }) => {
     if (type === 'alert') title = t('cli.dialogSays');
     else if (type === 'beforeunload') title = t('cli.dialogLeave');
     const card = { kind: 'result', tone: type === 'alert' ? 'info' : 'ask', title, text: quoted(message) };
-    const answer = await chat.choose('deciding', title, type === 'alert' ? [DIALOG_OK()] : [DIALOG_OK(), DIALOG_CANCEL()], card);
+    const answer = await decide(chat, { id: 'app.dialog', context: { type, message }, question: title, options: type === 'alert' ? [DIALOG_OK()] : [DIALOG_OK(), DIALOG_CANCEL()], card });
     return answer === null ? null : { accept: answer === 'ok' };
 };
 
@@ -898,7 +899,7 @@ const startRecording = async (root, config, spec, checked, { exists, conversatio
             let card = { kind: 'result', tone: 'ask', title: t('cli.questionNew', { id: spec.id }) };
             if (recorded) card = { ...card, title: t('cli.questionRecorded', { id: spec.id }), text: t('cli.questionRecordedWhy', { id: spec.id }) };
             else if (exists) card = { ...card, title: t('cli.questionDescribed', { id: spec.id }), text: t('cli.questionDescribedWhy', { id: spec.id }) };
-            const choice = await Promise.race([chat.choose('choosing', card.title, options, card), session.closed.then(() => null)]);
+            const choice = await Promise.race([decide(chat, { id: 'record.start', context: { test: spec.id, exists, recorded, ...(reuse === null ? {} : { reuse: last.items.length }) }, kind: 'choosing', options, card }), session.closed.then(() => null)]);
             if (choice === null) throw aborted();
             if (choice === 'follow' || choice === 'reuse') handOver();
             if (choice === 'follow') return undefined;
