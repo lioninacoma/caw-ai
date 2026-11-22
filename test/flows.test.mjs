@@ -641,7 +641,7 @@ test('Test run: a design not met offers to have it built or to close, never to f
     assert.deepEqual(advised.questions[0].options, ['close']);
 });
 
-test('Test run: a design not met offers to open the window at that step with the design over the app, in this process', async () => {
+test('Test run: a design not met offers to open the window at that step with its design, in this process', async () => {
     const reason = 'S2 entspricht nicht seinem Zielbild: design/s2.html Fehlt: button "Speichern".';
     const opened = [];
     const openDesign = async (step) => {

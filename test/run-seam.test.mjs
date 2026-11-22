@@ -239,7 +239,7 @@ test('Seam: open --design lists the deviations anew after F5, a reload of the wi
     assert.equal(code, EXIT.pass);
     const designs = bench.calls.filter(([name]) => name === 'design').map(([, given]) => given.rows.map(({ text }) => text).join());
     assert.deepEqual(designs, ['Abweichung 1', 'Abweichung 2', 'Abweichung 3', 'Abweichung 4'], 'once at open, then after F5, the window reload and restoring');
-    assert.deepEqual(bench.calls.filter(([name]) => name === 'design').map(([, given]) => given.on), [true, undefined, undefined, undefined], 'F7 shown or hidden stays');
+    assert.deepEqual(bench.calls.filter(([name]) => name === 'design').map(([, given]) => given.mode), ['side', undefined, undefined, undefined], 'side by side at first, then the view F7 left stays');
     assert.equal(h.notices.filter((text) => /neu aufgelistet/.test(text)).length, 3);
 });
 

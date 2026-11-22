@@ -79,7 +79,7 @@ Commands:`,
                                          things, develop with the agent. With <test>: replay it first. With @<S4>: up to the
                                          entry of S4 (its navigation runs, its inputs and check stay open). Learns
                                          nothing, writes no test file
-      [--design]                         With @<S4>: through S4, its target design over the app (F7)
+      [--design]                         With @<S4>: through S4, its target design beside the app (F7)
       [--role <role>]                    Without a test only; not needed if the config has just one
       [--step-timeout <duration>]        Time limit per step while replaying, default 30s
       [--agent local|docker] [--attach [<key>]] [--agent-timeout <duration>] [--max-actions <n>]

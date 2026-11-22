@@ -32,7 +32,7 @@ test('workbench: Graphite in the personal mode, no theme machinery, and a title 
     assert.match(html, /font-family:"Geist"/);
     assert.match(html, /<svg class="logo"/);
     assert.match(workbenchHtml({ appUrl: 'about:blank', title: 't' }), /data-pref="system"/);
-    // F7 was the theme switch; it is the target design over the app now (the menu entry with id mDesign).
+    // F7 was the theme switch; it is the target design's view now (the menu entry with id mDesign).
     assert.doesNotMatch(html.replace(/base64,[A-Za-z0-9+/=]+/g, ''), /theme|cawRaven|cawGlyph|font-crt/i);
     const script = html.slice(html.lastIndexOf('<script>'));
     assert.doesNotMatch(script.slice(0, script.indexOf('</script>')), /<\/script><b>/);

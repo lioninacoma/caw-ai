@@ -42,8 +42,10 @@ export const STATE_BINDING = 'cawState';
 /** Console tools (caw.ready(), caw.locator(el)): read-only answers from the host. */
 export const READY_BINDING = 'cawReady';
 export const LOCATE_BINDING = 'cawLocate';
-/** The target design over the app (F7): the workbench reports on/off, the host keeps it for reloads. */
+/** The target design (F7): the workbench reports its mode, the host keeps it for reloads. */
 export const DESIGN_BINDING = 'cawDesign';
+/** How the target design shows, in the order F7 goes round them; the first is the default: beside the app, over it, hidden. */
+export const DESIGN_MODES = ['side', 'overlay', 'off'];
 /**
  * The chat runs in a sandboxed iframe without allow-same-origin, so with its own opaque origin. The workbench shares its
  * origin with the application (so top.Ext & co. work). Without the sandbox the application could reach the chat and decide
@@ -276,12 +278,14 @@ grid-template-areas:"steps browser chat"}
 #app{flex:1;min-height:0;width:100%;border:0;display:block;background:#fff}
 /* A pinned viewport: the frame has exactly the recorded size, scaled down (never up) to fit, centred. */
 #appBox.pinned{background:var(--sunk)}#appBox.pinned #app{flex:none;position:absolute;top:0;transform-origin:0 0}
-/* The target design over the app (F7): aligned with the frame, never in the way of the pointer. */
+/* The target design (F7): beside the app at the same scale, or over it aligned with the frame; never in the way of the pointer. */
 #design{position:absolute;top:0;left:0;transform-origin:0 0;pointer-events:none;max-width:none;z-index:2}#design.blend{mix-blend-mode:difference}
+#appBox.side #design{box-shadow:0 0 0 1px var(--line)}
+.dcap{position:absolute;z-index:3;padding:3px 0;font:600 11px/1 var(--font);letter-spacing:.04em;text-transform:uppercase;color:var(--muted);pointer-events:none}
 #designRows{position:absolute;right:8px;bottom:8px;z-index:3;max-width:min(420px,60%);max-height:40%;overflow:auto;margin:0;padding:6px 0;list-style:none;background:var(--panel);border:1px solid var(--line);border-radius:8px;font-size:12px}
 #designRows li{padding:4px 10px;color:var(--text)}
-/* Capturing a step's screen: the frame at its recorded size, unscaled and on top, without the overlay. */
-body.capture #appBox.pinned #app{position:fixed!important;left:0!important;top:0!important;transform:none!important;z-index:2147483647}body.capture #design,body.capture #designRows{display:none}
+/* Capturing a step's screen: the frame at its recorded size, unscaled and on top, without the design. */
+body.capture #appBox.pinned #app{position:fixed!important;left:0!important;top:0!important;transform:none!important;z-index:2147483647}body.capture #design,body.capture #designRows,body.capture .dcap{display:none}
 .drawer{display:none;flex:none;border-top:1px solid var(--line);background:var(--panel)}.drawer.open{display:block}
 .tabs{display:flex;align-items:center;gap:16px;height:34px;padding:0 14px;border-bottom:1px solid var(--line)}
 .tabs button[role=tab]{font:400 12px/1 var(--font);color:var(--muted);background:none;border:0;padding:0;height:100%;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
@@ -403,7 +407,7 @@ td.m{width:64px;color:var(--muted)}td.m.w{color:var(--warn)}td.p{width:auto;colo
 <section class="pa-steps win" id="stepsCard" aria-label="${t('workbench.steps')}">${pane('steps', t('workbench.steps'), t('workbench.stepsFold'), t('workbench.stepsUnfold'), 'F4', 'chev-l', 'chev-r', '<span class="cnt" id="tally"></span>')}
 <p id="leftNote" hidden></p><p class="hint" id="stepsHint">${t('workbench.stepsHint')}</p><div id="track"><ol id="steps" aria-label="${t('workbench.steps')}"></ol></div></section>
 <section class="pa-browser win" aria-label="${t('workbench.app')}"><div class="appbar"><span id="url"></span><span id="envBadge" class="bdg" hidden></span><span id="browserState"></span><span id="vp" hidden></span></div>
-<div id="appBox"><iframe id="app" name="${APP_FRAME}" title="${t('workbench.app')}" src="${esc(appUrl)}" allow="clipboard-write"></iframe><img id="design" alt="" hidden><ul id="designRows" hidden aria-label="${t('workbench.design')}"></ul></div>
+<div id="appBox"><iframe id="app" name="${APP_FRAME}" title="${t('workbench.app')}" src="${esc(appUrl)}" allow="clipboard-write"></iframe><img id="design" alt="" hidden><span id="appCap" class="dcap" hidden>${t('workbench.app')}</span><span id="designCap" class="dcap" hidden>${t('workbench.design')}</span><ul id="designRows" hidden aria-label="${t('workbench.design')}"></ul></div>
 <div class="drawer" id="drawer"><div class="tabs" role="tablist"><button type="button" role="tab" data-tab="requests" aria-selected="false">${t('workbench.requests')}<span class="count" data-count="requests">0</span></button><button type="button" role="tab" data-tab="console" aria-selected="false">${t('workbench.console')}<span class="count" data-count="console">0</span></button><span class="end"><span>F2 · F3 ·</span><button type="button" id="drawerClose" aria-label="${t('workbench.drawerCloseLabel')}">${t('workbench.drawerEsc')}</button></span></div>
 <div class="panel" id="panel"></div></div>
 <div class="afoot"><button type="button" id="footRequests" data-tabkey="requests" data-press="F2" title="${t('workbench.requests')} (F2)"></button><span class="sep">·</span><button type="button" id="footConsole" data-tabkey="console" data-press="F3" title="${t('workbench.console')} (F3)"></button><span class="keys">F2 · F3</span></div></section>
@@ -733,7 +737,7 @@ const press=(key)=>{
   if(key==='Ctrl+K'){if(menuBox.hidden)openMenu();else closeMenu();return true;}
   if(key==='Ctrl+J')return popChat();
   if(key==='F2'||key==='F3'){openSettings(false);select(key==='F2'?'requests':'console');}else if(key==='F4')toggleFold('steps');else if(key==='F6')toggleFold('chat');
-  else if(key==='F7')toggleDesign();else if(key==='F8')solo();else if(key==='F10')setStill(!still());else if(key==='F9'||key==='Escape')toChat(key);else return false;
+  else if(key==='F7')cycleDesign();else if(key==='F8')solo();else if(key==='F10')setStill(!still());else if(key==='F9'||key==='Escape')toChat(key);else return false;
   return true;};
 addEventListener('keydown',(event)=>{
   if(isRefreshKey(event)){event.preventDefault();refresh();return;}
@@ -775,31 +779,44 @@ new MutationObserver(follow).observe($('steps'),{subtree:true,childList:true,att
 new ResizeObserver(follow).observe(track);
 // The pinned viewport of the app frame: { width, height } or null (the frame fills its pane). The bar names its size.
 let pinned=null;
-const fitApp=()=>{const box=$('appBox');const app=$('app');box.classList.toggle('pinned',pinned!==null);$('vp').hidden=pinned===null;
+// Side by side the pane holds two of them, frame and design, at one scale with a gap between.
+const SIDE_GAP=16;
+const fitApp=()=>{const box=$('appBox');const app=$('app');const side=pinned!==null&&design?.mode==='side';
+  box.classList.toggle('pinned',pinned!==null);box.classList.toggle('side',side);box.dataset.design=design?.mode??'';$('vp').hidden=pinned===null;
   if(pinned===null){app.style.width=app.style.height=app.style.transform=app.style.left='';box.removeAttribute('title');placeDesign(1,0);return;}
-  const scale=Math.min(1,box.clientWidth/pinned.width,box.clientHeight/pinned.height);
+  const across=side?2:1;const gap=side?SIDE_GAP:0;
+  const scale=Math.min(1,Math.max(0,box.clientWidth-gap)/(pinned.width*across),box.clientHeight/pinned.height);
   app.style.width=pinned.width+'px';app.style.height=pinned.height+'px';app.style.transform='scale('+scale+')';
-  app.style.left=Math.max(0,Math.round((box.clientWidth-pinned.width*scale)/2))+'px';placeDesign(scale,parseFloat(app.style.left));
+  const left=Math.max(0,Math.round((box.clientWidth-pinned.width*scale*across-gap)/2));
+  app.style.left=left+'px';placeDesign(scale,side?left+Math.round(pinned.width*scale)+gap:left,left);
   $('vp').textContent=pinned.width+' × '+pinned.height;
   box.title=$('vp').title=fill('workbench.page.viewportPinned',{width:pinned.width,height:pinned.height,percent:Math.round(scale*100)});};
 new ResizeObserver(fitApp).observe($('appBox'));
-// The step's target design over the app: { src, opacity, blend, width, rows, on } or null. Drawn at the recorded width and
-// scaled like the frame, so design and app line up pixel for pixel. F7 shows and hides it; the host keeps it for reloads.
-let design=null;let designAt={scale:1,left:0};
-const placeDesign=(scale,left)=>{designAt={scale,left};const img=$('design');const rows=$('designRows');$('mDesign').hidden=design===null;
-  if(design===null){img.hidden=rows.hidden=true;img.removeAttribute('src');rows.replaceChildren();return;}
+// The step's target design: { src, opacity, blend, width, rows, mode } or null. Drawn at the recorded width and scaled like
+// the frame. mode 'side' (the default) shows it beside the app, so text that is data (a long run tag) moves nothing;
+// 'overlay' lays it over the app pixel for pixel, half transparent; 'off' hides it. F7 goes round them; the host keeps the
+// mode for reloads.
+const DESIGN_MODES=${json(DESIGN_MODES)};
+let design=null;
+// Side by side each gets its name under it (inside the pane when the two fill its height).
+const placeDesign=(scale,left,appLeft)=>{const img=$('design');const rows=$('designRows');const caps=[$('appCap'),$('designCap')];const item=$('mDesign');item.hidden=design===null;
+  if(design===null){img.hidden=rows.hidden=true;for(const cap of caps)cap.hidden=true;img.removeAttribute('src');rows.replaceChildren();return;}
+  const next=DESIGN_MODES[(DESIGN_MODES.indexOf(design.mode)+1)%DESIGN_MODES.length];item.querySelector('.nm').textContent=T['workbench.page.design.'+next];
   if(img.getAttribute('src')!==design.src)img.src=design.src;
-  img.hidden=!design.on;rows.hidden=!design.on||rows.children.length===0;img.style.opacity=String(design.opacity);img.classList.toggle('blend',design.blend==='difference');
-  img.style.width=(design.width??pinned?.width??$('app').clientWidth)+'px';img.style.left=left+'px';img.style.transform='scale('+scale+')';};
+  const on=design.mode!=='off';const over=design.mode==='overlay';const side=design.mode==='side'&&pinned!==null;
+  img.hidden=!on;rows.hidden=!on||rows.children.length===0;
+  img.style.opacity=over?String(design.opacity):'1';img.classList.toggle('blend',over&&design.blend==='difference');
+  img.style.width=(design.width??pinned?.width??$('app').clientWidth)+'px';img.style.left=left+'px';img.style.transform='scale('+scale+')';
+  const top=side?Math.max(0,Math.min(Math.round(pinned.height*scale)+6,$('appBox').clientHeight-26)):0;
+  caps.forEach((cap,i)=>{cap.hidden=!side;cap.style.top=top+'px';cap.style.left=((i===0?appLeft:left)??0)+'px';});};
 const designRows=(list)=>{$('designRows').replaceChildren(...list.map((row)=>{const li=document.createElement('li');li.textContent=row.text;li.title=row.text;return li;}));};
-const toggleDesign=()=>{if(design===null)return;design.on=!design.on;placeDesign(designAt.scale,designAt.left);window.${DESIGN_BINDING}?.(design.on);};
+const cycleDesign=()=>{if(design===null)return;design.mode=DESIGN_MODES[(DESIGN_MODES.indexOf(design.mode)+1)%DESIGN_MODES.length];fitApp();window.${DESIGN_BINDING}?.(design.mode);};
 // The badge shows "Settings" while the settings page is open; the run's title waits here.
 let titleNodes=[];
 window.workbench={
   viewport:(size)=>{pinned=size&&size.width>0&&size.height>0?{width:Math.round(size.width),height:Math.round(size.height)}:null;fitApp();},
-  design:(given)=>{design=given?{src:String(given.src),opacity:Math.min(1,Math.max(0.05,Number(given.opacity)||0.5)),blend:given.blend==='difference'?'difference':'normal',width:Number(given.width)>0?Number(given.width):null,on:given.on!==false}:null;
+  design:(given)=>{design=given?{src:String(given.src),opacity:Math.min(1,Math.max(0.05,Number(given.opacity)||0.5)),blend:given.blend==='difference'?'difference':'normal',width:Number(given.width)>0?Number(given.width):null,mode:DESIGN_MODES.includes(given.mode)?given.mode:DESIGN_MODES[0]}:null;
     designRows(given?.rows??[]);fitApp();},
-  designOn:(on)=>{if(design===null)return;design.on=on===true;placeDesign(designAt.scale,designAt.left);},
   // While the host captures a step: the frame unscaled, on top, without the overlay; resolves once it is laid out.
   unscaled:(on)=>{document.body.classList.toggle('capture',on===true);return new Promise((resolve)=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(true))));},
   // The first entry is the title: [label, sentence, badge]. The badge shows the mode only ("Claude records"), the breadcrumb
@@ -917,7 +934,7 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
     // confirms it in the chat, which has an opaque origin and a token the application cannot read (chat.mjs).
     let bench = benches.get(page);
     if (bench === undefined) {
-        const holder = { refresh: null, rebuild: null, html: null, chat: null, app: null, navigations: new WeakMap(), fullscreen: null, chatPop: null, state: null, debug: null, designOn: null };
+        const holder = { refresh: null, rebuild: null, html: null, chat: null, app: null, navigations: new WeakMap(), fullscreen: null, chatPop: null, state: null, debug: null, designMode: null };
         bench = holder;
         benches.set(page, holder);
         // The workbench lives at the application's address: the tool answers only the top window's document.
@@ -969,10 +986,10 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
             if (frame !== page.mainFrame() || holder.chatPop === null) return;
             await holder.chatPop(on === true);
         });
-        // The design overlay shown or hidden (F7): the host keeps it for reloads.
-        await page.exposeBinding(DESIGN_BINDING, ({ frame }, on) => {
-            if (frame !== page.mainFrame() || holder.designOn === null) return;
-            holder.designOn(on === true);
+        // The target design's mode after F7 (beside the app, over it, hidden): the host keeps it for reloads.
+        await page.exposeBinding(DESIGN_BINDING, ({ frame }, mode) => {
+            if (frame !== page.mainFrame() || holder.designMode === null || !DESIGN_MODES.includes(mode)) return;
+            holder.designMode(mode);
         });
         // caw.ready() and caw.locator(el) in the console: answers only, from whatever document calls them.
         await page.exposeBinding(READY_BINDING, async () => (holder.debug === null ? null : holder.debug.ready()));
@@ -1005,8 +1022,8 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
     bench.chatPop = async (on) => {
         shown.chatPop = on;
     };
-    bench.designOn = (on) => {
-        if (shown.design !== null) shown.design = { ...shown.design, on };
+    bench.designMode = (mode) => {
+        if (shown.design !== null) shown.design = { ...shown.design, mode };
     };
     // When an item started running: the host measures the duration so it survives a workbench reload.
     const started = new Map();
@@ -1200,13 +1217,14 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
             return call('viewport', shown.viewport);
         },
         /**
-         * The step's target design over the app frame (F7 toggles it): { src (data URL), opacity, blend ('normal' or
-         * 'difference'), width (CSS px, the recorded viewport's), rows: [{ text, element? }], on }; null removes it. Without
-         * `on` a design already shown keeps whether F7 showed or hid it (rows listed anew). The page gets the rows' texts only;
-         * a row's element (a CSS path in the app) stays with the host.
+         * The step's target design with the app frame (F7 goes round its modes): { src (data URL), opacity and blend ('normal'
+         * or 'difference') for the overlay, width (CSS px, the recorded viewport's), rows: [{ text, element? }], mode (one of
+         * DESIGN_MODES) }; null removes it. Without `mode` a design already shown keeps the mode F7 left it in (rows listed
+         * anew), a new one starts side by side. The page gets the rows' texts only; a row's element (a CSS path in the app)
+         * stays with the host.
          */
         design: (given) => {
-            shown.design = given === null || given === undefined ? null : { ...given, on: given.on ?? shown.design?.on ?? true };
+            shown.design = given === null || given === undefined ? null : { ...given, mode: given.mode ?? shown.design?.mode ?? DESIGN_MODES[0] };
             return call('design', shown.design === null ? null : pageDesign(shown.design));
         },
         /**

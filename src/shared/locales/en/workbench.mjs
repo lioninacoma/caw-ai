@@ -176,4 +176,7 @@ export default {
     'workbench.page.stateGo': 'Open',
     'workbench.page.stateCancel': 'Cancel',
     'workbench.design': 'Target design',
+    'workbench.page.design.side': 'Target design beside the app',
+    'workbench.page.design.overlay': 'Target design over the app',
+    'workbench.page.design.off': 'Hide target design',
 };

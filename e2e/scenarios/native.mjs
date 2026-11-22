@@ -1308,7 +1308,8 @@ $A advise --file /tmp/a.json; echo "ADVISE Exit=$?"`;
 // ---- N17: the visual layer on n9-shadow. Screenshots per step; visual regression (look: true on S1 and S2) learns both
 // looks' style lines over two runs. The rename switch ("Archive" to "Archive all") keeps role and style: the look stays the
 // same. The restyle switch (Archive bold) changes a style: the chat window fails S1 and S2, "Neuen Look übernehmen" adopts
-// both at once and the next run compares the new look; open @S2 --design lays an .html design over the app and F7 toggles it.
+// both at once and the next run compares the new look; open @S2 --design shows an .html design beside the app and F7 goes
+// round its views (over the app, hidden, beside again).
 
 const LOOKED = 'rec-visual';
 const restyleSwitch = (on) => fetch(`http://127.0.0.1:${PORT}/api/restyle?on=${on ? 1 : 0}`, { method: 'POST' });
@@ -1371,7 +1372,7 @@ scenario('N17', 'Visual layer: step screenshots, learned look by style lines cha
         verify('the next run with the new look: Exit 0, S2 the same', green.code === 0 && greenStep?.visual?.verdict === 'same', `${green.code} ${green.note} ${JSON.stringify(greenStep?.visual)}`);
         await restyleSwitch(false);
 
-        // open @S2 --design: through S2, the design over the app; F7 hides and shows it.
+        // open @S2 --design: through S2, the design beside the app; F7 lays it over the app, hides it, puts it beside again.
         writeFileSync(join(designDir, 'n17.html'), MATCHING);
         writeWith('design/n17.html');
         const overlay = humans(async (chat) => {
@@ -1379,13 +1380,17 @@ scenario('N17', 'Visual layer: step screenshots, learned look by style lines cha
             await benchBack(chat);
             await stateOf(chat, 'developing');
             const shown = () => bench.evaluate(() => !document.getElementById('design').hidden && document.getElementById('design').getAttribute('src')?.startsWith('data:image/png') === true);
-            verify('open --design: the design lies over the app', await shown(), await bench.evaluate(() => document.getElementById('design')?.outerHTML.slice(0, 120)));
+            const view = () => bench.evaluate(() => document.getElementById('appBox').dataset.design);
+            const beside = () => bench.evaluate(() => document.getElementById('design').getBoundingClientRect().left >= document.getElementById('app').getBoundingClientRect().right);
+            verify('open --design: the design stands beside the app', await shown() && await view() === 'side' && await beside(), await bench.evaluate(() => document.getElementById('design')?.outerHTML.slice(0, 120)));
             const status = await appOf(bench).evaluate(() => document.getElementById('status').textContent);
             verify('open --design: through S2 (Saved)', status === 'Saved', status);
             await bench.keyboard.press('F7');
-            verify('F7 hides it', !(await shown()));
+            verify('F7 lays it over the app', await shown() && await view() === 'overlay' && !(await beside()), await view());
             await bench.keyboard.press('F7');
-            verify('F7 shows it again', await shown());
+            verify('F7 hides it', !(await shown()) && await view() === 'off', await view());
+            await bench.keyboard.press('F7');
+            verify('F7 puts it beside the app again', await shown() && await view() === 'side', await view());
             await decide(chat, 'Beenden');
         });
         const openCode = await open(native, [`${LOOKED}@S2`, '--design', ...target], { interactive: true, onChatOpen: overlay.onChatOpen });

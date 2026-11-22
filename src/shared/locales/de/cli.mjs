@@ -79,7 +79,7 @@ Befehle:`,
                                          ausprobieren, mit {agent} entwickeln. Mit <test>: erst abspielen. Mit @<S4>: bis
                                          zum Einstieg in S4 (seine Navigation läuft, Eingaben und Prüfung bleiben offen).
                                          Lernt nichts, schreibt keine Testdatei
-      [--design]                         Mit @<S4>: bis einschließlich S4, sein Zielbild über der App (F7)
+      [--design]                         Mit @<S4>: bis einschließlich S4, sein Zielbild neben der App (F7)
       [--role <rolle>]                   Nur ohne Test; nicht nötig, wenn die Config nur eine hat
       [--step-timeout <dauer>]           Zeitlimit je Schritt beim Abspielen, Standard 30s
       [--agent local|docker] [--attach [<key>]] [--agent-timeout <dauer>] [--max-actions <n>]

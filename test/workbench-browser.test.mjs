@@ -1408,7 +1408,7 @@ test('chat follows the end: new entries, a card that grows in place; scrolled up
     return undefined;
 });
 
-test('workbench: the target design lies over the scaled app frame, aligned; F7 toggles it, a reload keeps it; a capture is unscaled', async (t) => {
+test('workbench: the target design stands beside the scaled app frame at its scale; F7 lays it over the app, hides it, puts it beside again; a reload keeps the view; a capture is unscaled', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { bench, context } = await open(t);
     const page = bench.page;
@@ -1419,40 +1419,70 @@ test('workbench: the target design lies over the scaled app frame, aligned; F7 t
     const src = `data:image/png;base64,${(await maker.screenshot()).toString('base64')}`;
     await maker.close();
     await bench.viewport({ width: 1600, height: 900 });
-    await bench.design({ src, opacity: 0.4, blend: 'difference', width: 1600, rows: [{ text: 'Fehlt: button "Speichern"' }, { text: 'button "Speichern": color #ffffff → #000000' }], on: true });
+    await bench.design({ src, opacity: 0.4, blend: 'difference', width: 1600, rows: [{ text: 'Fehlt: button "Speichern"' }, { text: 'button "Speichern": color #ffffff → #000000' }] });
     const boxes = () => page.evaluate(() => {
         const box = (id) => {
             const rect = document.getElementById(id).getBoundingClientRect();
             return { left: Math.round(rect.left), top: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height) };
         };
-        return { app: box('app'), design: box('design'), hidden: document.getElementById('design').hidden, blend: getComputedStyle(document.getElementById('design')).mixBlendMode, pointer: getComputedStyle(document.getElementById('design')).pointerEvents };
+        const design = document.getElementById('design');
+        const style = getComputedStyle(design);
+        return {
+            app: box('app'), design: box('design'), pane: box('appBox'), hidden: design.hidden, caption: !document.getElementById('designCap').hidden,
+            blend: style.mixBlendMode, opacity: style.opacity, pointer: style.pointerEvents, mode: document.getElementById('appBox').dataset.design,
+            next: document.querySelector('#mDesign .nm').textContent,
+        };
     });
     assert.ok(await until(async () => (await boxes()).design.width > 0), 'the design shows');
-    const shown = await boxes();
-    assert.ok(shown.app.width < 1600, 'the frame is scaled down');
-    assert.deepEqual(shown.design, shown.app, 'design and frame cover the same pixels');
-    assert.equal(shown.blend, 'difference');
-    assert.equal(shown.pointer, 'none', 'clicks go through to the app');
+    // Side by side by default: the same size and top, the design to the right of the frame, both inside the pane.
+    const side = await boxes();
+    assert.equal(side.mode, 'side');
+    assert.ok(side.app.width < 1600, 'the frame is scaled down');
+    assert.deepEqual([side.design.width, side.design.height, side.design.top], [side.app.width, side.app.height, side.app.top], 'design and frame at one scale');
+    assert.ok(side.design.left >= side.app.left + side.app.width, 'the design beside the frame, not over it');
+    assert.ok(side.design.left + side.design.width <= side.pane.left + side.pane.width + 1, 'both fit the pane');
+    assert.equal(side.opacity, '1', 'beside the app the design is opaque');
+    assert.equal(side.blend, 'normal');
+    assert.equal(side.caption, true, 'named as the target design');
+    assert.equal(side.next, 'Zielbild über der App', 'the menu names what F7 does next');
+    assert.equal(side.pointer, 'none', 'clicks go through');
     // The deviations as rows below the design.
     const rows = page.locator('#designRows li');
     assert.equal(await rows.count(), 2);
     assert.equal(await rows.nth(0).textContent(), 'Fehlt: button "Speichern"');
-    // F7 hides it, also from the app; a reload of the whole workbench keeps that.
+    // F7: over the app, pixel for pixel, half transparent; the frame is as large as it can be again.
+    await page.keyboard.press('F7');
+    assert.ok(await until(async () => (await boxes()).mode === 'overlay'));
+    const over = await boxes();
+    assert.ok(over.app.width > side.app.width, 'alone the frame is larger');
+    assert.deepEqual(over.design, over.app, 'design and frame cover the same pixels');
+    assert.equal(over.blend, 'difference');
+    assert.equal(over.opacity, '0.4');
+    assert.equal(over.caption, false);
+    assert.equal(over.next, 'Zielbild ausblenden');
+    // F7 hides it; a reload of the whole workbench keeps that.
     await page.keyboard.press('F7');
     assert.ok(await until(async () => (await boxes()).hidden));
+    assert.equal(await page.locator('#designRows').isHidden(), true, 'the rows go with it');
     await page.reload({ waitUntil: 'domcontentloaded' });
     assert.ok(await until(() => page.evaluate(() => document.getElementById('design')?.getAttribute('src')?.startsWith('data:image/png') === true).catch(() => false)), 'the design is back');
     assert.equal((await boxes()).hidden, true, 'still hidden after the reload');
+    // F7 from the app: beside it again.
     await page.frameLocator('#app').locator('body').click();
     await page.keyboard.press('F7');
-    assert.ok(await until(async () => !(await boxes()).hidden), 'F7 from the app shows it again');
+    assert.ok(await until(async () => !(await boxes()).hidden && (await boxes()).mode === 'side'), 'F7 from the app puts it beside the app again');
+    assert.ok(await until(async () => JSON.stringify((await boxes()).app) === JSON.stringify(side.app)), 'at the same place as at first');
+    // Rows listed anew without a mode keep the view F7 left.
+    await bench.design({ src, opacity: 0.4, blend: 'difference', width: 1600, rows: [] });
+    assert.equal((await boxes()).mode, 'side');
     // A step's capture: the frame unscaled at its recorded size, without the design; afterwards scaled as before.
     const png = await bench.unscaled(() => bench.view.screenshot({ scale: 'css' }));
     assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [1600, 900]);
-    assert.ok(await until(async () => JSON.stringify((await boxes()).app) === JSON.stringify(shown.app)), 'scaled again');
+    assert.ok(await until(async () => JSON.stringify((await boxes()).app) === JSON.stringify(side.app)), 'scaled again');
     assert.equal(await page.evaluate(() => document.body.classList.contains('capture')), false);
     await bench.design(null);
-    assert.equal(await page.evaluate(() => document.getElementById('design').hidden && document.getElementById('mDesign').hidden), true);
+    assert.equal(await page.evaluate(() => document.getElementById('design').hidden && document.getElementById('mDesign').hidden && document.getElementById('designCap').hidden && document.getElementById('appCap').hidden), true);
+    assert.equal(await page.evaluate(() => document.getElementById('appBox').classList.contains('side')), false, 'without a design the frame fills the pane alone');
     return undefined;
 });
 

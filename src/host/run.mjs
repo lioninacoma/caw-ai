@@ -1322,11 +1322,11 @@ ${text}`) ?? 0;
     };
 
     /**
-     * open <test>@S3 --design: the step's target design over the app (F7 toggles it), its deviations as rows. A row with an
-     * element hands that element to the attached session, as /element does. The rows are the page's: after F5, a reload of
-     * the window or a restored state (`again`) they are listed anew, F7's on or off stays, and the chat says so only when
-     * they changed; a design that is gone by then (another state, the file removed) leaves the app.
-     * @returns whether the overlay is shown
+     * open <test>@S3 --design: the step's target design beside the app (F7: over it, hidden, beside again), its deviations as
+     * rows. A row with an element hands that element to the attached session, as /element does. The rows are the page's:
+     * after F5, a reload of the window or a restored state (`again`) they are listed anew, the mode F7 left stays, and the
+     * chat says so only when they changed; a design that is gone by then (another state, the file removed) leaves the app.
+     * @returns whether the design is shown
      */
     let designShown = null;
     const showDesign = async (bench, { again = false } = {}) => {
@@ -1371,7 +1371,7 @@ ${text}`) ?? 0;
         const changed = designShown === null || designShown.file !== step.design || designShown.rows !== rows;
         const kept = again && designShown !== null && designShown.file === step.design;
         await bench.viewport(viewport);
-        await bench.design({ ...overlay, opacity: 0.5, blend: 'normal', ...(kept ? {} : { on: true }) });
+        await bench.design({ ...overlay, opacity: 0.5, blend: 'normal', ...(kept ? {} : { mode: 'side' }) });
         designShown = { file: step.design, rows };
         if (kept) {
             if (changed) chat?.notice(t('run.develop.designUpdated', { file: step.design, count: overlay.rows.length }));

@@ -73,13 +73,13 @@ Der Testplan kann die Vorgabe sein, bevor es den Bildschirm gibt. Schreib die n�
 
 Jeder Lauf beurteilt den Entwurf dann ohne KI, nachdem die Prüfung des Schritts bestanden hat: Bedienelemente, Überschriften, Beschriftungen und einige Stile je Bedienelement des gerenderten Entwurfs gegen die Seite der App ([Einzelheiten](test-files.de.md#zielbild)). Ist er nicht erfüllt, scheitert der Schritt mit kind `design`, und der Chat bietet an, ihn von deiner verbundenen Session umsetzen zu lassen, den Schritt mit dem Entwurf zu öffnen (**Mit Entwurf öffnen**, das Fenster von `caw open <test>@S4 --design` im selben Prozess) oder zu schließen, nie den Schritt zu beheben: Der Test stimmt, der Bildschirm ist noch nicht gebaut. Sind alle `needs` des ersten offenen Schritts auf der Seite, meldet der Lauf, dass er bereit zum Aufnehmen ist: `caw record <test>@S4 --env <env>`.
 
-Um zu sehen, wo der Bildschirm abweicht, öffne den Schritt mit dem Entwurf darüber:
+Um zu sehen, wo der Bildschirm abweicht, öffne den Schritt mit seinem Entwurf:
 
 ```bash
 caw open <test>@S4 --design --env local
 ```
 
-Das spielt bis einschließlich S4 (bei offenem S4: bis zu seinem Einstieg) und legt den Entwurf halb durchsichtig in der aufgenommenen Größe über die App (ein offener Schritt hat keine eigene: der Chat nennt den Schritt, dessen Größe es ist); **F7** zeigt und verbirgt ihn, auch über ein Neuladen hinweg. Darunter stehen die Abweichungen: fehlende Bedienelemente und abweichende Stile. Nach F5, einem Neuladen des Fensters und **Neu öffnen** (oder einem mit F1 gewählten Zustand) werden sie neu ermittelt und gehören so immer zur Seite, die du siehst; fehlt die Entwurfsdatei, nennt der Chat sie mit ihrem Schritt.
+Das spielt bis einschließlich S4 (bei offenem S4: bis zu seinem Einstieg) und zeigt den Entwurf neben der App, beide in der aufgenommenen Größe und im selben Maßstab (ein offener Schritt hat keine eigene: der Chat nennt den Schritt, dessen Größe es ist). Nebeneinander verschiebt Text, der Daten ist (ein langer Lauf-Tag, ein Name), nichts. **F7** wechselt die Ansicht: neben der App, halb durchsichtig über der App (deckungsgleich), ausgeblendet, wieder daneben; die Ansicht bleibt über ein Neuladen hinweg. Darunter stehen die Abweichungen: fehlende Bedienelemente und abweichende Stile. Nach F5, einem Neuladen des Fensters und **Neu öffnen** (oder einem mit F1 gewählten Zustand) werden sie neu ermittelt und gehören so immer zur Seite, die du siehst; fehlt die Entwurfsdatei, nennt der Chat sie mit ihrem Schritt.
 
 ## Tests in normaler Sprache: einmal aufnehmen, ohne KI abspielen
 
@@ -768,7 +768,7 @@ Hell und dunkel: Werkbank, Chat, Berichtsseite und die Karte „caw explore“ f
 | F2, F3 | Requests, Konsole |
 | F4, F6 | Schritte, Chat ein- oder ausklappen |
 | F5 | Die Anwendung ohne Cache neu laden (nach der Übergabe) |
-| F7 | Zielbild über der App ein und aus (`open … --design`) |
+| F7 | Zielbild neben der App, darüber, ausgeblendet (`open … --design`) |
 | F8 | Nur Anwendung und zurück |
 | Strg+J | In Nur Anwendung: Chat über der Anwendung ein- oder ausblenden |
 | F9 | Den Agenten anhalten oder weitermachen lassen |

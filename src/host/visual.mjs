@@ -262,7 +262,7 @@ export const withAdoptedLooks = (spec, looks, day = new Date().toISOString().sli
 // ------------------------------------------------------------------------------------------------------------ design overlay
 
 /**
- * What the workbench lays over the app for `open <test>@S3 --design`: the .html design rendered without scripts or network
+ * What the workbench shows beside (F7: over) the app for `open <test>@S3 --design`: the .html design rendered without scripts or network
  * as an image at the recorded width, and the deviations as rows.
  * @param page     the app (session.page())
  * @param launch   () => a Playwright Browser for the design (closed again here)

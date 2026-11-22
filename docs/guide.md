@@ -73,13 +73,13 @@ The test plan can be the spec before the screen exists. Write the next steps at 
 
 Each run then judges the design without AI, after the step's check passed: the controls, headings, labels and a few styles per control of the rendered design against the app's page ([details](test-files.md#target-design)). Not met, the step fails with kind `design`, and the chat offers to have it built by your attached session, to open the step with its design (**Open with design**, the window of `caw open <test>@S4 --design` in the same process) or to close, never to fix the step: the test is right, the screen is not built yet. When the first pending step's `needs` are all on the page, the run says it is ready to record: `caw record <test>@S4 --env <env>`.
 
-To see where the screen is off, open the step with its design over it:
+To see where the screen is off, open the step with its design:
 
 ```bash
 caw open <test>@S4 --design --env local
 ```
 
-It plays through S4 (a pending S4: up to its entry) and lays the design over the app at the recorded size (a pending step has none of its own: the chat names the step whose size it is), half transparent; **F7** shows and hides it, also across reloads. Below it the deviations are listed: missing controls and differing styles. They are listed anew after F5, a reload of the window and **Open again** (or a state picked with F1), so they always belong to the page you see; a design file that is missing is named in the chat with its step.
+It plays through S4 (a pending S4: up to its entry) and shows the design beside the app, both at the recorded size and the same scale (a pending step has none of its own: the chat names the step whose size it is). Side by side, text that is data (a long run tag, a name) cannot shift anything. **F7** goes round the views: beside the app, over the app half transparent (pixel for pixel), hidden, beside again; the view stays across reloads. Below it the deviations are listed: missing controls and differing styles. They are listed anew after F5, a reload of the window and **Open again** (or a state picked with F1), so they always belong to the page you see; a design file that is missing is named in the chat with its step.
 
 ## Plain-language tests: record once, replay without AI
 
@@ -763,7 +763,7 @@ Light and dark: the workbench, the chat, the report page and the "caw explore" c
 | F2, F3 | Requests, console |
 | F4, F6 | Collapse or expand steps, chat |
 | F5 | Reload the app without cache (after the handover) |
-| F7 | Target design over the app, and away (`open … --design`) |
+| F7 | Target design beside the app, over it, hidden (`open … --design`) |
 | F8 | App only, and back |
 | Ctrl+J | In App only: show or hide the chat over the app |
 | F9 | Pause or continue the agent |
