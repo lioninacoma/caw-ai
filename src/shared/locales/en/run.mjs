@@ -450,6 +450,7 @@ export default {
     'run.mcp.designTooLarge': 'The file is larger than {max} MB.',
     'run.mcp.designNoText': 'The file is not UTF-8 text.',
     'run.mcp.designNoHtml': 'This is not an HTML page (no html, body, main, div, form or section element).',
+    'run.mcp.designArtboard': 'This is an artboard of a Design artifact (.dc.html): rendered without scripts, its template ({{…}}, <x-dc>, <sc-if>) would be judged as text. Put it as a static page: guide topic design, "Take a draft from a Design artifact".',
     'run.mcp.designLink': '{file} would lie outside caw/design or replace a link or folder; refused.',
     'run.mcp.designAsk': 'link changes the person\'s test file: only when they asked for it, then with personAsked: true.',
     'run.mcp.designReplaceAsk': '{file} is the target design of {steps}: replacing it changes what they are judged against. Only when the person asked for it, then put again with personAsked: true.',

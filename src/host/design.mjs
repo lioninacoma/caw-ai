@@ -72,6 +72,10 @@ export const designKind = (name) => {
     return lower.endsWith('.html') ? 'html' : null;
 };
 
+// An artboard of a Design artifact (.dc.html) is a template for the canvas runtime: rendered without it, its holes and
+// branches would be judged as text and a hole-bound style as the browser's default. It is put only as a static page (guide topic design).
+const ARTBOARD = /<x-dc\b|\sdata-dc-script\b|<sc-(?:if|for)\b|<dc-import\b|\{\{\s*[\w.$]+\s*\}\}/i;
+
 /**
  * Checks what caw_design put would write. Nothing about the content is run: html is only rendered later without scripts.
  * @param data the file's bytes
@@ -82,7 +86,8 @@ export const designProblem = (kind, data) => {
     if (data.length > DESIGN_LIMITS[kind]) return t('run.mcp.designTooLarge', { max: Math.round(DESIGN_LIMITS[kind] / 1024 / 1024) || 1 });
     const text = data.toString('utf8');
     if (text.includes('\u0000') || !Buffer.from(text, 'utf8').equals(data)) return t('run.mcp.designNoText');
-    return /<(?:html|body|main|div|form|section)\b/i.test(text) ? null : t('run.mcp.designNoHtml');
+    if (!/<(?:html|body|main|div|form|section)\b/i.test(text)) return t('run.mcp.designNoHtml');
+    return ARTBOARD.test(text) ? t('run.mcp.designArtboard') : null;
 };
 
 /**

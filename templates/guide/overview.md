@@ -41,7 +41,7 @@ caw is not a load test, not a crawler and not a test generator for apps the team
 | `caw_role` | Test users per role: list, add (names the variables), login (saved session), remove |
 | `caw_doctor`, `caw_validate`, `caw_list` | Checks and overview, no tokens |
 | `caw_reproductions` | Past reproductions with verdict and `ref`; `refs` names those without a run (topic `reproduce`) |
-| `caw_design` | Target designs under `caw/design`: `put` (.html), `list`, `link` a step only on the person's request; a test for a design: topic `design` |
+| `caw_design` | Target designs under `caw/design`: `put` (a static .html page; a Design artifact's artboard converted first), `list`, `link` a step only on the person's request; a test for a design: topic `design` |
 | `caw_start` | Start `run`, `record`, `open` or `reproduce` with you as the agent |
 | `caw_status` | Wait for a run; says which topics apply when it waits for you, and which decision it waits for (`waiting.decision`) |
 | `caw_decide` | Answer the waiting decision: a `free` option yourself, a `human` one only with the person's consent (topic `session`) |

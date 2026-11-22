@@ -21,7 +21,9 @@ agent of its own: runs you start are attached to you (`--attach`, topic `attach`
 4. **Write a test yourself:** write the plan (topic `tests`), check it with `caw_validate`, then `caw_start` with
    `command: "record"`: you follow the plan. Submit it unchanged with `plan`. A read-only plan you wrote needs no approval, the
    person decides at the end whether the proven test is adopted; a writing or changed plan gets the approval card. A test
-   for a target design the person gave you ("write a test for this design"): topic `design`, "Write a test for a design".
+   for a target design the person gave you ("write a test for this design"): topic `design`, "Write a test for a design"; a
+   link to a Design artifact: its artboard as a static page first, and in the app's style (same topic, "Take a draft from a
+   Design artifact").
 5. **Picked elements:** when the person picks an element with `/element` in the workbench chat while developing, `caw_selection`
    reads it: label, locator, component or source file and the step's requests. Start the code search there.
 6. **Reproduce a bug:** `caw_start` with `command: "reproduce"` and `bug`. You reproduce alone, without a plan or questions,

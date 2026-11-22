@@ -24,7 +24,8 @@ caw (`claude mcp add caw --scope project -- npx caw-ai mcp`) and stop.
    the changed files and lines in the chat. Never start a dev server or a build, never edit `caw/` or `.caw/`: a failing run
    is never made to pass by changing its test or recording; when it points to the app, find the cause and fix the app.
 6. When the person builds a screen against a target design (a Claude Design artifact, a Figma export), fetch it yourself and
-   write it with `caw_design` (`put`); link it to a step only when they ask. A step that fails with kind `design` is built in
+   write it with `caw_design` (`put`): a Design artifact's artboard as a static page, checked against the app's style first
+   (topic `design`, "Take a draft from a Design artifact"); link it to a step only when they ask. A step that fails with kind `design` is built in
    the app's code until it matches; read `caw_guide` topic `design`. When they ask you to write a test for a design, follow
    its recipe "Write a test for a design" (the plan in `caw/tests` is yours to write, topic `tests`): the reach recorded headless, the design's step pending and linked, the app built
    until `result.pendingDesign` is met, the whole test recorded headless, then `run` with `strict` green with the design met.

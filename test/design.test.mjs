@@ -112,6 +112,25 @@ test('caw_design checks: html, size cap', () => {
     assert.match(designProblem('html', Buffer.alloc(0)), /leer/);
 });
 
+// An artboard as a Design artifact holds it (shape of the format: template in <x-dc>, values from the logic script).
+const ARTBOARD = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Detail</title><script src="./support.js"></script></head>
+<body><x-dc><helmet><style>body{margin:0}</style></helmet>
+<div style="padding: 20px"><h2>{{title}}</h2><button type="button" style="background: {{noteColor}}">Save note</button>
+<sc-if value="{{mark}}" hint-placeholder-val="{{true}}"><span>1</span></sc-if></div></x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"mark":{"editor":"boolean","default":true}}'>
+class Component extends DCLogic { renderVals() { return { title: '#7 Feed the raven', noteColor: '#5f8f6b', mark: false }; } }
+</script></body></html>`;
+
+test('caw_design refuses an artboard of a Design artifact that is not converted to a static page', () => {
+    assert.match(designProblem('html', Buffer.from(ARTBOARD)), /Zeichenfläche eines Design-Artifacts/);
+    // Converted by the guide's procedure: holes filled, <sc-if> resolved, <x-dc>, <helmet> and the scripts gone.
+    const converted = '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Detail</title><style>body{margin:0}</style></head>'
+        + '<body><div style="padding: 20px"><h2>#7 Feed the raven</h2><button type="button" style="background: #5f8f6b">Save note</button></div></body></html>';
+    assert.equal(designProblem('html', Buffer.from(converted)), null);
+    // One hole left over is enough: it would be judged as text.
+    assert.match(designProblem('html', Buffer.from(converted.replace('#7 Feed the raven', '{{ title }}'))), /Zeichenfläche/);
+});
+
 test('writeDesign: only under caw/design, never through a link, and listDesigns finds what it wrote', (t) => {
     const caw = tempCaw(t);
     const page = Buffer.from('<!doctype html><body><button>Order</button></body>');
@@ -313,6 +332,21 @@ test('rendered: the design page runs no scripts and loads nothing', async (t) =>
     const page = await renderDesign(browser, '<!doctype html><body><img src="https://example.invalid/x.png"><script>document.body.dataset.ran = "yes"</script><button>Go</button></body>');
     try {
         assert.equal(await page.evaluate('document.body.dataset.ran ?? "no"'), 'no');
+    } finally {
+        await page.context().close();
+    }
+});
+
+test('rendered: a font embedded as a data: URL loads although the design renders offline (guide topic design)', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    const font = readFileSync(new URL('../assets/fonts/geist-mono.woff2', import.meta.url)).toString('base64');
+    const page = await renderDesign(browser, `<!doctype html><head><style>@font-face{font-family:Embedded;src:url(data:font/woff2;base64,${font}) format("woff2")}
+        h1,h2{display:inline-block;font:400 26px serif}h1{font-family:Embedded,serif}</style></head><body><h1>Feed the raven</h1><h2>Feed the raven</h2></body>`);
+    try {
+        const { status, embedded, fallback } = await page.evaluate(`document.fonts.ready.then(() => ({ status: [...document.fonts].map((face) => face.status),
+            embedded: document.querySelector('h1').getBoundingClientRect().width, fallback: document.querySelector('h2').getBoundingClientRect().width }))`);
+        assert.deepEqual(status, ['loaded']);
+        assert.notEqual(Math.round(embedded), Math.round(fallback));
     } finally {
         await page.context().close();
     }
