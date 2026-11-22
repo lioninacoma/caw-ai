@@ -2,7 +2,7 @@ import { CawError } from './errors.mjs';
 import { t } from './i18n.mjs';
 
 /** Warning type as the human reads it (text under config.report.warning.<type>). Unknown types are shown by their key. */
-const WARNING_TYPES = ['console', 'pageerror', 'requestfailed', 'http', 'retry', 'effect', 'note', 'design', 'lint', 'visual', 'overlay'];
+const WARNING_TYPES = ['console', 'pageerror', 'requestfailed', 'http', 'retry', 'effect', 'note', 'design', 'visual', 'overlay'];
 const warningLabel = (type) => (WARNING_TYPES.includes(type) ? t(`config.report.warning.${type}`) : type);
 
 const rejected = (message) => new CawError('finish-rejected', message);

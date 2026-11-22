@@ -1419,9 +1419,7 @@ test('workbench: the target design lies over the scaled app frame, aligned; F7 t
     const src = `data:image/png;base64,${(await maker.screenshot()).toString('base64')}`;
     await maker.close();
     await bench.viewport({ width: 1600, height: 900 });
-    const handed = [];
-    bench.onDesignRow((row) => { handed.push(row); });
-    await bench.design({ src, opacity: 0.4, blend: 'difference', width: 1600, rows: [{ text: 'Fehlt: button "Speichern"' }, { text: 'Kontrast zu gering', element: 'body > h1', label: 'heading "App"' }], on: true });
+    await bench.design({ src, opacity: 0.4, blend: 'difference', width: 1600, rows: [{ text: 'Fehlt: button "Speichern"' }, { text: 'button "Speichern": color #ffffff → #000000' }], on: true });
     const boxes = () => page.evaluate(() => {
         const box = (id) => {
             const rect = document.getElementById(id).getBoundingClientRect();
@@ -1435,14 +1433,10 @@ test('workbench: the target design lies over the scaled app frame, aligned; F7 t
     assert.deepEqual(shown.design, shown.app, 'design and frame cover the same pixels');
     assert.equal(shown.blend, 'difference');
     assert.equal(shown.pointer, 'none', 'clicks go through to the app');
-    // Rows: one without an element only shows; one with an element hands the host's row over, never anything from the page.
-    const rows = page.locator('#designRows button');
+    // The deviations as rows below the design.
+    const rows = page.locator('#designRows li');
     assert.equal(await rows.count(), 2);
-    assert.equal(await rows.nth(0).isDisabled(), true);
-    await rows.nth(1).click();
-    assert.ok(await until(() => handed.length === 1));
-    assert.equal(handed[0].element, 'body > h1');
-    assert.equal(await page.evaluate(() => document.getElementById('designRows').textContent.includes('body > h1')), false, 'the path stays with the host');
+    assert.equal(await rows.nth(0).textContent(), 'Fehlt: button "Speichern"');
     // F7 hides it, also from the app; a reload of the whole workbench keeps that.
     await page.keyboard.press('F7');
     assert.ok(await until(async () => (await boxes()).hidden));

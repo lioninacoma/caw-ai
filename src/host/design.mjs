@@ -14,8 +14,7 @@ import { DEFAULT_VISUAL, comparePixels, percent } from './visual.mjs';
 export const DESIGN_DIR = 'design';
 /** What a step's `design:` may name: a page (judged by structure) or an image (judged by pixels, visual.mjs). */
 export const DESIGN_KINDS = ['.html', '.png'];
-// A target design not met and a changed learned look fail their step (the look only on steps with look: true, once learned);
-// the token lint only warns until design.fail names "lint".
+// A target design not met and a changed learned look fail their step (the look only on steps with look: true, once learned).
 export const DEFAULT_DESIGN_FAIL = ['target', 'visual'];
 const DEFAULT_VIEWPORT = { width: 1280, height: 720 };
 // How long `needs` waits for each locator at the end of a run: the page is already quiet, it only has to be there.
@@ -63,18 +62,17 @@ export const designPath = (cawDir, name) => {
 export const designName = (cawDir, path) => relative(cawDir, path).split(sep).join('/');
 
 // What caw_design writes, per kind: the most a file may have. A Claude Design or Figma export of one screen stays far below.
-export const DESIGN_LIMITS = { html: 2 * 1024 * 1024, png: 8 * 1024 * 1024, tokens: 1024 * 1024 };
+export const DESIGN_LIMITS = { html: 2 * 1024 * 1024, png: 8 * 1024 * 1024 };
 // A PNG larger than this on either side is no screen, whatever it claims.
 const MAX_PNG_SIDE = 16_384;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
-/** The kind of a file caw_design writes: html, png, tokens (design tokens as DTCG JSON), or null. */
+/** The kind of a file caw_design writes: html, png, or null. */
 export const designKind = (name) => {
     if (typeof name !== 'string' || name.length > 200) return null;
     const segments = name.split('/');
     if (segments.length < 2 || segments[0] !== DESIGN_DIR || !segments.slice(1).every((segment) => SEGMENT.test(segment))) return null;
     const lower = name.toLowerCase();
-    if (lower.endsWith('tokens.json')) return 'tokens';
     if (lower.endsWith('.html')) return 'html';
     if (lower.endsWith('.png')) return 'png';
     return null;
@@ -85,31 +83,6 @@ export const pngSize = (bytes) => {
     if (bytes.length < 33 || !bytes.subarray(0, 8).equals(PNG_SIGNATURE)) return null;
     if (bytes.readUInt32BE(8) !== 13 || bytes.toString('latin1', 12, 16) !== 'IHDR') return null;
     return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
-};
-
-/**
- * Design tokens in the DTCG format: groups of tokens, every leaf a token with `$value`. Keys with `$` are properties
- * ($type, $description, $extensions); everything else is a group or a token.
- * @returns a problem as text, or null
- */
-export const tokensProblem = (value) => {
-    let tokens = 0;
-    const walk = (node, at) => {
-        if (node === null || typeof node !== 'object' || Array.isArray(node)) return t('run.mcp.designTokenLeaf', { at: at || '/' });
-        if (Object.hasOwn(node, '$value')) {
-            tokens += 1;
-            return null;
-        }
-        for (const [key, inner] of Object.entries(node)) {
-            if (key.startsWith('$')) continue;
-            const problem = walk(inner, `${at}/${key}`);
-            if (problem !== null) return problem;
-        }
-        return null;
-    };
-    const problem = walk(value, '');
-    if (problem !== null) return problem;
-    return tokens === 0 ? t('run.mcp.designTokensEmpty') : null;
 };
 
 /**
@@ -128,12 +101,7 @@ export const designProblem = (kind, data) => {
     }
     const text = data.toString('utf8');
     if (text.includes('\u0000') || !Buffer.from(text, 'utf8').equals(data)) return t('run.mcp.designNoText');
-    if (kind === 'html') return /<(?:html|body|main|div|form|section)\b/i.test(text) ? null : t('run.mcp.designNoHtml');
-    try {
-        return tokensProblem(JSON.parse(text));
-    } catch (error) {
-        return t('run.mcp.designNoJson', { error: String(error.message).split('\n')[0] });
-    }
+    return /<(?:html|body|main|div|form|section)\b/i.test(text) ? null : t('run.mcp.designNoHtml');
 };
 
 /**

@@ -804,8 +804,8 @@ export const stepGroups = (steps, replay) => {
  * @param designFail  config design.fail: with 'target' a design not met fails its step, otherwise it only warns
  * @param reads       the config's `reads` patterns: what they name is no write when a renamed target is proposed
  * @param capture     (id, { texts }) => the step's screen (visual.mjs captureStep), taken at most once per passed check and shared by
- *                    the .png design, the screenshot, the lint and the learned look; without it nothing visual is captured
- * @param look        (id, { capture, page }) => { record?, observed?, fail?, warnings? } after the design: screenshot, token lint
+ *                    the .png design, the screenshot and the learned look; without it nothing visual is captured
+ * @param look        (id, { capture, page }) => { record?, observed?, fail?, warnings? } after the design: screenshot
  *                    and visual regression (run.mjs); `fail` { kind, text, evidence } fails the passed step without stopping
  * @param hintLook    (id, { page, texts }) => { served, masks } after a passed step, for the look suggestion after a recording
  *                    (look-hints.mjs); returned per step as `lookHints`, only in memory
@@ -829,7 +829,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
     const evaluated = new Set();
     // The judged target design per step (design.mjs), for result.json.
     const designs = new Map();
-    // Per step what the visual layer found (screenshot, lint, look) for result.json, and the look it saw, for learning.
+    // Per step what the visual layer found (screenshot, look) for result.json, and the look it saw, for learning.
     const looks = new Map();
     const seenLooks = new Map();
     // Per passed step whether its screen shows data that changes (hintLook), for the look suggestion.
@@ -1130,7 +1130,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
     };
 
     /**
-     * After the design: what the visual layer sees in this state. A finding that fails (design.fail with lint or visual) fails the
+     * After the design: what the visual layer sees in this state. A finding that fails (design.fail with visual) fails the
      * passed step like a design not met: the replay goes on, nothing is retried or learned in this step.
      */
     const inspect = async (id, shot) => {
@@ -1143,7 +1143,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         if (seen.fail === undefined || result?.status !== 'pass') return;
         results.set(id, { ...result, status: 'fail', kind: seen.fail.kind, evidence: { type: 'eval', value: seen.fail.evidence }, note: seen.fail.text });
     };
-    /** The step's screen, captured on first use: design, screenshot, lint and look share one capture per passed check. */
+    /** The step's screen, captured on first use: design, screenshot and look share one capture per passed check. */
     /** What varies from run to run on a screen: the run tag and the remembered values. */
     const varying = () => [...(runTag === undefined ? [] : [runTag, runTag.toLowerCase()]), ...remembered.values()];
     const shotOf = (id) => {
@@ -1623,9 +1623,9 @@ export const failedStep = ({ results, broken, expectations, failures = [], evalu
  * @param durations    seconds per step id, as measured by the run
  * @param withEffects  false on production: effect lines carry visible names, which may be personal data
  * @param designs      the judged target designs per step id (playReplay)
- * @param looks        what the visual layer recorded per step id (playReplay): screenshot, lint, visual
- * @returns [{ id, status, kind?, seconds?, requests?, effects?, deviation?, design?, screenshot?, lint?, visual?, proposal? }];
- *          `kind` 'design': its screen does not match its target design (or fails the token lint), 'visual': its learned look
+ * @param looks        what the visual layer recorded per step id (playReplay): screenshot, visual
+ * @returns [{ id, status, kind?, seconds?, requests?, effects?, deviation?, design?, screenshot?, visual?, proposal? }];
+ *          `kind` 'design': its screen does not match its target design, 'visual': its learned look
  *          changed; `proposal`: the proven replacement of a renamed target (without the effect on production)
  */
 export const stepRecords = ({ ids, results, broken = null, requests, effects, deviations, designs, looks, durations = {}, withEffects: effectsShown = true }) => ids.map((id) => {

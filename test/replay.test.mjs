@@ -995,7 +995,7 @@ test('design: a .png design gets the step\'s capture; one capture per passed che
     const look = async (id, { capture: shot }) => {
         await shot();
         return id === 'S2'
-            ? { record: { screenshot: `step-${id}.png`, visual: { verdict: 'changed', ratio: 0.5 } }, observed: { styles: [] }, fail: { kind: 'visual', text: `${id} sieht anders aus`, evidence: 'x' }, warnings: [{ type: 'lint', text: 'Token-Lint' }] }
+            ? { record: { screenshot: `step-${id}.png`, visual: { verdict: 'changed', ratio: 0.5 } }, observed: { styles: [] }, fail: { kind: 'visual', text: `${id} sieht anders aus`, evidence: 'x' }, warnings: [{ type: 'visual', text: 'Aussehen geändert' }] }
             : { record: { screenshot: `step-${id}.png` }, observed: { styles: [] } };
     };
     const clock = fakeClock();
@@ -1008,7 +1008,7 @@ test('design: a .png design gets the step\'s capture; one capture per passed che
     assert.match(played.results.get('S1').note, /S1 entspricht nicht seinem Zielbild: design\/s1\.png: 20 % \(S1\)/);
     assert.equal(played.results.get('S2').kind, 'visual');
     assert.equal(played.broken, null, 'the replay went on');
-    assert.deepEqual(warnings, [{ step: 'S2', type: 'lint', text: 'Token-Lint' }]);
+    assert.deepEqual(warnings, [{ step: 'S2', type: 'visual', text: 'Aussehen geändert' }]);
     const records = stepRecords({ ids: ['S1', 'S2'], ...played });
     assert.deepEqual(records[0].design, { file: 'design/s1.png', verdict: 'not-met', missing: [], extra: [], styleDiffs: [], ratio: 0.2, diff: 'step-S1-diff.png' });
     assert.equal(records[0].screenshot, 'step-S1.png');

@@ -44,8 +44,6 @@ export const READY_BINDING = 'cawReady';
 export const LOCATE_BINDING = 'cawLocate';
 /** The target design over the app (F7): the workbench reports on/off, the host keeps it for reloads. */
 export const DESIGN_BINDING = 'cawDesign';
-/** A deviation row under the design overlay: its element goes to the attached session as with /element. */
-export const DESIGN_ROW_BINDING = 'cawDesignRow';
 /**
  * The chat runs in a sandboxed iframe without allow-same-origin, so with its own opaque origin. The workbench shares its
  * origin with the application (so top.Ext & co. work). Without the sandbox the application could reach the chat and decide
@@ -64,8 +62,8 @@ const PANEL_MS = 1000;
 const MAX_ROWS = 300;
 // A binding can be exposed only once per page; per page the host remembers who currently handles refresh.
 const benches = new WeakMap();
-/** What the page gets of a design: the rows' texts and whether they hand over an element, never the element itself. */
-const pageDesign = ({ rows = [], ...rest }) => ({ ...rest, rows: rows.map(({ text, element }) => ({ text: String(text), element: element !== undefined })) });
+/** What the page gets of a design: the rows' texts. */
+const pageDesign = ({ rows = [], ...rest }) => ({ ...rest, rows: rows.map(({ text }) => ({ text: String(text) })) });
 
 const esc = (value) => String(value).replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;');
 /** JSON for a <script>: `<` cannot end it. */
@@ -281,7 +279,7 @@ grid-template-areas:"steps browser chat"}
 /* The target design over the app (F7): aligned with the frame, never in the way of the pointer. */
 #design{position:absolute;top:0;left:0;transform-origin:0 0;pointer-events:none;max-width:none;z-index:2}#design.blend{mix-blend-mode:difference}
 #designRows{position:absolute;right:8px;bottom:8px;z-index:3;max-width:min(420px,60%);max-height:40%;overflow:auto;margin:0;padding:6px 0;list-style:none;background:var(--panel);border:1px solid var(--line);border-radius:8px;font-size:12px}
-#designRows button{display:block;width:100%;text-align:left;padding:4px 10px;border:0;background:none;color:var(--text);cursor:pointer}#designRows button:hover{background:var(--panel2)}#designRows button:disabled{cursor:default;color:var(--muted)}
+#designRows li{padding:4px 10px;color:var(--text)}
 /* Capturing a step's screen: the frame at its recorded size, unscaled and on top, without the overlay. */
 body.capture #appBox.pinned #app{position:fixed!important;left:0!important;top:0!important;transform:none!important;z-index:2147483647}body.capture #design,body.capture #designRows{display:none}
 .drawer{display:none;flex:none;border-top:1px solid var(--line);background:var(--panel)}.drawer.open{display:block}
@@ -793,8 +791,7 @@ const placeDesign=(scale,left)=>{designAt={scale,left};const img=$('design');con
   if(img.getAttribute('src')!==design.src)img.src=design.src;
   img.hidden=!design.on;rows.hidden=!design.on||rows.children.length===0;img.style.opacity=String(design.opacity);img.classList.toggle('blend',design.blend==='difference');
   img.style.width=(design.width??pinned?.width??$('app').clientWidth)+'px';img.style.left=left+'px';img.style.transform='scale('+scale+')';};
-const designRows=(list)=>{$('designRows').replaceChildren(...list.map((row,index)=>{const li=document.createElement('li');const b=document.createElement('button');b.type='button';b.textContent=row.text;b.title=row.text;b.disabled=!row.element;
-  b.addEventListener('click',()=>{window.${DESIGN_ROW_BINDING}?.(index);});li.append(b);return li;}));};
+const designRows=(list)=>{$('designRows').replaceChildren(...list.map((row)=>{const li=document.createElement('li');li.textContent=row.text;li.title=row.text;return li;}));};
 const toggleDesign=()=>{if(design===null)return;design.on=!design.on;placeDesign(designAt.scale,designAt.left);window.${DESIGN_BINDING}?.(design.on);};
 // The badge shows "Settings" while the settings page is open; the run's title waits here.
 let titleNodes=[];
@@ -920,7 +917,7 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
     // confirms it in the chat, which has an opaque origin and a token the application cannot read (chat.mjs).
     let bench = benches.get(page);
     if (bench === undefined) {
-        const holder = { refresh: null, rebuild: null, html: null, chat: null, app: null, navigations: new WeakMap(), fullscreen: null, chatPop: null, state: null, debug: null, designOn: null, designRow: null };
+        const holder = { refresh: null, rebuild: null, html: null, chat: null, app: null, navigations: new WeakMap(), fullscreen: null, chatPop: null, state: null, debug: null, designOn: null };
         bench = holder;
         benches.set(page, holder);
         // The workbench lives at the application's address: the tool answers only the top window's document.
@@ -972,15 +969,10 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
             if (frame !== page.mainFrame() || holder.chatPop === null) return;
             await holder.chatPop(on === true);
         });
-        // The design overlay shown or hidden (F7): the host keeps it for reloads. A deviation row: only its index comes from the
-        // page, the element it names is the host's (onDesignRow), so the page cannot hand over anything else.
+        // The design overlay shown or hidden (F7): the host keeps it for reloads.
         await page.exposeBinding(DESIGN_BINDING, ({ frame }, on) => {
             if (frame !== page.mainFrame() || holder.designOn === null) return;
             holder.designOn(on === true);
-        });
-        await page.exposeBinding(DESIGN_ROW_BINDING, async ({ frame }, index) => {
-            if (frame !== page.mainFrame() || holder.designRow === null || !Number.isInteger(index)) return;
-            await holder.designRow(index);
         });
         // caw.ready() and caw.locator(el) in the console: answers only, from whatever document calls them.
         await page.exposeBinding(READY_BINDING, async () => (holder.debug === null ? null : holder.debug.ready()));
@@ -1015,12 +1007,6 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
     };
     bench.designOn = (on) => {
         if (shown.design !== null) shown.design = { ...shown.design, on };
-    };
-    // Who gets a deviation row's element (run.mjs: the attached session, as with /element); null: rows only show.
-    let onDesignRow = null;
-    bench.designRow = async (index) => {
-        const row = shown.design?.rows?.[index];
-        if (row?.element !== undefined && onDesignRow !== null) await onDesignRow(row);
     };
     // When an item started running: the host measures the duration so it survives a workbench reload.
     const started = new Map();
@@ -1221,10 +1207,6 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
         design: (given) => {
             shown.design = given ?? null;
             return call('design', shown.design === null ? null : pageDesign(shown.design));
-        },
-        /** Who receives a deviation row with an element; null: nobody. */
-        onDesignRow: (handler) => {
-            onDesignRow = typeof handler === 'function' ? handler : null;
         },
         /**
          * Runs `shoot` while the app frame shows unscaled at its recorded size (a pinned viewport is scaled down to fit the pane):

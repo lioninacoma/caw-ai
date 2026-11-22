@@ -13,9 +13,7 @@ only warns). Controls only in the app are reported but do not fail. The replay g
 effects in that run. A `.png` design is judged by pixels against the step's screen (run tag, remembered values, dates, list
 rows, list entries, cards and `visualIgnore` masked): above `visual.designMaxRatio` differing pixels it fails the same way,
 with a difference image `agent/step-S<n>-diff.png`. `result.json` holds per judged step `design: { file, verdict, missing,
-extra, styleDiffs }` (a `.png` also `ratio` and `diff`). With design tokens in `caw/design` each passed step also gets `lint`
-findings (colors off the tokens, spacing off the scale, contrast, clipped text, unnamed controls): warnings unless
-`design.fail` has `"lint"`.
+extra, styleDiffs }` (a `.png` also `ratio` and `diff`).
 
 **A learned look.** `look: true` on a step (also only the person's: never set or remove it yourself; caw may suggest steps to
 the person after `record`) learns that step's look and then fails with kind `visual` when it changes. A look learns when
@@ -29,13 +27,12 @@ that differs replaces it and starts over), then it is compared. A run with a win
 look over ("{{label:run.button.adoptLook}}", which deletes the step's images of every platform). A change only pixels see has
 no such button: the failure names the image file `caw/recordings/<test>/<step>.<platform>.png`; only the person deletes it,
 the next two headless runs then learn it anew. The person sees the design over the app with `caw open <test>@S<n> --design` (F7
-toggles it); a deviation they click there reaches you as an element, as `/element` does.
+toggles it).
 
 **Fetch and write a design.**
 1. Get the design yourself: a Claude Design artifact (read it with your own tools and save one screen as a self-contained
-   `.html` page with inline CSS), or a Figma export (HTML or PNG, tokens as DTCG JSON). caw never fetches anything.
-2. Write it with `caw_design` `{action: "put", file: "design/<name>.html", content}`; a PNG goes as `base64`, design tokens as
-   `design/<name>tokens.json` (DTCG: every token has `$value`). Never write into `caw/` with your own Edit or Write tools.
+   `.html` page with inline CSS), or a Figma export (HTML or PNG). caw never fetches anything.
+2. Write it with `caw_design` `{action: "put", file: "design/<name>.html", content}`; a PNG goes as `base64`. Never write into `caw/` with your own Edit or Write tools.
    A design a step already links is what that step is judged against: replace it only when the person asked for it, with
    `personAsked: true`; without it `put` refuses and names the steps.
 3. Link it to a step only when the person asked for exactly that: `caw_design` `{action: "link", test, step, file,

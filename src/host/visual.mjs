@@ -1,6 +1,6 @@
-// The visual layer: what a step's screen looks like, in pixels and in computed styles. Three uses build on the same capture:
-// a .png target design is judged pixel by pixel, design tokens are linted per reached state, and a learned look (visual
-// regression, per step with `look: true`) is compared in later runs. Everything is decided without AI and without a new dependency: PNGs are decoded and
+// The visual layer: what a step's screen looks like, in pixels and in computed styles. Two uses build on the same capture:
+// a .png target design is judged pixel by pixel, and a learned look (visual regression, per step with `look: true`) is
+// compared in later runs. Everything is decided without AI and without a new dependency: PNGs are decoded and
 // compared in a Chrome canvas, the design browser's (design.mjs), which has neither the app's scripts nor network.
 
 import { createHash } from 'node:crypto';
@@ -9,8 +9,7 @@ import { join } from 'node:path';
 
 import { t } from '../shared/i18n.mjs';
 import { RECORDING_DIR } from '../shared/names.mjs';
-import { roleAndName } from './accessible-name.mjs';
-import { compareStructure, cssHex, designPath, listDesigns, renderDesign, structureOf } from './design.mjs';
+import { compareStructure, designPath, renderDesign, structureOf } from './design.mjs';
 
 /**
  * Thresholds until measured (e2e/spike/visual): conservative, so that noise between runs does not fail a step.
@@ -191,231 +190,6 @@ export const percent = (ratio) => `${Math.round(ratio * 1000) / 10} %`;
 /** The design file's content hash: part of the visual basis, so a new design invalidates the look learned against the old. */
 export const fileHash = (path) => (path === null || !existsSync(path) ? undefined : createHash('sha256').update(readFileSync(path)).digest('hex').slice(0, 12));
 
-// ---------------------------------------------------------------------------------------------------------------- token lint
-
-/**
- * Runs in the browser: what the lint needs of each visible element, without values of fields. `nameOf` is roleAndName.
- * @returns [{ path, label, colors, spacing, text?, clipped?, unnamed? }]
- */
-export function lintProbe(nameOf, { max }) {
-    const CONTROL = 'button, a[href], input:not([type=hidden]), select, textarea, [role=button], [role=link], [role=checkbox], [role=radio], [role=tab], [role=combobox], [role=textbox], [role=menuitem], [role=switch]';
-    const transparent = (value) => value === 'transparent' || /^rgba\(.*,\s*0\)$/.test(value);
-    const pathOf = (node) => {
-        const parts = [];
-        for (let element = node; element !== null && element !== document.documentElement; element = element.parentElement) {
-            let index = 1;
-            for (let sibling = element.previousElementSibling; sibling !== null; sibling = sibling.previousElementSibling) if (sibling.tagName === element.tagName) index += 1;
-            parts.unshift(`${element.tagName.toLowerCase()}:nth-of-type(${index})`);
-        }
-        return parts.join(' > ');
-    };
-    const labelOf = (node) => {
-        let named = null;
-        try { named = nameOf(node); } catch { /* no role */ }
-        if (named !== null) return `${named.role} "${named.name.slice(0, 40)}"`;
-        const text = (node.innerText ?? '').trim().split('\n')[0].slice(0, 40);
-        return text === '' ? node.tagName.toLowerCase() : `${node.tagName.toLowerCase()} "${text}"`;
-    };
-    // The color behind a text: the first opaque background up the tree. A background image makes it unknown.
-    const backgroundOf = (node) => {
-        for (let element = node; element !== null; element = element.parentElement) {
-            const style = getComputedStyle(element);
-            if (style.backgroundImage !== 'none') return null;
-            if (!transparent(style.backgroundColor)) return style.backgroundColor;
-        }
-        return 'rgb(255, 255, 255)';
-    };
-    const ownText = (node) => [...node.childNodes].some((child) => child.nodeType === 3 && child.data.trim() !== '');
-    const facts = [];
-    for (const node of document.body?.querySelectorAll('*') ?? []) {
-        if (facts.length >= max) break;
-        if (['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'BR'].includes(node.tagName)) continue;
-        const style = getComputedStyle(node);
-        if (style.display === 'none' || style.visibility === 'hidden' || node.getClientRects().length === 0) continue;
-        const text = ownText(node);
-        const colors = [
-            ...(text ? [style.color] : []),
-            ...(transparent(style.backgroundColor) ? [] : [style.backgroundColor]),
-            ...(parseFloat(style.borderTopWidth) > 0 && style.borderTopStyle !== 'none' && !transparent(style.borderTopColor) ? [style.borderTopColor] : []),
-        ];
-        const spacing = ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'rowGap', 'columnGap']
-            .map((key) => parseFloat(style[key])).filter((value) => Number.isFinite(value) && value > 0);
-        const clips = ['hidden', 'clip'].includes(style.overflowX) || ['hidden', 'clip'].includes(style.overflowY) || style.textOverflow === 'ellipsis';
-        const clipped = text && clips && (node.scrollWidth > node.clientWidth + 1 || node.scrollHeight > node.clientHeight + 1);
-        let unnamed = false;
-        if (node.matches(CONTROL)) {
-            try { unnamed = nameOf(node) === null; } catch { unnamed = true; }
-        }
-        if (colors.length === 0 && spacing.length === 0 && !text && !unnamed) continue;
-        facts.push({
-            path: pathOf(node),
-            label: labelOf(node),
-            colors,
-            spacing,
-            ...(text ? { text: { color: style.color, background: backgroundOf(node), size: parseFloat(style.fontSize), weight: Number(style.fontWeight) || 400 } } : {}),
-            ...(clipped ? { clipped: true } : {}),
-            ...(unnamed ? { unnamed: true } : {}),
-        });
-    }
-    return facts;
-}
-
-/** Reads the lint facts of a page or frame. */
-export const lintFacts = (frame, { max = 1500 } = {}) => frame.evaluate(`(${lintProbe})(${roleAndName}, ${JSON.stringify({ max })})`);
-
-const hexRgb = (hex) => {
-    const value = String(hex).trim().replace(/^#/, '');
-    const full = value.length === 3 || value.length === 4 ? [...value.slice(0, 3)].map((char) => char + char).join('') : value.slice(0, 6);
-    if (!/^[\da-f]{6}$/i.test(full)) return null;
-    return [0, 2, 4].map((at) => parseInt(full.slice(at, at + 2), 16));
-};
-const rgbOf = (css) => hexRgb(cssHex(css));
-
-/** A DTCG color value: a hex string, or the 2025 object form with `hex` or sRGB components. */
-const tokenColor = (value) => {
-    if (typeof value === 'string') return hexRgb(value);
-    if (value !== null && typeof value === 'object') {
-        if (typeof value.hex === 'string') return hexRgb(value.hex);
-        if (Array.isArray(value.components) && (value.colorSpace ?? 'srgb') === 'srgb') return value.components.slice(0, 3).map((part) => Math.round(Number(part) * 255));
-    }
-    return null;
-};
-const pxOf = (value) => {
-    const text = typeof value === 'object' && value !== null ? `${value.value}${value.unit}` : String(value);
-    const match = /^(-?\d+(?:\.\d+)?)(px|rem|em)?$/.exec(text.trim());
-    if (match === null) return null;
-    return Number(match[1]) * (match[2] === 'rem' || match[2] === 'em' ? 16 : 1);
-};
-const SPACING_GROUP = /^(?:spacing|spacings|space|spaces|gap|gaps)$/i;
-
-/**
- * The tokens the lint uses, from every DTCG file under caw/design (tokens.json, brand.tokens.json): colors by name, and the
- * spacing scale (dimensions in a group named spacing, space or gap). `$type` is inherited from the group.
- * @returns { colors: [{ name, rgb }], spacing: [px] }, or null without a tokens file: then nothing is linted
- */
-export const readTokens = (cawDir) => {
-    const colors = [];
-    const spacing = [];
-    const walk = (node, path, type) => {
-        if (node === null || typeof node !== 'object' || Array.isArray(node)) return;
-        const own = typeof node.$type === 'string' ? node.$type : type;
-        if (Object.hasOwn(node, '$value')) {
-            if (own === 'color' && tokenColor(node.$value) !== null) colors.push({ name: path.join('.'), rgb: tokenColor(node.$value) });
-            if (own === 'dimension' && path.slice(0, -1).some((part) => SPACING_GROUP.test(part)) && pxOf(node.$value) !== null) spacing.push(pxOf(node.$value));
-            return;
-        }
-        for (const [key, inner] of Object.entries(node)) if (!key.startsWith('$')) walk(inner, [...path, key], own);
-    };
-    const files = listDesigns(cawDir).filter(({ kind }) => kind === 'tokens');
-    if (files.length === 0) return null;
-    for (const { file } of files) {
-        try {
-            walk(JSON.parse(readFileSync(join(cawDir, file), 'utf8')), [], undefined);
-        } catch {
-            // caw_design checked it on writing; a hand-edited broken file only lints nothing.
-        }
-    }
-    return { colors, spacing: [...new Set(spacing.map((value) => Math.round(value)))].filter((value) => value > 0).sort((a, b) => a - b) };
-};
-
-// CIE76 on Lab: below about 2.3 people see no difference; 3 leaves room for rounding in exports.
-const SAME_COLOR = 3;
-const lab = ([r, g, b]) => {
-    const linear = (channel) => {
-        const value = channel / 255;
-        return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-    };
-    const [lr, lg, lb] = [r, g, b].map(linear);
-    const xyz = [(lr * 0.4124 + lg * 0.3576 + lb * 0.1805) / 0.95047, lr * 0.2126 + lg * 0.7152 + lb * 0.0722, (lr * 0.0193 + lg * 0.1192 + lb * 0.9505) / 1.08883];
-    const f = (value) => (value > 0.008856 ? Math.cbrt(value) : 7.787 * value + 16 / 116);
-    const [fx, fy, fz] = xyz.map(f);
-    return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
-};
-export const colorDistance = (a, b) => {
-    const [la, lb] = [lab(a), lab(b)];
-    return Math.hypot(la[0] - lb[0], la[1] - lb[1], la[2] - lb[2]);
-};
-
-const luminance = ([r, g, b]) => {
-    const channel = (value) => {
-        const part = value / 255;
-        return part <= 0.03928 ? part / 12.92 : ((part + 0.055) / 1.055) ** 2.4;
-    };
-    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
-};
-/** WCAG contrast ratio of two colors, 1 to 21. */
-export const contrastRatio = (a, b) => {
-    const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x);
-    return (high + 0.05) / (low + 0.05);
-};
-// WCAG AA: 4.5 for text, 3 for large text (24 px, or 18.66 px bold).
-const needed = ({ size, weight }) => (size >= 24 || (size >= 18.66 && weight >= 700) ? 3 : 4.5);
-
-const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
-const hexText = (rgb) => `#${rgb.map((part) => part.toString(16).padStart(2, '0')).join('')}`;
-const MAX_FINDINGS = 12;
-
-/**
- * The lint findings of one state, grouped so that one wrong color on twenty elements is one line.
- * - color: a color that is no token (only with color tokens), with the nearest token;
- * - spacing: padding, margin or gap off the spacing scale (only with spacing tokens): neither a token nor a multiple of their
- *   greatest common divisor;
- * - contrast: text below WCAG AA against its background;
- * - clipped: text cut off by its box;
- * - unnamed: a control without an accessible name.
- * @returns [{ rule, text, label, path, count }]
- */
-export const lintFindings = (facts, tokens = { colors: [], spacing: [] }) => {
-    const groups = new Map();
-    const add = (key, rule, fact, vars) => {
-        const known = groups.get(key);
-        if (known !== undefined) {
-            known.count += 1;
-            return;
-        }
-        groups.set(key, { rule, label: fact.label, path: fact.path, count: 1, vars });
-    };
-    const grid = tokens.spacing.length === 0 ? null : tokens.spacing.reduce(gcd);
-    for (const fact of facts) {
-        if (tokens.colors.length > 0) {
-            for (const css of new Set(fact.colors)) {
-                const rgb = rgbOf(css);
-                if (rgb === null) continue;
-                const nearest = tokens.colors.map((token) => ({ ...token, distance: colorDistance(rgb, token.rgb) })).sort((a, b) => a.distance - b.distance)[0];
-                if (nearest.distance > SAME_COLOR) add(`color ${hexText(rgb)}`, 'color', fact, { value: hexText(rgb), token: nearest.name, tokenValue: hexText(nearest.rgb), distance: Math.round(nearest.distance * 10) / 10 });
-            }
-        }
-        if (grid !== null) {
-            for (const value of new Set(fact.spacing.map((px) => Math.round(px)))) {
-                if (value > 0 && !tokens.spacing.includes(value) && value % grid !== 0) add(`spacing ${value}`, 'spacing', fact, { value: `${value}px`, grid: `${grid}px` });
-            }
-        }
-        if (fact.text !== undefined && fact.text.background !== null) {
-            const [fg, bg] = [rgbOf(fact.text.color), rgbOf(fact.text.background)];
-            if (fg !== null && bg !== null) {
-                const ratio = contrastRatio(fg, bg);
-                const minimum = needed(fact.text);
-                if (ratio < minimum) add(`contrast ${hexText(fg)} ${hexText(bg)}`, 'contrast', fact, { color: hexText(fg), background: hexText(bg), ratio: Math.round(ratio * 100) / 100, minimum });
-            }
-        }
-        if (fact.clipped) add(`clipped ${fact.path}`, 'clipped', fact, {});
-        if (fact.unnamed) add(`unnamed ${fact.path}`, 'unnamed', fact, {});
-    }
-    return [...groups.values()].slice(0, MAX_FINDINGS * 5).map(({ rule, label, path, count, vars }) => ({
-        rule,
-        label,
-        path,
-        count,
-        text: t(`session.lint.${rule}`, { ...vars, label, count, more: count > 1 ? t('session.lint.more', { count: count - 1 }) : '' }),
-    }));
-};
-
-/** The findings in one sentence, at most a few, for warnings and the step's note. */
-export const lintText = (findings) => {
-    const shown = findings.slice(0, MAX_FINDINGS).map(({ text }) => text);
-    return findings.length > MAX_FINDINGS ? `${shown.join('; ')}; ${t('session.lint.andMore', { count: findings.length - MAX_FINDINGS })}` : shown.join('; ');
-};
-
 // ----------------------------------------------------------------------------------------------------------- visual regression
 
 /**
@@ -498,21 +272,20 @@ const styleChanges = (learned, now) => {
 };
 
 /**
- * The visual layer after a passed check (playReplay `look`): screenshot (opt-in), token lint (when caw/design has tokens) and
- * the learned look (visual regression, for steps with `look: true`). Lint and look fail the step only when design.fail names
- * them, else they warn. Pixels of a look are learned and compared only headless: the viewport is fixed there (the recorded
+ * The visual layer after a passed check (playReplay `look`): screenshot (opt-in) and
+ * the learned look (visual regression, for steps with `look: true`). The look fails the step only when design.fail names
+ * it, else it warns. Pixels of a look are learned and compared only headless: the viewport is fixed there (the recorded
  * one, else the headless default), while a window's app view has the size of its pane. A run in a window compares the style
  * lines only and leaves the image as it is.
  * @param settings   visualSettings(config)
  * @param pixels     headless run: the image is learned and compared too
- * @param tokens     readTokens(cawDir), or null: no lint
  * @param compare    (actual, target, masks) => comparePixels result, in the design browser
  * @param save       (name, png) => the file name in the run folder, or undefined
  * @param readImage  (path) => Buffer or null
  * @param secrets    () => values the style lines must not show
  * @returns (id, { capture, page }) => { record, warnings, fail?, observed? }
  */
-export const createLook = ({ spec, cawDir, root, settings, tokens = null, compare, save, readImage, designFail = [], secrets = () => [], platform = process.platform, pixels = true }) => {
+export const createLook = ({ spec, cawDir, root, settings, compare, save, readImage, designFail = [], secrets = () => [], platform = process.platform, pixels = true }) => {
     const steps = new Map(spec.steps.map((step) => [step.id, step]));
     return async (id, { capture, page }) => {
         const record = {};
@@ -523,15 +296,6 @@ export const createLook = ({ spec, cawDir, root, settings, tokens = null, compar
         if (settings.screenshots) {
             const name = save(`step-${id}.png`, (await capture()).png);
             if (name !== undefined) record.screenshot = name;
-        }
-        if (tokens !== null) {
-            const findings = lintFindings(await lintFacts(page.mainFrame()), tokens);
-            if (findings.length > 0) {
-                record.lint = findings;
-                const text = t('session.lint.found', { id, list: lintText(findings) });
-                if (designFail.includes('lint')) fail = { kind: 'design', text, evidence: lintText(findings) };
-                else warnings.push({ type: 'lint', text });
-            }
         }
         const step = steps.get(id);
         if (step?.look === true && step.recording !== undefined) {
@@ -660,14 +424,13 @@ export const withAdoptedLooks = (spec, looks, day = new Date().toISOString().sli
 
 /**
  * What the workbench lays over the app for `open <test>@S3 --design`: the design as an image at the recorded width (a .png as
- * it is, an .html rendered without scripts or network) and the deviations as rows. A row with `element` (a CSS path in the
- * app) hands that element to the attached session when clicked, as /element does.
+ * it is, an .html rendered without scripts or network) and the deviations as rows.
  * @param page     the app (session.page())
  * @param launch   () => a Playwright Browser for the design (closed again here)
  * @param unscaled the workbench's unscaled capture, for the pixel row of a .png design
  * @returns { src, width, rows } or null without a design file
  */
-export const designOverlay = async ({ cawDir, file, viewport, page, launch, settings, tokens = null, unscaled, secrets = [] }) => {
+export const designOverlay = async ({ cawDir, file, viewport, page, launch, settings, unscaled, secrets = [] }) => {
     const path = designPath(cawDir, file);
     if (path === null) return null;
     const browser = await launch();
@@ -689,17 +452,7 @@ export const designOverlay = async ({ cawDir, file, viewport, page, launch, sett
                 await rendered.context().close().catch(() => {});
             }
         }
-        if (tokens !== null) rows.push(...lintFindings(await lintFacts(page.mainFrame()), tokens).map(({ text, path: element, label }) => ({ text, element, label })));
         return { src: `data:image/png;base64,${image.toString('base64')}`, width: viewport.width, rows };
     } finally {
         await browser.close().catch(() => {});
-    }
-};
-
-/** Runs in the app: marks the element at a CSS path (lintProbe) so markedTarget can name it; false when it is gone. */
-export function markPath({ path, attribute, mark }) {
-    const element = document.querySelector(path);
-    if (element === null) return false;
-    element.setAttribute(attribute, mark);
-    return true;
-}
+    }};

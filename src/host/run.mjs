@@ -36,7 +36,7 @@ import { adviceView, applyEdits, applyToFiles, applyToSpec, adviceReader, change
 import { diagnose } from './diagnose.mjs';
 import { DEFAULT_DESIGN_FAIL, createDesignJudge, missingNeeds } from './design.mjs';
 import { frameworkOf } from './framework/index.mjs';
-import { demonstrate, feedLabel, itemLabel, markedTarget, recordableSteps } from './demonstrate.mjs';
+import { demonstrate, feedLabel, itemLabel, recordableSteps } from './demonstrate.mjs';
 import { CLAUDE_TIMEOUT_MIN, claudeFailureReason, parseEnvFile } from './linux.mjs';
 import { fillDates, zonedNow } from './dates.mjs';
 import { LOOK_KINDS, buildReplay, createRecorder, cutReplay, dropNumbers, droppedWhileLearning, failedStep, fillRun, groupSteps, learnedEffects, missingBaselines, missingRemembered, newRunTag, playReplay, recordedBrowser, replayBefore, replayToEntry, replayVerdict, stepGroups, stepLabel, stepRecords, tidyNumbers, trailingNumbers } from './replay.mjs';
@@ -51,9 +51,8 @@ import { agentGuide, runTopics } from './guide.mjs';
 import { SELECTION_FILE } from '../shared/names.mjs';
 import { withStepBudget } from './step-budget.mjs';
 import { redactDeep } from './secrets.mjs';
-import { captureStep, createLook, designOverlay, learnedLooks, markPath, maskProbe, readTokens, visualSettings, windowLookWarning } from './visual.mjs';
+import { captureStep, createLook, designOverlay, learnedLooks, maskProbe, visualSettings, windowLookWarning } from './visual.mjs';
 import { MAX_TEXTS, lookCandidates, showsServed, textProbe } from './look-hints.mjs';
-import { MARK_ATTRIBUTE } from './record-locator.mjs';
 
 const DEFAULT_READY_TIMEOUT_MS = 60_000;
 const POLL_MS = 50;
@@ -1279,7 +1278,6 @@ ${text}`) ?? 0;
             page: session.page(),
             launch: () => chromium.launch({ ...browserLaunch(config), headless: true }),
             settings: visualSettings(config),
-            tokens: readTokens(cawDir),
             unscaled: bench.unscaled,
             secrets: session.secrets?.() ?? [],
         }).catch((error) => {
@@ -1289,15 +1287,6 @@ ${text}`) ?? 0;
         if (overlay === null) return false;
         await bench.viewport(viewport);
         await bench.design({ ...overlay, opacity: 0.5, blend: 'normal', on: true });
-        bench.onDesignRow(async (row) => {
-            const frame = session.page().mainFrame();
-            const mark = `design-${randomBytes(6).toString('hex')}`;
-            const found = await frame.evaluate(markPath, { path: row.element, attribute: MARK_ATTRIBUTE, mark }).catch(() => false);
-            const { target: located } = found ? await markedTarget(session, frame, mark) : { target: null };
-            const element = { label: located === null ? row.label : locatorLabel(located), target: located, text: row.text };
-            handToCode(element);
-            chat?.notice(t('run.develop.picked', { label: element.label }));
-        });
         chat?.notice(t('run.develop.designShown', { file: step.design, id, count: overlay.rows.length }));
         return true;
     };
@@ -1855,9 +1844,8 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
         const opening = runAs === 'open';
         const cawDir = join(root, PROJECT_DIR);
         const visual = visualSettings(config);
-        const tokens = opening ? null : readTokens(cawDir);
         const pngDesign = Object.values(replay.designs ?? {}).some(({ file }) => file.toLowerCase().endsWith('.png'));
-        const looking = !opening && (visual.screenshots || givenSpec.steps.some(({ look: on }) => on === true) || tokens !== null || pngDesign);
+        const looking = !opening && (visual.screenshots || givenSpec.steps.some(({ look: on }) => on === true) || pngDesign);
         const designJudge = (Object.keys(replay.designs ?? {}).length === 0 && !looking) || opening ? null : createDesignJudge({
             cawDir,
             launch: () => chromium.launch({ ...browserLaunch(config), headless: true }),
@@ -1873,7 +1861,6 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             cawDir,
             root,
             settings: visual,
-            tokens,
             compare: (actual, image, masks) => designJudge.compare(actual, image, masks),
             save: saveImage,
             readImage: (path) => (existsSync(path) && lstatSync(path).isFile() ? readFileSync(path) : null),

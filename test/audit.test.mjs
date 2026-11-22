@@ -235,7 +235,7 @@ test('auditChanges: design.fail narrowed, visualIgnore and readyIgnore added wea
     assert.match(findings[0].text, /\.chart/);
     assert.match(findings[1].text, /\.spinner/);
     assert.match(findings[2].text, /visual/);
-    assert.deepEqual(audit(spec(BASE), { configAfter: { ...CONFIG, design: { fail: ['target', 'visual', 'lint'] } } }), [], 'failing on more is fine');
+    assert.deepEqual(audit(spec(BASE), { configAfter: { ...CONFIG, design: { fail: ['target', 'visual'] } } }), [], 'failing on more is fine');
 });
 
 test('auditChanges: a learned look removed from the recording while look: true stays weakens the step', () => {

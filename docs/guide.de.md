@@ -79,9 +79,7 @@ Ein `.png`-Entwurf wird nach Pixeln gegen den Bildschirm des Schritts beurteilt,
 caw open <test>@S4 --design --env local
 ```
 
-Das spielt bis einschließlich S4 (bei offenem S4: bis zu seinem Einstieg) und legt den Entwurf halb durchsichtig in der aufgenommenen Größe über die App; **F7** zeigt und verbirgt ihn, auch über ein Neuladen hinweg. Darunter stehen die Abweichungen: fehlende Bedienelemente, abweichende Stile, der Anteil abweichender Pixel und mit Design-Tokens die Lint-Befunde. Ein Befund mit Element gibt es beim Klick an deine verbundene Session weiter, wie `/element`, und du kannst sagen: „Bring das hier in Ordnung.“
-
-Mit Design-Tokens in `caw/design` prüft jeder Lauf außerdem jeden erreichten Zustand: Farben, die kein Token sind, Abstände außerhalb der Skala, Kontrast unter WCAG AA, abgeschnittenen Text und unbenannte Bedienelemente, als Warnungen, außer `design.fail` enthält `"lint"` ([Token-Lint](test-files.de.md#token-lint)).
+Das spielt bis einschließlich S4 (bei offenem S4: bis zu seinem Einstieg) und legt den Entwurf halb durchsichtig in der aufgenommenen Größe über die App; **F7** zeigt und verbirgt ihn, auch über ein Neuladen hinweg. Darunter stehen die Abweichungen: fehlende Bedienelemente, abweichende Stile, der Anteil abweichender Pixel.
 
 ## Tests in normaler Sprache: einmal aufnehmen, ohne KI abspielen
 

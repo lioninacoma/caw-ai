@@ -641,8 +641,8 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
         name: 'caw_design',
         description: 'Target designs for test steps, under caw/design. You fetch a design yourself (a Claude Design artifact, a Figma export) '
             + 'and write it here; never write into caw/ with your own tools. {action: "put", file, content | base64}: writes '
-            + 'design/<name>.html (one screen, inline CSS; rendered later without scripts or network), design/<name>.png (base64) or '
-            + 'design/<name>tokens.json (DTCG: every token has $value). Replacing a design a step links needs personAsked: true, like link. {action: "list"}: the design files and which steps link them '
+            + 'design/<name>.html (one screen, inline CSS; rendered later without scripts or network), or design/<name>.png (base64). '
+            + 'Replacing a design a step links needs personAsked: true, like link. {action: "list"}: the design files and which steps link them '
             + '(or carry look: true, a learned look the person set by hand). '
             + '{action: "link", test, step, file | null, personAsked: true}: sets or removes design: on one step of caw/tests/<test>.yaml. '
             + 'Link only when the person asked for exactly that in this conversation; design:, needs: and look: belong to the person. '
@@ -652,7 +652,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             properties: {
                 action: { type: 'string', enum: ['put', 'list', 'link'] },
                 file: { type: ['string', 'null'], description: 'Relative to the caw folder, e.g. design/order-form.html' },
-                content: { type: 'string', description: 'put: the text of an .html or tokens.json file' },
+                content: { type: 'string', description: 'put: the text of an .html file' },
                 base64: { type: 'string', description: 'put: the bytes of a .png file, base64-encoded' },
                 test: { type: 'string', description: 'link: the test id' },
                 step: { type: 'string', description: 'link: the step id, e.g. S3' },
@@ -690,7 +690,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                 if (input.content !== undefined && typeof input.content !== 'string') throw new Error(t('run.mcp.designContent'));
                 const kind = design.designKind(input.file);
                 if (kind === null) throw new Error(t('run.mcp.designName'));
-                // A PNG comes as bytes, html and tokens as text: the wrong field for the kind is refused, not converted.
+                // A PNG comes as bytes, html as text: the wrong field for the kind is refused, not converted.
                 if ((kind === 'png') !== (input.base64 !== undefined)) throw new Error(t('run.mcp.designContent'));
                 const data = input.base64 === undefined ? Buffer.from(input.content, 'utf8') : Buffer.from(input.base64, 'base64');
                 // A design a step links is what that step is judged against: replacing it is the person's decision, like link.

@@ -4,12 +4,11 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { after, before, test } from 'node:test';
 
-import { compareStructure, createDesignJudge, designKind, designPath, designProblem, isDesignName, listDesigns, maskedView, missingNeeds, normalStyle, pngSize, renderDesign, structureFrom, structureOf, tokensProblem, viewLines, writeDesign } from '../src/host/design.mjs';
+import { compareStructure, createDesignJudge, designKind, designPath, designProblem, isDesignName, listDesigns, maskedView, missingNeeds, normalStyle, pngSize, renderDesign, structureFrom, structureOf, viewLines, writeDesign } from '../src/host/design.mjs';
 import { frameworkOf } from '../src/host/framework/index.mjs';
-import { captureStep, colorDistance, comparePixels, contrastRatio, createLook, learnLook, learnedLooks, lintFacts, lintFindings, readTokens, styleLines, windowLookWarning, withAdoptedLooks } from '../src/host/visual.mjs';
+import { captureStep, comparePixels, createLook, learnLook, learnedLooks, styleLines, windowLookWarning, withAdoptedLooks } from '../src/host/visual.mjs';
 import { launchChrome } from './chrome.mjs';
 
 test('View lines (target designs): ARIA lines without links, field contents, long texts and numbers', () => {
@@ -43,16 +42,14 @@ const png = (width, height) => {
     return bytes;
 };
 
-test('design names: under design/, plain segments, .html or .png; caw_design also writes tokens.json', () => {
+test('design names: under design/, plain segments, .html or .png', () => {
     assert.ok(isDesignName('design/order.html'));
     assert.ok(isDesignName('design/screens/order.png'));
     for (const name of ['order.html', '../design/order.html', 'design/../x.html', 'design/a\\b.html', 'design/x.svg', '/design/x.html', 'design/', 'design/.hidden/x.html']) {
         assert.equal(isDesignName(name), false, name);
     }
-    assert.equal(designKind('design/brand.tokens.json'), 'tokens');
-    assert.equal(designKind('design/tokens.json'), 'tokens');
-    assert.equal(designKind('design/x.json'), null);
-    assert.equal(designKind('design/../tokens.json'), null);
+    assert.equal(designKind('design/order.html'), 'html');
+    assert.equal(designKind('design/tokens.json'), null);
 });
 
 test('the view without data rows and free text; numbers neutral', () => {
@@ -124,11 +121,6 @@ test('caw_design checks: PNG signature and size, DTCG tokens, html, size caps', 
     assert.match(designProblem('html', Buffer.from('just text')), /keine HTML-Seite/);
     assert.equal(designProblem('html', Buffer.from('<!doctype html><body><button>Save</button></body>')), null);
     assert.match(designProblem('html', Buffer.from([0x3c, 0x64, 0x69, 0x76, 0x3e, 0xff, 0xfe])), /kein UTF-8/);
-    assert.equal(tokensProblem({ color: { $type: 'color', ink: { $value: '#231c17' } } }), null);
-    assert.match(tokensProblem({ color: { ink: '#231c17' } }), /\/color\/ink/);
-    assert.match(tokensProblem({ color: { $type: 'color' } }), /kein Token/);
-    assert.match(designProblem('tokens', Buffer.from('{ nope')), /kein JSON/);
-    assert.equal(designProblem('tokens', readFileSync(new URL('design/tokens.json', EXAMPLE))), null, 'the example tokens are DTCG');
     assert.match(designProblem('html', Buffer.alloc(0)), /leer/);
 });
 
@@ -141,8 +133,7 @@ test('writeDesign: only under caw/design, never through a link, and listDesigns 
     assert.throws(() => writeDesign(caw, 'design/../tests/x.html', Buffer.from('<body></body>')), /unter design\//);
     assert.throws(() => writeDesign(caw, 'tests/x.html', Buffer.from('<body></body>')), /unter design\//);
     assert.throws(() => writeDesign(caw, 'design/x.html', Buffer.from('plain')), /keine HTML-Seite/);
-    writeDesign(caw, 'design/brand.tokens.json', Buffer.from('{"c":{"$value":"#fff"}}'));
-    assert.deepEqual(listDesigns(caw).map(({ file, kind }) => [file, kind]), [['design/brand.tokens.json', 'tokens'], ['design/screens/order.png', 'png']]);
+    assert.deepEqual(listDesigns(caw).map(({ file, kind }) => [file, kind]), [['design/screens/order.png', 'png']]);
     assert.equal(designPath(caw, 'design/screens/order.png'), join(caw, 'design', 'screens', 'order.png'));
     assert.equal(designPath(caw, 'design/missing.html'), null);
 
@@ -349,44 +340,6 @@ test('the judge: a .png design is judged by pixels against the step\'s capture; 
     } finally {
         await judge.close();
     }
-});
-
-test('token lint: colors off the tokens, spacing off the grid, contrast, clipped text, unnamed controls', async (t) => {
-    if (needsChrome()) return t.skip('no Chrome');
-    const tokens = { colors: [{ name: 'color.ink', rgb: [35, 28, 23] }, { name: 'color.paper', rgb: [245, 237, 224] }], spacing: [8, 16] };
-    const context = await browser.newContext({ viewport: { width: 400, height: 300 } });
-    try {
-        const page = await context.newPage();
-        await page.setContent(`<body style="margin:0;background:#f5ede0;color:#231c17">
-            <h1 style="margin:0;padding:8px">Fine</h1>
-            <p style="color:#cccccc;margin:0;padding:16px">Pale text</p>
-            <p style="margin:0;padding:13px">Odd padding</p>
-            <div style="width:40px;overflow:hidden;white-space:nowrap;margin:0">A long label that does not fit</div>
-            <button style="margin:0;padding:8px;background:#f5ede0;color:#231c17;border:0"><svg width="10" height="10"></svg></button></body>`);
-        const findings = lintFindings(await lintFacts(page.mainFrame()), tokens);
-        const rules = findings.map(({ rule }) => rule);
-        assert.ok(rules.includes('color'), rules.join());
-        assert.ok(findings.some(({ rule, text }) => rule === 'color' && text.includes('#cccccc') && text.includes('color.paper')), JSON.stringify(findings));
-        assert.ok(findings.some(({ rule, text }) => rule === 'spacing' && text.includes('13px') && text.includes('8px-Rasters')), JSON.stringify(findings));
-        assert.ok(findings.some(({ rule, label }) => rule === 'contrast' && label.includes('Pale text')), JSON.stringify(findings));
-        assert.ok(findings.some(({ rule, label }) => rule === 'clipped' && label.includes('A long label')), JSON.stringify(findings));
-        assert.ok(findings.some(({ rule, label, path }) => rule === 'unnamed' && label === 'button' && path.endsWith('button:nth-of-type(1)')), JSON.stringify(findings));
-        assert.ok(!findings.some(({ label }) => label.includes('Fine')), 'a heading in token colors on the grid is fine');
-        // Without tokens only what needs none: contrast, clipped, unnamed.
-        assert.deepEqual([...new Set(lintFindings(await lintFacts(page.mainFrame())).map(({ rule }) => rule))].sort(), ['clipped', 'contrast', 'unnamed']);
-    } finally {
-        await context.close();
-    }
-});
-
-test('token lint: tokens from DTCG files under caw/design; contrast and color distance', () => {
-    const tokens = readTokens(fileURLToPath(EXAMPLE));
-    assert.equal(tokens.colors.length, 7);
-    assert.deepEqual(tokens.colors.find(({ name }) => name === 'color.tomato').rgb, [229, 83, 58]);
-    assert.deepEqual(tokens.spacing, [], 'the example has no spacing scale, so spacing is not linted');
-    assert.equal(readTokens(join(tmpdir(), 'caw-no-design-here')), null);
-    assert.equal(Math.round(contrastRatio([0, 0, 0], [255, 255, 255])), 21);
-    assert.ok(colorDistance([229, 83, 58], [229, 83, 58]) === 0 && colorDistance([0, 0, 0], [255, 255, 255]) > 99);
 });
 
 test('look: learned over two runs like effects; a count that flickers becomes ×?, an image that differs starts over', () => {

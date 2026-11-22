@@ -690,8 +690,6 @@ test('caw_design: put checks name, kind and content, link needs the person\'s re
     png.writeUInt32BE(844, 20);
     const image = await call('caw_design', { action: 'put', file: 'design/bestellung.png', base64: png.toString('base64') });
     assert.deepEqual([image.structuredContent.width, image.structuredContent.height], [390, 844]);
-    const tokens = await call('caw_design', { action: 'put', file: 'design/marke.tokens.json', content: '{"farbe":{"$type":"color","tinte":{"$value":"#231c17"}}}' });
-    assert.equal(tokens.isError, false);
 
     for (const [args, pattern] of [
         [{ action: 'put', file: 'design/../tests/x.html', content: html }, /unter design\//],
@@ -699,7 +697,7 @@ test('caw_design: put checks name, kind and content, link needs the person\'s re
         [{ action: 'put', file: 'design/x.html', base64: Buffer.from(html).toString('base64') }, /genau eins/],
         [{ action: 'put', file: 'design/x.png', content: 'x' }, /genau eins/],
         [{ action: 'put', file: 'design/x.png', base64: Buffer.from('GIF89a, kein PNG, aber lang genug fuer den Test').toString('base64') }, /kein PNG/],
-        [{ action: 'put', file: 'design/x.tokens.json', content: '{"farbe":{"tinte":"#231c17"}}' }, /kein DTCG/],
+        [{ action: 'put', file: 'design/x.tokens.json', content: '{"farbe":{"tinte":"#231c17"}}' }, /unter design\//],
         [{ action: 'put', file: 'design/x.html', content: html, base64: 'AA==' }, /genau eins/],
         [{ action: 'link', test: 'bestellung', step: 'S2', file: 'design/bestellung.html' }, /nur auf seinen Wunsch/],
         [{ action: 'link', test: 'bestellung', step: 'S2', file: 'design/fehlt.html', personAsked: true }, /schreib sie erst mit put/],
@@ -717,7 +715,7 @@ test('caw_design: put checks name, kind and content, link needs the person\'s re
     assert.equal(linked.isError, false);
     assert.match(readFileSync(join(root, 'caw', 'tests', 'bestellung.yaml'), 'utf8'), / {4}expect: Bestätigung\n {4}design: design\/bestellung\.html\n/);
     const listed = (await call('caw_design', { action: 'list' })).structuredContent;
-    assert.deepEqual(listed.designs.map(({ file, kind }) => [file, kind]), [['design/bestellung.html', 'html'], ['design/bestellung.png', 'png'], ['design/marke.tokens.json', 'tokens']]);
+    assert.deepEqual(listed.designs.map(({ file, kind }) => [file, kind]), [['design/bestellung.html', 'html'], ['design/bestellung.png', 'png']]);
     assert.deepEqual(listed.links, [{ test: 'bestellung', step: 'S2', design: 'design/bestellung.html', exists: true }]);
     await call('caw_design', { action: 'link', test: 'bestellung', step: 'S2', file: null, personAsked: true });
     assert.equal(readFileSync(join(root, 'caw', 'tests', 'bestellung.yaml'), 'utf8'), STEPS);

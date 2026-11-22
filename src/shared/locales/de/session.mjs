@@ -267,12 +267,4 @@ export default {
     'session.visual.more': '{count} {role} mehr mit {style}',
     'session.visual.pixelsOnly': 'Diese Änderung sehen nur die Pixel, ein Lauf im Fenster nicht, er bietet also kein „Neuen Look übernehmen“ an. Stimmt der neue Look, lösche {file}: Die nächsten {runs} Läufe headless lernen das Bild neu (in CI nur mit --learn).',
     'session.visual.windowInCi': 'Die Pixel der Look-Schritte {steps} werden nur headless verglichen; dieser CI-Lauf hat ein Fenster und hat nur ihre Stile verglichen. Ergänze --headless.',
-    'session.lint.found': 'Token-Lint in {id}: {list}',
-    'session.lint.color': '{label} nutzt {value}, kein Token (am nächsten {token} {tokenValue}, ΔE {distance}){more}',
-    'session.lint.spacing': '{label} hat Abstand {value}, außerhalb des {grid}-Rasters{more}',
-    'session.lint.contrast': '{label}: Kontrast {ratio}:1 von {color} auf {background}, mindestens {minimum}:1 nötig{more}',
-    'session.lint.clipped': '{label}: Text ist abgeschnitten',
-    'session.lint.unnamed': '{label}: Bedienelement ohne zugänglichen Namen',
-    'session.lint.more': ' (und {count} weitere)',
-    'session.lint.andMore': '{count} weitere',
 };

@@ -458,10 +458,10 @@ export const validateConfig = (given) => {
         && (config.effects.fail === undefined || (Array.isArray(config.effects.fail) && config.effects.fail.every((list) => effectLists.includes(list)))))) {
         issues.push(t('config.effects', { lists: effectLists.join(', ') }));
     }
-    // A target design that is not met fails its step (target), so does a changed learned look (visual) and, when named, the
-    // token lint (lint); `[]` only warns. Kept here, not imported
+    // A target design that is not met fails its step (target), so does a changed learned look (visual);
+    // `[]` only warns. Kept here, not imported
     // from host/design.mjs: the config is shared code.
-    const designKinds = ['target', 'lint', 'visual'];
+    const designKinds = ['target', 'visual'];
     if (config.design !== undefined && !(isObject(config.design) && Object.keys(config.design).every((key) => key === 'fail')
         && (config.design.fail === undefined || (Array.isArray(config.design.fail) && config.design.fail.every((kind) => designKinds.includes(kind)))))) {
         issues.push(t('config.design', { kinds: designKinds.join(', ') }));

@@ -435,7 +435,6 @@ export default {
     'config.visual': 'visual must be an object with screenshots (true/false), tolerance (0-255), maxRatio and designMaxRatio (0-1), e.g. { "screenshots": true }',
     'config.visualIgnore': 'visualIgnore must be a list of CSS selectors, e.g. ["#clock", ".avatar"]',
     'config.test.visual': 'recording.visual needs runs (number), styles: [lines], images: { <platform>: runs } and optionally basis and adopted (YYYY-MM-DD), as caw learns it.',
-    'config.report.warning.lint': 'Token lint',
     'config.report.warning.visual': 'Look',
     'config.report.warning.overlay': 'Local code',
 };

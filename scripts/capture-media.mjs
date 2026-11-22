@@ -2,7 +2,7 @@
 // Records the README media (docs/media/*.webp) from the Errand example, in English, with fictitious data only.
 //
 //   node scripts/capture-media.mjs [--scene main|stills|all|plan|triage|fix|reproduce|states|develop] [--parts <a,b>]
-//                                  [--media <dir>] [--out <dir>] [--lint]
+//                                  [--media <dir>] [--out <dir>]
 //
 // main is the README video (demo.webp), filmed by one camera across its parts:
 //   breaks     a regression in the app fails S1 of first-errand; caw's assessment says app; the agent finds the cause,
@@ -16,8 +16,7 @@
 // --parts runs only some of them, to try one (audit finds the changed check only after design). The terminal parts show the
 // real output of the command, run in the project.
 // The stills come from the same flows, in windows of the video's size, so they have its zoom: plan (create), triage and fix
-// (breaks), reproduce, states (the F1 dialog), develop. --media writes the WebP files elsewhere than docs/media. --lint keeps
-// the example's design tokens (see project()).
+// (breaks), reproduce, states (the F1 dialog), develop. --media writes the WebP files elsewhere than docs/media.
 //
 // No scene uses a real agent: scripts/media-agent.mjs plays its part with the same plan, clicks and answers every time, so the
 // media come out the same on every run and cost no tokens. The video runs in real time (not sped up); left out are the waits
@@ -39,8 +38,6 @@ const option = (name, fallback) => (args.includes(name) ? args[args.indexOf(name
 const scene = option('--scene', 'all');
 const media = option('--media', join(repo, 'docs/media'));
 const out = option('--out', join(tmpdir(), 'caw-media'));
-// --lint keeps the example's design tokens (see project()).
-const LINT = args.includes('--lint');
 const PARTS = ['breaks', 'develop', 'reproduce', 'create', 'design', 'audit', 'ci'];
 /** Each still and the flow it comes from. */
 const STILLS = { plan: 'create', triage: 'breaks', fix: 'breaks', reproduce: 'reproduce', states: 'states', develop: 'develop' };
@@ -91,9 +88,6 @@ const project = async ({ git = false } = {}) => {
         return paths;
     }));
     cpSync(join(repo, 'examples/errand'), dir, { recursive: true, filter: (path) => keep.has(path) });
-    // Without the example's design tokens: their lint warns about the example's own colours on every screen, and every card
-    // of the media would list those warnings (and a recording's check run would ask the agent about them).
-    if (!LINT) rmSync(join(dir, 'caw/design/tokens.json'), { force: true });
     const port = await freePort();
     const config = join(dir, 'caw.config.json');
     writeFileSync(config, readFileSync(config, 'utf8').replace('http://localhost:4174', `http://localhost:${port}`));

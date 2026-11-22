@@ -79,9 +79,7 @@ A `.png` design is judged by pixels against the step's screen, with run tag, rem
 caw open <test>@S4 --design --env local
 ```
 
-It plays through S4 (a pending S4: up to its entry) and lays the design over the app at the recorded size, half transparent; **F7** shows and hides it, also across reloads. Below it the deviations are listed: missing controls, differing styles, the share of differing pixels and, with design tokens, the lint findings. A finding with an element hands it to your attached session when you click it, as `/element` does, so you can say "make this one match".
-
-With design tokens in `caw/design` every run also lints each reached state: colors that are no token, spacing off the scale, contrast below WCAG AA, clipped text and unnamed controls, as warnings unless `design.fail` has `"lint"` ([token lint](test-files.md#token-lint)).
+It plays through S4 (a pending S4: up to its entry) and lays the design over the app at the recorded size, half transparent; **F7** shows and hides it, also across reloads. Below it the deviations are listed: missing controls, differing styles, the share of differing pixels.
 
 ## Plain-language tests: record once, replay without AI
 

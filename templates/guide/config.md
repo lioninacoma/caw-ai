@@ -26,7 +26,7 @@ automatically; then edit the file with your own Edit tool.
 | `consoleIgnore`, `foreignCode` | Regular expressions: console messages that never matter; errors from third-party code (they become warnings) |
 | `readyIgnore`, `readyTimeoutMs` | Elements that never count as loading; how long to wait for a quiet page |
 | `effects` | `{ "fail": [...] }`: which learned effects fail a step (`controls`, `requests`, `responses`, `console`) |
-| `design` | `{ "fail": [...] }`: which design findings fail a step: `target` (target design not met) and `visual` (learned look changed) by default, `lint` (design tokens); `[]` only warns (topic `design`) |
+| `design` | `{ "fail": [...] }`: which design findings fail a step: `target` (target design not met) and `visual` (learned look changed) by default; `[]` only warns (topic `design`) |
 | `visual` | `screenshots` (a `step-S<n>.png` per passed step) and the thresholds `tolerance`, `maxRatio`, `designMaxRatio` |
 | `visualIgnore` | CSS selectors masked in pixel comparisons, e.g. a clock |
 | `maxActions` | The agent's action budget per run (default 100) |

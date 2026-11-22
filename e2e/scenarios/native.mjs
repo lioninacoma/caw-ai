@@ -1322,7 +1322,7 @@ $A advise --file /tmp/a.json; echo "ADVISE Exit=$?"`;
 });
 
 // ---- N17: the visual layer on n9-shadow. Screenshots per step; S2's own screen as a .png design is met, a red page is not;
-// design tokens lint (warning, then failing with design.fail lint); visual regression (look: true on S1 and S2) learns both
+// visual regression (look: true on S1 and S2) learns both
 // looks over two headless runs. The rename switch ("Archive" to "Archive all") keeps role and style: a run with a window
 // passes (styles only), a headless one fails both steps by pixels and names the image file to delete. The restyle switch
 // (Archive bold) changes a style: the chat window fails S1 and S2, "Neuen Look übernehmen" adopts both at once and drops their
@@ -1333,7 +1333,7 @@ const LOOKED = 'rec-visual';
 const pngSide = (png) => [png.readUInt32BE(16), png.readUInt32BE(20)];
 const restyleSwitch = (on) => fetch(`http://127.0.0.1:${PORT}/api/restyle?on=${on ? 1 : 0}`, { method: 'POST' });
 
-scenario('N17', 'Visual layer: step screenshots, a .png design judged by pixels, token lint, learned look (pixels headless only) changed and adopted for all steps, open --design with F7', async () => {
+scenario('N17', 'Visual layer: step screenshots, a .png design judged by pixels, learned look (pixels headless only) changed and adopted for all steps, open --design with F7', async () => {
     const designDir = join(native, 'caw/design');
     mkdirSync(designDir, { recursive: true });
     const parsed = parseTest(testText(LOOKED, TESTS['n9-shadow']));
@@ -1376,22 +1376,6 @@ scenario('N17', 'Visual layer: step screenshots, a .png design judged by pixels,
         verify('a red page: Exit 1, S2 fails with kind design, difference image saved', red.code === 1 && stepOf(redRun.result, 'S2')?.kind === 'design' && redDesign?.verdict === 'not-met'
             && redDesign.diff === 'step-S2-diff.png' && existsSync(join(redRun.dir, 'agent', 'step-S2-diff.png')), `${red.code} ${JSON.stringify(redDesign)}`);
         verify('the note names the share and the limit', /der Pixel weichen ab, höchstens 3 % erlaubt/.test(red.note), red.note);
-
-        // Token lint: a palette the page does not use. A warning first, with design.fail lint a failure.
-        writeWith();
-        writeFileSync(join(designDir, 'tokens.json'), JSON.stringify({ color: { $type: 'color', ink: { $value: '#123456' } } }));
-        const linted = await runQuietly(LOOKED);
-        const lintRun = newestRunOf(native, LOOKED).result;
-        verify('lint: Exit 0, findings under steps[].lint and a lint warning', linted.code === 0 && (stepOf(lintRun, 'S2')?.lint ?? []).some(({ rule }) => rule === 'color')
-            && (lintRun?.warnings ?? []).some(({ type }) => type === 'lint'), `${linted.code} ${JSON.stringify(stepOf(lintRun, 'S2')?.lint?.slice(0, 2))}`);
-        const undoLint = patchJson(join(native, 'caw.config.json'), (config) => { config.design = { fail: ['target', 'lint'] }; });
-        try {
-            const strict = await runQuietly(LOOKED);
-            verify('design.fail lint: Exit 1, kind design', strict.code === 1 && stepOf(newestRunOf(native, LOOKED).result, 'S1')?.kind === 'design', `${strict.code} ${strict.note}`);
-        } finally {
-            undoLint();
-        }
-        rmSync(join(designDir, 'tokens.json'), { force: true });
 
         // Visual regression: look: true on S1 and S2. Learning runs are headless: only they learn and compare pixels. The
         // threshold is tight, since the rename differs in about 0.009 % of the pixels; between headless runs on one machine
