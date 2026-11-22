@@ -40,6 +40,8 @@ toggles it); a deviation they click there reaches you as an element, as `/elemen
    `.html` page with inline CSS), or a Figma export (HTML or PNG, tokens as DTCG JSON). caw never fetches anything.
 2. Write it with `caw_design` `{action: "put", file: "design/<name>.html", content}`; a PNG goes as `base64`, design tokens as
    `design/<name>tokens.json` (DTCG: every token has `$value`). Never write into `caw/` with your own Edit or Write tools.
+   A design a step already links is what that step is judged against: replace it only when the person asked for it, with
+   `personAsked: true`; without it `put` refuses and names the steps.
 3. Link it to a step only when the person asked for exactly that: `caw_design` `{action: "link", test, step, file,
    personAsked: true}`. `{action: "list"}` shows the design files and which steps link them.
 

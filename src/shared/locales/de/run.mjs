@@ -420,6 +420,7 @@ export default {
     'run.mcp.designTokensEmpty': 'tokens.json ist kein DTCG: kein Token mit $value.',
     'run.mcp.designLink': '{file} läge außerhalb von caw/design oder ersetzte einen Link oder Ordner; abgelehnt.',
     'run.mcp.designAsk': 'link ändert die Testdatei des Menschen: nur auf seinen Wunsch, dann mit personAsked: true.',
+    'run.mcp.designReplaceAsk': '{file} ist das Zieldesign von {steps}: es zu ersetzen ändert, woran sie gemessen werden. Nur auf Wunsch des Menschen, dann put erneut mit personAsked: true.',
     'run.mcp.designMissing': '{file} ist keine .html- oder .png-Datei unter caw/design; schreib sie erst mit put.',
     'run.mcp.configDryRun': 'Gültig; nichts geschrieben (dryRun).',
     'run.mcp.configRefused': 'Nicht geschrieben: {file} hätte {count} Befunde.',

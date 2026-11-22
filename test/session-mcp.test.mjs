@@ -726,3 +726,22 @@ test('caw_design: put checks name, kind and content, link needs the person\'s re
     assert.deepEqual((await call('caw_design', { action: 'list' })).structuredContent.links, [{ test: 'bestellung', step: 'S2', look: true }]);
     writeFileSync(join(root, 'caw', 'tests', 'bestellung.yaml'), STEPS);
 });
+
+test('caw_design: put replaces a design a step links only on the person\'s request', async (t) => {
+    const root = project(t);
+    const { call } = session(root);
+    const first = '<!doctype html><body><button>Bestellen</button></body>';
+    const other = '<!doctype html><body><p>Leer</p></body>';
+    assert.equal((await call('caw_design', { action: 'put', file: 'design/bestellung.html', content: first })).isError, false);
+    // Not linked yet: replacing it changes no step's judgement.
+    assert.equal((await call('caw_design', { action: 'put', file: 'design/bestellung.html', content: first })).isError, false);
+    await call('caw_design', { action: 'link', test: 'bestellung', step: 'S2', file: 'design/bestellung.html', personAsked: true });
+    const refused = await call('caw_design', { action: 'put', file: 'design/bestellung.html', content: other });
+    assert.equal(refused.isError, true);
+    assert.match(refused.content[0].text, /bestellung S2/);
+    assert.match(refused.content[0].text, /personAsked: true/);
+    assert.equal(readFileSync(join(root, 'caw', 'design', 'bestellung.html'), 'utf8'), first, 'the linked design stays');
+    const replaced = await call('caw_design', { action: 'put', file: 'design/bestellung.html', content: other, personAsked: true });
+    assert.equal(replaced.isError, false);
+    assert.equal(readFileSync(join(root, 'caw', 'design', 'bestellung.html'), 'utf8'), other);
+});
