@@ -1,10 +1,8 @@
 // N1–N15: native Playwright locators against the fixture site e2e/native (nested frames, shadow DOM, a dialog transition, a
 // virtual list, repeated rows, a select inside its label). The tests come from native/project.mjs; N1, N2 and N5 record their
 // own (rec-*) with a scripted agent and a scripted human.
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-
-import { chromium } from 'playwright-core';
 
 import { TESTS, testText, writeTests } from '../native/project.mjs';
 import { setStepDesign, stepHash } from '../../src/host/test-file.mjs';
@@ -972,31 +970,19 @@ scenario('N13', 'Pending steps: run passes with S1–S2 and names S3, S4; --stri
 });
 
 // ---- N18: target designs. S2 of n9-shadow ends on the page with "Errands" and Save; a design that matches, one that does not,
-// an image, and the needs of a pending S3.
+// and the needs of a pending S3.
 
 const DESIGNED = 'rec-design';
 // The fixture's own font and a default button: the same controls and styles as the site after S2. Free text and the rest of the
 // page are left out on purpose: what only the app has does not fail.
 const MATCHING = '<!doctype html><html lang="en"><head><style>body{font:14px system-ui,sans-serif;margin:16px}</style></head><body><main><h1>Errands</h1><p>Sample text</p><button>Save</button></main></body></html>';
 const OTHER = '<!doctype html><html lang="en"><head><style>body{font:14px system-ui,sans-serif;margin:16px}button{background:#e5533a;color:#fff}</style></head><body><main><h1>Errands</h1><button>Save</button><button>Export</button></main></body></html>';
-// A PNG header (signature and IHDR, 390×844) without image data: caw_design would refuse nothing, the pixel comparison cannot
-// decode it, so the design only warns (N17 judges real images).
-const PNG_390 = (() => {
-    const bytes = Buffer.alloc(45);
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes, 0);
-    bytes.writeUInt32BE(13, 8);
-    bytes.write('IHDR', 12, 'latin1');
-    bytes.writeUInt32BE(390, 16);
-    bytes.writeUInt32BE(844, 20);
-    return bytes;
-})();
 
-scenario('N18', 'Target design: a matching .html passes, another fails S2 with kind design and the replay goes on, a .png that is no image only warns; needs of the pending S3', async () => {
+scenario('N18', 'Target design: a matching .html passes, another fails S2 with kind design and the replay goes on; needs of the pending S3', async () => {
     const designDir = join(native, 'caw/design');
     mkdirSync(designDir, { recursive: true });
     writeFileSync(join(designDir, 'n18-match.html'), MATCHING);
     writeFileSync(join(designDir, 'n18-other.html'), OTHER);
-    writeFileSync(join(designDir, 'n18.png'), PNG_390);
     const parsed = parseTest(testText(DESIGNED, TESTS['n9-shadow']));
     const withDesign = (file, extra = []) => writeTest(native, { ...parsed, id: DESIGNED, steps: [parsed.steps[0], { ...parsed.steps[1], design: file }, ...extra] });
     const stepOf = (result, id) => (result?.steps ?? []).find((step) => step.id === id);
@@ -1016,10 +1002,6 @@ scenario('N18', 'Target design: a matching .html passes, another fails S2 with k
         verify('names the missing button and the differing style', /Fehlt: .*button "Export"/.test(notMet.note) && /button "Save": background-color .* → /.test(notMet.note), notMet.note);
         verify('needs of S3 missing: named, not ready', second?.needs?.ready === false && /Export/.test(JSON.stringify(second.needs.missing)), JSON.stringify(second?.needs));
 
-        withDesign('design/n18.png');
-        const image = await runQuietly(DESIGNED);
-        const third = newestRunOf(native, DESIGNED).result;
-        verify('undecodable image design: Exit 0, only a warning', image.code === 0 && stepOf(third, 'S2')?.design?.verdict === 'error' && (third?.warnings ?? []).some(({ type }) => type === 'design'), `${image.code} ${JSON.stringify(stepOf(third, 'S2')?.design)}`);
     } finally {
         rmSync(designDir, { recursive: true, force: true });
         for (const dir of ['caw/tests', 'caw/recordings']) rmSync(join(native, dir, `${DESIGNED}.yaml`), { force: true });
@@ -1321,19 +1303,15 @@ $A advise --file /tmp/a.json; echo "ADVISE Exit=$?"`;
     }
 });
 
-// ---- N17: the visual layer on n9-shadow. Screenshots per step; S2's own screen as a .png design is met, a red page is not;
-// visual regression (look: true on S1 and S2) learns both
-// looks over two headless runs. The rename switch ("Archive" to "Archive all") keeps role and style: a run with a window
-// passes (styles only), a headless one fails both steps by pixels and names the image file to delete. The restyle switch
-// (Archive bold) changes a style: the chat window fails S1 and S2, "Neuen Look übernehmen" adopts both at once and drops their
-// images of every platform, two headless runs learn them
-// again and the third compares them; open @S2 --design lays the design over the app and F7 toggles it.
+// ---- N17: the visual layer on n9-shadow. Screenshots per step; visual regression (look: true on S1 and S2) learns both
+// looks' style lines over two runs. The rename switch ("Archive" to "Archive all") keeps role and style: the look stays the
+// same. The restyle switch (Archive bold) changes a style: the chat window fails S1 and S2, "Neuen Look übernehmen" adopts
+// both at once and the next run compares the new look; open @S2 --design lays an .html design over the app and F7 toggles it.
 
 const LOOKED = 'rec-visual';
-const pngSide = (png) => [png.readUInt32BE(16), png.readUInt32BE(20)];
 const restyleSwitch = (on) => fetch(`http://127.0.0.1:${PORT}/api/restyle?on=${on ? 1 : 0}`, { method: 'POST' });
 
-scenario('N17', 'Visual layer: step screenshots, a .png design judged by pixels, learned look (pixels headless only) changed and adopted for all steps, open --design with F7', async () => {
+scenario('N17', 'Visual layer: step screenshots, learned look by style lines changed and adopted for all steps, open --design with F7', async () => {
     const designDir = join(native, 'caw/design');
     mkdirSync(designDir, { recursive: true });
     const parsed = parseTest(testText(LOOKED, TESTS['n9-shadow']));
@@ -1351,102 +1329,49 @@ scenario('N17', 'Visual layer: step screenshots, a .png design judged by pixels,
         writeWith();
         const shots = await runQuietly(LOOKED);
         const first = newestRunOf(native, LOOKED);
-        const shot = join(first.dir, 'agent', 'step-S2.png');
-        verify('screenshots: Exit 0, steps[].screenshot and the file', shots.code === 0 && stepOf(first.result, 'S2')?.screenshot === 'step-S2.png' && existsSync(shot), `${shots.code} ${JSON.stringify(stepOf(first.result, 'S2'))}`);
+        verify('screenshots: Exit 0, steps[].screenshot and the file', shots.code === 0 && stepOf(first.result, 'S2')?.screenshot === 'step-S2.png' && existsSync(join(first.dir, 'agent', 'step-S2.png')), `${shots.code} ${JSON.stringify(stepOf(first.result, 'S2'))}`);
 
-        // S2's own screen as its design: met. A red page of the same size: not met, with the difference image.
-        copyFileSync(shot, join(designDir, 'n17-own.png'));
-        const [width, height] = pngSide(readFileSync(shot));
-        const browser = await chromium.launch({ channel: 'chrome', headless: true });
-        try {
-            const page = await browser.newPage({ viewport: { width, height } });
-            await page.setContent('<body style="margin:0;background:#e5533a"></body>');
-            writeFileSync(join(designDir, 'n17-red.png'), await page.screenshot());
-        } finally {
-            await browser.close();
-        }
-        writeWith('design/n17-own.png');
-        const own = await runQuietly(LOOKED);
-        const ownDesign = stepOf(newestRunOf(native, LOOKED).result, 'S2')?.design;
-        verify('its own screen as .png design: Exit 0, met by pixels', own.code === 0 && ownDesign?.verdict === 'met' && ownDesign.ratio < 0.03, `${own.code} ${JSON.stringify(ownDesign)}`);
-        writeWith('design/n17-red.png');
-        const red = await runQuietly(LOOKED);
-        const redRun = newestRunOf(native, LOOKED);
-        const redDesign = stepOf(redRun.result, 'S2')?.design;
-        verify('a red page: Exit 1, S2 fails with kind design, difference image saved', red.code === 1 && stepOf(redRun.result, 'S2')?.kind === 'design' && redDesign?.verdict === 'not-met'
-            && redDesign.diff === 'step-S2-diff.png' && existsSync(join(redRun.dir, 'agent', 'step-S2-diff.png')), `${red.code} ${JSON.stringify(redDesign)}`);
-        verify('the note names the share and the limit', /der Pixel weichen ab, höchstens 3 % erlaubt/.test(red.note), red.note);
+        // Visual regression: look: true on S1 and S2, learned over two runs.
+        writeWith(undefined, true);
+        const headless = ['--headless'];
+        const learning = [await runQuietly(LOOKED, ['--learn', ...headless]), await runQuietly(LOOKED, ['--learn', ...headless])];
+        const looks = () => loadTest(native, LOOKED).steps.map((step) => step.recording.visual);
+        const learned = looks();
+        verify('two runs learn both looks: style lines by role and style', learning.every(({ code }) => code === 0)
+            && learned.every((visual) => visual?.runs === 2 && visual.images === undefined && visual.styles.some((line) => /^button ×\d+: /.test(line)))
+            && !existsSync(join(native, 'caw/recordings', LOOKED)), `${JSON.stringify(learning)} ${JSON.stringify(learned)}`);
+        verify('no style line names a control', learned.every((visual) => visual.styles.every((line) => !line.includes('"'))), JSON.stringify(learned[1]?.styles));
 
-        // Visual regression: look: true on S1 and S2. Learning runs are headless: only they learn and compare pixels. The
-        // threshold is tight, since the rename differs in about 0.009 % of the pixels; between headless runs on one machine
-        // nothing else differs.
-        const undoRegression = patchJson(join(native, 'caw.config.json'), (config) => { config.visual = { maxRatio: 0.00002 }; });
-        try {
-            writeWith(undefined, true);
-            const headless = ['--headless'];
-            const learning = [await runQuietly(LOOKED, ['--learn', ...headless]), await runQuietly(LOOKED, ['--learn', ...headless])];
-            const looks = () => loadTest(native, LOOKED).steps.map((step) => step.recording.visual);
-            const imageOf = (id) => join(native, 'caw/recordings', LOOKED, `${id}.${process.platform}.png`);
-            const learned = looks();
-            verify('two headless runs learn both looks: styles by role and style, an image per platform', learning.every(({ code }) => code === 0)
-                && learned.every((visual) => visual?.runs === 2 && visual.images?.[process.platform] === 2 && visual.styles.some((line) => /^button ×\d+: /.test(line)))
-                && existsSync(imageOf('S1')) && existsSync(imageOf('S2')), `${JSON.stringify(learning)} ${JSON.stringify(learned)}`);
-            verify('no style line names a control', learned.every((visual) => visual.styles.every((line) => !line.includes('"'))), JSON.stringify(learned[1]?.styles));
+        // The rename keeps role and style: the look is the same.
+        await renameSwitch(true);
+        const renamed = await runQuietly(LOOKED, headless);
+        const renamedStep = stepOf(newestRunOf(native, LOOKED).result, 'S2');
+        verify('renamed: Exit 0, S2 the same by its styles', renamed.code === 0 && renamedStep?.visual?.verdict === 'same', `${renamed.code} ${JSON.stringify(renamedStep)}`);
+        await renameSwitch(false);
 
-            // The rename keeps role and style: the window compares styles only and passes; headless the pixels fail both steps.
-            await renameSwitch(true);
-            const windowed = await runQuietly(LOOKED);
-            const windowedStep = stepOf(newestRunOf(native, LOOKED).result, 'S2');
-            verify('renamed, run with a window: Exit 0, S2 the same by its styles, pixels headless only', windowed.code === 0 && windowedStep?.visual?.verdict === 'same'
-                && windowedStep.visual.pixels === 'headless-only' && windowedStep.visual.ratio === undefined, `${windowed.code} ${JSON.stringify(windowedStep)}`);
-            const changed = await runQuietly(LOOKED, headless);
-            const changedRun = newestRunOf(native, LOOKED);
-            const changedStep = stepOf(changedRun.result, 'S2');
-            verify('renamed, headless: Exit 1, S1 and S2 fail with kind visual by pixels, no style changed, difference image saved', changed.code === 1
-                && ['S1', 'S2'].every((id) => stepOf(changedRun.result, id)?.kind === 'visual') && changedStep?.visual?.verdict === 'changed'
-                && changedStep.visual.ratio > 0.00002 && changedStep.visual.styles === undefined && existsSync(join(changedRun.dir, 'agent', 'step-S2-look-diff.png')), `${changed.code} ${JSON.stringify(changedStep)}`);
-            verify('only pixels see it: the note names the image file to delete for learning anew', new RegExp(`ein Lauf im Fenster nicht.*lösche caw/recordings/${LOOKED}/S[12]\\.${process.platform}\\.png: Die nächsten 2 Läufe headless lernen das Bild neu`).test(changed.note), changed.note);
-            verify('CI changed nothing in the recording', JSON.stringify(looks()) === JSON.stringify(learned));
-
-            // A style change (Archive bold) is what a window sees: the chat fails S1 and S2, adopting takes both at once. An image
-            // of another platform (stands in for one committed from CI) shows the old look too: adopting deletes it as well.
-            const otherPlatform = process.platform === 'linux' ? 'win32' : 'linux';
-            const otherImageOf = (id) => join(native, 'caw/recordings', LOOKED, `${id}.${otherPlatform}.png`);
-            for (const id of ['S1', 'S2']) copyFileSync(imageOf(id), otherImageOf(id));
-            await restyleSwitch(true);
-            const h = humans(async (page) => {
-                const adopt = page.locator('#choices button', { hasText: 'Neuen Look übernehmen' });
-                await adopt.waitFor({ state: 'attached', timeout: 90000 });
-                const text = await page.locator('.message:is(.question,.result,.notice)').last().textContent();
-                verify('Chat: the look changed, a bold button more, the card names S1 and S2 and the headless relearning', /sieht anders aus als gelernt/.test(text)
-                    && /1 button mehr mit .*font-weight 700/.test(text) && /Aussehen von S1, S2 weicht/.test(text) && /headless neu/.test(text), text.slice(0, 700));
-                await clickChoice(page, adopt);
-            });
-            await run(native, [LOOKED, ...target], { interactive: true, onChatOpen: h.onChatOpen }).catch(() => {});
-            await h.done();
-            const adopted = looks();
-            verify('adopted for S1 and S2: styles learned at once with the bold button, the day, no image files of any platform', adopted.every((visual) => visual?.runs === 2
-                && /^\d{4}-\d{2}-\d{2}$/.test(visual.adopted ?? '') && visual.images?.[process.platform] === undefined && visual.styles.some((line) => line.includes('font-weight 700')))
-                && ['S1', 'S2'].every((id) => !existsSync(imageOf(id)) && !existsSync(otherImageOf(id))), JSON.stringify(adopted));
-
-            // The next headless runs: styles match, the images are learned again over two runs, then compared.
-            const relearning = [await runQuietly(LOOKED, ['--learn', ...headless]), await runQuietly(LOOKED, ['--learn', ...headless])];
-            const relearned = looks();
-            verify('the next two headless runs with the new look: Exit 0, the images learned again', relearning.every(({ code }) => code === 0)
-                && relearned.every((visual) => visual.images?.[process.platform] === 2 && visual.adopted === adopted[0].adopted) && existsSync(imageOf('S1')) && existsSync(imageOf('S2')),
-            `${JSON.stringify(relearning)} ${JSON.stringify(relearned.map((visual) => visual.images))}`);
-            const green = await runQuietly(LOOKED, headless);
-            const greenStep = stepOf(newestRunOf(native, LOOKED).result, 'S2');
-            verify('then a headless run compares pixels: Exit 0, S2 the same', green.code === 0 && greenStep?.visual?.verdict === 'same' && typeof greenStep.visual.ratio === 'number',
-                `${green.code} ${green.note} ${JSON.stringify(greenStep?.visual)}`);
-        } finally {
-            undoRegression();
-            await renameSwitch(false).catch(() => {});
-            await restyleSwitch(false).catch(() => {});
-        }
+        // A style change (Archive bold): the chat fails S1 and S2, adopting takes both at once.
+        await restyleSwitch(true);
+        const h = humans(async (page) => {
+            const adopt = page.locator('#choices button', { hasText: 'Neuen Look übernehmen' });
+            await adopt.waitFor({ state: 'attached', timeout: 90000 });
+            const text = await page.locator('.message:is(.question,.result,.notice)').last().textContent();
+            verify('Chat: the look changed, a bold button more, the card names S1 and S2', /sieht anders aus als gelernt/.test(text)
+                && /1 button mehr mit .*font-weight 700/.test(text) && /Aussehen von S1, S2 weicht/.test(text), text.slice(0, 700));
+            await clickChoice(page, adopt);
+        });
+        await run(native, [LOOKED, ...target], { interactive: true, onChatOpen: h.onChatOpen }).catch(() => {});
+        await h.done();
+        const adopted = looks();
+        verify('adopted for S1 and S2: styles learned at once with the bold button, and the day', adopted.every((visual) => visual?.runs === 2
+            && /^\d{4}-\d{2}-\d{2}$/.test(visual.adopted ?? '') && visual.styles.some((line) => line.includes('font-weight 700'))), JSON.stringify(adopted));
+        const green = await runQuietly(LOOKED, headless);
+        const greenStep = stepOf(newestRunOf(native, LOOKED).result, 'S2');
+        verify('the next run with the new look: Exit 0, S2 the same', green.code === 0 && greenStep?.visual?.verdict === 'same', `${green.code} ${green.note} ${JSON.stringify(greenStep?.visual)}`);
+        await restyleSwitch(false);
 
         // open @S2 --design: through S2, the design over the app; F7 hides and shows it.
-        writeWith('design/n17-own.png');
+        writeFileSync(join(designDir, 'n17.html'), MATCHING);
+        writeWith('design/n17.html');
         const overlay = humans(async (chat) => {
             const bench = chat.page();
             await benchBack(chat);

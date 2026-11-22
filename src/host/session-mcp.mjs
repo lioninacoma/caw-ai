@@ -641,7 +641,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
         name: 'caw_design',
         description: 'Target designs for test steps, under caw/design. You fetch a design yourself (a Claude Design artifact, a Figma export) '
             + 'and write it here; never write into caw/ with your own tools. {action: "put", file, content | base64}: writes '
-            + 'design/<name>.html (one screen, inline CSS; rendered later without scripts or network), or design/<name>.png (base64). '
+            + 'design/<name>.html (one screen, inline CSS; rendered later without scripts or network). '
             + 'Replacing a design a step links needs personAsked: true, like link. {action: "list"}: the design files and which steps link them '
             + '(or carry look: true, a learned look the person set by hand). '
             + '{action: "link", test, step, file | null, personAsked: true}: sets or removes design: on one step of caw/tests/<test>.yaml. '
@@ -653,7 +653,6 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                 action: { type: 'string', enum: ['put', 'list', 'link'] },
                 file: { type: ['string', 'null'], description: 'Relative to the caw folder, e.g. design/order-form.html' },
                 content: { type: 'string', description: 'put: the text of an .html file' },
-                base64: { type: 'string', description: 'put: the bytes of a .png file, base64-encoded' },
                 test: { type: 'string', description: 'link: the test id' },
                 step: { type: 'string', description: 'link: the step id, e.g. S3' },
                 personAsked: { type: 'boolean', description: 'link: true only when the person asked to link this design to this step; put: true only when the person asked to replace a design a step links' },
@@ -685,14 +684,9 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                 });
             };
             if (input.action === 'put') {
-                if ((input.content === undefined) === (input.base64 === undefined)) throw new Error(t('run.mcp.designContent'));
-                if (input.base64 !== undefined && (typeof input.base64 !== 'string' || !/^[A-Za-z0-9+/\s]*={0,2}\s*$/.test(input.base64))) throw new Error(t('run.mcp.designBase64'));
-                if (input.content !== undefined && typeof input.content !== 'string') throw new Error(t('run.mcp.designContent'));
-                const kind = design.designKind(input.file);
-                if (kind === null) throw new Error(t('run.mcp.designName'));
-                // A PNG comes as bytes, html as text: the wrong field for the kind is refused, not converted.
-                if ((kind === 'png') !== (input.base64 !== undefined)) throw new Error(t('run.mcp.designContent'));
-                const data = input.base64 === undefined ? Buffer.from(input.content, 'utf8') : Buffer.from(input.base64, 'base64');
+                if (typeof input.content !== 'string') throw new Error(t('run.mcp.designContent'));
+                if (design.designKind(input.file) === null) throw new Error(t('run.mcp.designName'));
+                const data = Buffer.from(input.content, 'utf8');
                 // A design a step links is what that step is judged against: replacing it is the person's decision, like link.
                 if (input.personAsked !== true && design.designPath(cawDir, input.file) !== null) {
                     const linked = (await stepLinks()).filter((link) => link.design === input.file);

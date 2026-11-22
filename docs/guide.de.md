@@ -47,7 +47,7 @@ Die Regel für Prüfungen: **Solange das erwartete Ergebnis eines Schritts gleic
 
 Nach jeder Aktion misst caw ihre Wirkung: den Zustand der Bedienelemente, die beantworteten Requests, die Form der JSON-Antworten und Konsolenmeldungen. Es lernt die Wirkungen über die ersten fünf gesunden Läufe, behält nur, was in allen gleich war, und friert sie dann ein: Kein Lauf ändert sie mehr, nur „Neue Wirkung übernehmen“ oder das Löschen von `effects`. Je Schritt hält es außerdem Vergleichswerte der Requests: Name, Dauer und Parameternamen, nie Werte.
 
-Wirkungen und Vergleichswerte lernt caw nur auf der Umgebung, auf der der Test aufgenommen wurde (`recordedOn`), in Läufen außerhalb von CI (in CI nur mit `--learn`), und vergleicht sie auf jeder Umgebung. Ein Aussehen (`look: true`) lernt es genauso: seine Stilzeilen über zwei bestandene Läufe, sein Bild über zwei passende headless Läufe ([Visuelle Regression](#visuelle-regression)). Einzelheiten: [Wirkung je Aktion](#wirkung-je-aktion).
+Wirkungen und Vergleichswerte lernt caw nur auf der Umgebung, auf der der Test aufgenommen wurde (`recordedOn`), in Läufen außerhalb von CI (in CI nur mit `--learn`), und vergleicht sie auf jeder Umgebung. Ein Aussehen (`look: true`) lernt es genauso: seine Stilzeilen über zwei bestandene Läufe ([Visuelle Regression](#visuelle-regression)). Einzelheiten: [Wirkung je Aktion](#wirkung-je-aktion).
 
 ### Die Einschätzung: Anwendung, Umgebung, Test oder unklar
 
@@ -73,13 +73,13 @@ Der Testplan kann die Vorgabe sein, bevor es den Bildschirm gibt. Schreib die n�
 
 Jeder Lauf beurteilt den Entwurf dann ohne KI, nachdem die Prüfung des Schritts bestanden hat: Bedienelemente, Überschriften, Beschriftungen und einige Stile je Bedienelement des gerenderten Entwurfs gegen die Seite der App ([Einzelheiten](test-files.de.md#zielbild)). Ist er nicht erfüllt, scheitert der Schritt mit kind `design`, und der Chat bietet an, ihn von deiner verbundenen Session umsetzen zu lassen oder zu schließen, nie den Schritt zu beheben: Der Test stimmt, der Bildschirm ist noch nicht gebaut. Sind alle `needs` des ersten offenen Schritts auf der Seite, meldet der Lauf, dass er bereit zum Aufnehmen ist: `caw record <test>@S4`.
 
-Ein `.png`-Entwurf wird nach Pixeln gegen den Bildschirm des Schritts beurteilt, Lauf-Kennung, gemerkte Werte, Datumsangaben, Listenzeilen, Listeneinträge, Karten und `visualIgnore` maskiert ([Einzelheiten](test-files.de.md#zielbild)). Um zu sehen, wo der Bildschirm abweicht, öffne den Schritt mit dem Entwurf darüber:
+Um zu sehen, wo der Bildschirm abweicht, öffne den Schritt mit dem Entwurf darüber:
 
 ```bash
 caw open <test>@S4 --design --env local
 ```
 
-Das spielt bis einschließlich S4 (bei offenem S4: bis zu seinem Einstieg) und legt den Entwurf halb durchsichtig in der aufgenommenen Größe über die App; **F7** zeigt und verbirgt ihn, auch über ein Neuladen hinweg. Darunter stehen die Abweichungen: fehlende Bedienelemente, abweichende Stile, der Anteil abweichender Pixel.
+Das spielt bis einschließlich S4 (bei offenem S4: bis zu seinem Einstieg) und legt den Entwurf halb durchsichtig in der aufgenommenen Größe über die App; **F7** zeigt und verbirgt ihn, auch über ein Neuladen hinweg. Darunter stehen die Abweichungen: fehlende Bedienelemente und abweichende Stile.
 
 ## Tests in normaler Sprache: einmal aufnehmen, ohne KI abspielen
 
@@ -532,14 +532,12 @@ Zwei Arten visueller Prüfung, beide ohne KI. Ein [Zielbild](#gegen-ein-zielbild
 
 ### Visuelle Regression
 
-`look: true` an einem Schritt in der Testdatei lässt caw das Aussehen dieses Schritts lernen: seine Stilzeilen über zwei bestandene Läufe, auch im Fenster, sein Bild über zwei passende headless Läufe ([Details](test-files.de.md#visuelle-regression)). Ein späterer Lauf, in dem sich Stile oder Pixel geändert haben, lässt den Schritt mit kind `visual` scheitern. `look` schreibst nur du, wie `design` und `needs`; es liegt außerhalb des Hashs.
+`look: true` an einem Schritt in der Testdatei lässt caw das Aussehen dieses Schritts lernen: seine Stilzeilen über zwei bestandene Läufe, im Fenster wie headless ([Details](test-files.de.md#visuelle-regression)). Ein späterer Lauf, in dem sich Stile geändert haben, lässt den Schritt mit kind `visual` scheitern. `look` schreibst nur du, wie `design` und `needs`; es liegt außerhalb des Hashs.
 
 - **Nur feste Daten:** Setze es nur an Schritten, deren Bildschirm feste Daten zeigt, etwa einen Zustand, den der Test selbst herstellt. Daten, die sich ändern, machen es unruhig.
 - **Vorschlag nach der Aufnahme:** Nach `caw record` schlägt der Prüflauf solche Schritte in seiner Karte „Prüflauf bestanden“ vor. Er beurteilt, woher ihr Text kommt: Werte aus den Antworten des Servers, Zeilen, Listeneinträge, Karten, Datumsangaben. Keiner ist angehakt, denn sicher ist caw nicht. Angehakte Schritte bekommen beim Übernehmen `look: true`.
-- **Maskiert:** Laufkennung, gemerkte Werte, Datumsangaben in Ziffern, Listen- und Tabellenzeilen, Listeneinträge und Karten. `visualIgnore` in der Config deckt den Rest ab. Die Bedienelemente in maskierten Bereichen zählen auch in den Style-Zeilen nicht, ein Listeneintrag mehr ändert also nichts.
-- **Pixel nur headless:** Pixel lernen und vergleichen nur headless Läufe (`--headless`, ein fester Viewport: der aufgenommene, sonst 1920 × 1080). Ein Lauf im Fenster vergleicht nur die Stile. Auch ein CI-Lauf ohne `--headless` hat ein Fenster und warnt: Ergänze `--headless`.
-- **Gewollte Änderung:** **Neuen Look übernehmen** im Chat übernimmt das neue Aussehen aller geänderten Schritte auf einmal; ihre Bilder aller Plattformen werden gelöscht, die nächsten headless Läufe lernen sie neu. Eine Änderung, die nur die Pixel sehen, bietet kein Übernehmen an, denn das Fenster sieht nichts: Der gescheiterte headless Lauf nennt die Bilddatei des Schritts; lösche sie, und die nächsten zwei headless Läufe lernen sie neu. `caw audit` listet das, und `look: true` an einem Schritt mit gelerntem Aussehen zu entfernen zählt als Schwächung.
-- **Grenzen:** Das Bild gilt je Plattform (Schriften rendern unter Windows und Linux verschieden), und die Schwellen sind Startwerte, bis sie gemessen sind ([Einzelheiten](test-files.de.md#visuelle-regression)).
+- **Ausgelassen:** Die Bedienelemente in Listen- und Tabellenzeilen, Listeneinträgen, Karten und in dem, was `visualIgnore` in der Config findet, zählen in den Style-Zeilen nicht, ein Listeneintrag mehr ändert also nichts.
+- **Gewollte Änderung:** **Neuen Look übernehmen** im Chat übernimmt das neue Aussehen aller geänderten Schritte auf einmal. `caw audit` listet das, und `look: true` an einem Schritt mit gelerntem Aussehen zu entfernen zählt als Schwächung.
 
 ## Produktion überwachen
 

@@ -27,7 +27,7 @@ const neutral = (text) => text.replace(/\d+/g, '#');
  * @param style also a few computed styles per control, for comparing against a target design (design.mjs): then each entry
  *              is { line, style? } instead of the line
  * @param look  for a learned look (visual.mjs): { ignore } with the config's visualIgnore selectors. Then exactly the controls
- *              in what the look's capture masks (maskProbe) are left out: rows except header rows, list entries except those of
+ *              in what maskProbe (visual.mjs) counts as changing data are left out: rows except header rows, list entries except those of
  *              navigation, menus, tab lists and toolbars, articles and cards, and what `ignore` finds. A list with one entry more
  *              then has the same style lines.
  */
@@ -72,7 +72,7 @@ export function controlsProbe({ style: withStyle = false, look = null } = {}) {
     // Rows of lists and tables are data, often of other records: their controls do not count. Of a list, only whether it
     // has rows counts.
     const ROW = '[role=row], [role=gridcell], [role=listitem], [role=option], [role=treeitem], tr, li';
-    // The look's masks (visual.mjs maskProbe, the same selectors): the probe runs in the page, it cannot share them.
+    // What visual.mjs maskProbe counts as changing data (the same selectors): the probe runs in the page, it cannot share them.
     const MASKED_ROW = '[role=row], [role=option], [role=treeitem], tr';
     const ENTRY = 'li:not([role]), [role=listitem]';
     const NAVIGATION = 'nav, [role=navigation], [role=menu], [role=menubar], [role=tablist], [role=toolbar]';

@@ -47,7 +47,7 @@ The rule for checks: **while a step's expected result stays the same, its check 
 
 After each action caw measures its effect: the state of the controls, the requests answered, the shape of JSON responses and console messages. It learns the effects over the first five healthy runs, keeping only what was equal in all of them, and then freezes them: no run changes them any more, only "Accept new effect" or deleting `effects` does. Per step it also keeps a baseline of the requests: name, duration and parameter names, never values.
 
-Effects and baselines are learned only on the environment the test was recorded on (`recordedOn`), by runs outside CI (in CI only with `--learn`), and compared on every environment. A look (`look: true`) is learned the same way: its style lines over two passed runs, its image over two matching headless runs ([Visual regression](#visual-regression)). Details: [Effect per action](#effect-per-action).
+Effects and baselines are learned only on the environment the test was recorded on (`recordedOn`), by runs outside CI (in CI only with `--learn`), and compared on every environment. A look (`look: true`) is learned the same way: its style lines over two passed runs ([Visual regression](#visual-regression)). Details: [Effect per action](#effect-per-action).
 
 ### The assessment: app, environment, test or unclear
 
@@ -73,13 +73,13 @@ The test plan can be the spec before the screen exists. Write the next steps at 
 
 Each run then judges the design without AI, after the step's check passed: the controls, headings, labels and a few styles per control of the rendered design against the app's page ([details](test-files.md#target-design)). Not met, the step fails with kind `design`, and the chat offers to have it built by your attached session or to close, never to fix the step: the test is right, the screen is not built yet. When the first pending step's `needs` are all on the page, the run says it is ready to record: `caw record <test>@S4`.
 
-A `.png` design is judged by pixels against the step's screen, with run tag, remembered values, dates, list rows, list entries, cards and `visualIgnore` masked ([details](test-files.md#target-design)). To see where the screen is off, open the step with its design over it:
+To see where the screen is off, open the step with its design over it:
 
 ```bash
 caw open <test>@S4 --design --env local
 ```
 
-It plays through S4 (a pending S4: up to its entry) and lays the design over the app at the recorded size, half transparent; **F7** shows and hides it, also across reloads. Below it the deviations are listed: missing controls, differing styles, the share of differing pixels.
+It plays through S4 (a pending S4: up to its entry) and lays the design over the app at the recorded size, half transparent; **F7** shows and hides it, also across reloads. Below it the deviations are listed: missing controls and differing styles.
 
 ## Plain-language tests: record once, replay without AI
 
@@ -527,14 +527,12 @@ Two kinds of visual check, both without AI. A [target design](#develop-against-a
 
 ### Visual regression
 
-`look: true` on a step in the test file makes caw learn that step's look: its style lines over two passed runs, in a window too, its image over two matching headless runs ([details](test-files.md#visual-regression)). A later run whose styles or pixels changed fails the step with kind `visual`. Only you write `look`, like `design` and `needs`; it is outside the hash.
+`look: true` on a step in the test file makes caw learn that step's look: its style lines over two passed runs, in a window and headless alike ([details](test-files.md#visual-regression)). A later run whose styles changed fails the step with kind `visual`. Only you write `look`, like `design` and `needs`; it is outside the hash.
 
 - **Fixed data only:** set it only on steps whose screen shows fixed data, e.g. a state the test sets up itself. Changing data makes it noisy.
 - **Suggested after recording:** after `caw record` the check run suggests such steps in its "Check run passed" card. It judges where their text comes from: values from the server's answers, rows, list entries, cards, dates. None is ticked, because caw cannot be sure. Ticked steps get `look: true` when you adopt.
-- **Masked:** the run tag, remembered values, numeric dates, list and table rows, list entries and cards. `visualIgnore` in the config covers the rest. The controls inside masked areas do not count in the style lines either, so one list entry more changes nothing.
-- **Pixels only headless:** pixels are learned and compared only in headless runs (`--headless`, a fixed viewport: the recorded one, else 1920 × 1080). A run in the window compares the styles only. A CI run without `--headless` has a window too and warns: add `--headless`.
-- **Intended change:** **Adopt new look** in the chat takes over the new look of every changed step at once; their images of every platform are deleted and the next headless runs learn them anew. A change only pixels see offers no adopting, since the window sees nothing: the failed headless run names the step's image file, delete it and the next two headless runs learn it anew. `caw audit` lists it, and taking `look: true` off a step with a learned look counts as a weakening.
-- **Limits:** the image is per platform (fonts render differently on Windows and Linux), and the thresholds are starting values until measured ([details](test-files.md#visual-regression)).
+- **Left out:** the controls inside list and table rows, list entries, cards and what `visualIgnore` in the config finds do not count in the style lines, so one list entry more changes nothing.
+- **Intended change:** **Adopt new look** in the chat takes over the new look of every changed step at once. `caw audit` lists it, and taking `look: true` off a step with a learned look counts as a weakening.
 
 ## Monitoring production
 

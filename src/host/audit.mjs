@@ -232,8 +232,7 @@ const stepChanges = (finding, { before, after, sameExpect }, failLists, designs)
         }
     });
     if (was.network !== undefined && !same(was.network, now.network)) out.push(finding('baselines-changed', 'info', { ...at, before: was.network, after: now.network }));
-    // A look a person adopted ("Adopt new look"): the step is compared against the adopted styles from now on, its image is
-    // learned anew. Listed, so the reviewer looks at the styles in the diff; a look learned over runs is not listed, it only
+    // A look a person adopted ("Adopt new look"): the step is compared against the adopted styles from now on. Listed, so the reviewer looks at the styles in the diff; a look learned over runs is not listed, it only
     // confirms what was there.
     if (now.visual?.adopted !== undefined && now.visual.adopted !== was.visual?.adopted) {
         out.push(finding('look-adopted', 'listed', { ...at, before: was.visual?.styles, after: now.visual.styles, vars: { day: now.visual.adopted } }));
@@ -292,7 +291,7 @@ const configChanges = (finding, before, after) => {
     if (before === null || after === null) return [];
     const out = [];
     const at = { test: null };
-    // visualIgnore leaves areas out of every look (styles and image), readyIgnore lets a step go on while they still load.
+    // visualIgnore leaves areas out of every look's style lines, readyIgnore lets a step go on while they still load.
     const lists = [['consoleIgnore', 'config-console-ignore'], ['foreignCode', 'config-foreign-code'], ['reads', 'config-reads'], ['visualIgnore', 'config-visual-ignore'], ['readyIgnore', 'config-ready-ignore']];
     for (const [key, kind] of lists) {
         const more = added(before[key], after[key]);

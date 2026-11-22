@@ -171,20 +171,20 @@ test('renderAudit: Markdown for the PR, weakenings first, checks as code', () =>
 });
 
 test('auditChanges: an adopted look is listed with its day; a look learned over runs is not', () => {
-    const look = (extra) => ({ runs: 2, styles: ['button "Speichern": color #ffffff'], images: { linux: 2 }, ...extra });
+    const look = (extra) => ({ runs: 2, styles: ['button "Speichern": color #ffffff'], ...extra });
     const before = spec([BASE[0], step('S2', BASE[1].expect, { check: 'rows() === 1', recording: { visual: look() } })]);
     const adopted = spec([BASE[0], step('S2', BASE[1].expect, { check: 'rows() === 1', recording: { visual: look({ styles: ['button "Speichern": color #000000'], adopted: '2026-11-21' }) } })]);
     const findings = audit(adopted, { before });
     assert.deepEqual(kinds(findings), ['listed:look-adopted']);
-    assert.equal(findings[0].text, 'Für S2 wurde am 2026-11-21 ein neuer Look übernommen: seine Stile gelten ab jetzt, sein Bild lernen die nächsten Läufe headless neu.');
+    assert.equal(findings[0].text, 'Für S2 wurde am 2026-11-21 ein neuer Look übernommen: seine Stile gelten ab jetzt.');
     assert.deepEqual(findings[0].after, ['button "Speichern": color #000000']);
-    const learnedLook = spec([BASE[0], step('S2', BASE[1].expect, { check: 'rows() === 1', recording: { visual: look({ images: { linux: 2, win32: 1 } }) } })]);
+    const learnedLook = spec([BASE[0], step('S2', BASE[1].expect, { check: 'rows() === 1', recording: { visual: look({ basis: 'r2' }) } })]);
     assert.deepEqual(audit(learnedLook, { before }), []);
     assert.deepEqual(audit(adopted, { before: adopted }), [], 'the same adoption is not listed again');
 });
 
 test('auditChanges: look: true taken off a step with a learned look weakens it; put on, it is listed', () => {
-    const learnedLook = { runs: 2, styles: ['button ×1: color #ffffff'], images: { linux: 2 } };
+    const learnedLook = { runs: 2, styles: ['button ×1: color #ffffff'] };
     const withLook = (look, visual = learnedLook) => spec([BASE[0], step('S2', BASE[1].expect, { check: 'rows() === 1', ...(look ? { look: true } : {}), recording: { visual } })]);
     const off = audit(withLook(false), { before: withLook(true) });
     assert.deepEqual(kinds(off), ['weakening:look-off']);
@@ -239,7 +239,7 @@ test('auditChanges: design.fail narrowed, visualIgnore and readyIgnore added wea
 });
 
 test('auditChanges: a learned look removed from the recording while look: true stays weakens the step', () => {
-    const look = { runs: 2, styles: ['button ×1: color #ffffff'], images: { linux: 2 } };
+    const look = { runs: 2, styles: ['button ×1: color #ffffff'] };
     const withLook = (visual) => spec([BASE[0], step('S2', BASE[1].expect, { check: 'rows() === 1', look: true, recording: visual === undefined ? {} : { visual } })]);
     const findings = audit(withLook(undefined), { before: withLook(look) });
     assert.deepEqual(kinds(findings), ['weakening:look-forgotten']);

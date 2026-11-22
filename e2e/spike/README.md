@@ -10,7 +10,6 @@ Decides by data how caw should learn request baselines and step effects. Not shi
 | `capture.mjs` | Runs the test headless through `caw run` and appends one JSON line per run: `steps[]` of result.json, results, failures, diagnosis, profile, environment and the row titles. |
 | `methods.mjs` | M0 (the logic before the spike decision: two learning runs, pruning and view lines, kept in methods.mjs so the report stays reproducible), M1 (what the product does since), M2, M3, M4, M5 and the modifier V. |
 | `simulate.mjs` | Bootstrap sequences over the capture, every metric, the decision rule, a Markdown report. |
-| `visual/measure.mjs` | Pixel noise between unchanged runs (fresh Chrome per run, caw's own capture and comparison), per channel tolerance: p50, p99, max and a proposed `visual.maxRatio` (p99 × 2 + 0.0005). Run on Windows and Linux: `node e2e/spike/visual/measure.mjs [--runs 30]`. |
 
 Unit tests: `test/spike-methods.test.mjs`, `test/spike-simulate.test.mjs`, `test/spike-app.test.mjs` (synthetic data from
 `test/spike-fixtures.mjs`, plain HTTP, no browser). They run in `npm test` and take a few seconds.

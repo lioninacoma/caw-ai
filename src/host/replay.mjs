@@ -803,8 +803,8 @@ export const stepGroups = (steps, replay) => {
  * @param judgeDesign (design, page) => judged design (design.mjs createDesignJudge); without it designs are not judged
  * @param designFail  config design.fail: with 'target' a design not met fails its step, otherwise it only warns
  * @param reads       the config's `reads` patterns: what they name is no write when a renamed target is proposed
- * @param capture     (id, { texts }) => the step's screen (visual.mjs captureStep), taken at most once per passed check and shared by
- *                    the .png design, the screenshot and the learned look; without it nothing visual is captured
+ * @param capture     (id) => the step's screen (visual.mjs captureStep), taken at most once per passed check, for the
+ *                    screenshot; without it nothing visual is captured
  * @param look        (id, { capture, page }) => { record?, observed?, fail?, warnings? } after the design: screenshot
  *                    and visual regression (run.mjs); `fail` { kind, text, evidence } fails the passed step without stopping
  * @param hintLook    (id, { page, texts }) => { served, masks } after a passed step, for the look suggestion after a recording
@@ -1113,14 +1113,13 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
      * warns), but the replay goes on: the app works, it just does not look as designed yet. No new attempt, since waiting
      * does not build a screen, and the failed result keeps its effects from being learned in this run.
      */
-    const judge = async (id, result, shot) => {
+    const judge = async (id, result) => {
         const design = replay.designs?.[id];
         if (design === undefined || judgeDesign === undefined) return;
-        const judged = await judgeDesign({ ...design, step: id }, session.page(), shot === undefined ? {} : { capture: shot }).catch((error) => ({ file: design.file, verdict: 'error', note: t('session.design.error', { file: design.file, error: firstLine(error) }) }));
+        const judged = await judgeDesign({ ...design, step: id }, session.page()).catch((error) => ({ file: design.file, verdict: 'error', note: t('session.design.error', { file: design.file, error: firstLine(error) }) }));
         designs.set(id, judged);
-        if (judged.verdict === 'met' || judged.verdict === 'image') return;
-        // A .png design is judged by pixels: its note names the share and the diff image.
-        const details = judged.ratio === undefined ? designText(judged) : judged.note;
+        if (judged.verdict === 'met') return;
+        const details = designText(judged);
         const text = judged.verdict === 'not-met' ? t('session.design.notMet', { id, details }) : judged.note;
         if (judged.verdict === 'error' || !designFail.includes('target')) {
             session.warn?.({ type: 'design', step: id, text });
@@ -1143,14 +1142,14 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         if (seen.fail === undefined || result?.status !== 'pass') return;
         results.set(id, { ...result, status: 'fail', kind: seen.fail.kind, evidence: { type: 'eval', value: seen.fail.evidence }, note: seen.fail.text });
     };
-    /** The step's screen, captured on first use: design, screenshot and look share one capture per passed check. */
     /** What varies from run to run on a screen: the run tag and the remembered values. */
     const varying = () => [...(runTag === undefined ? [] : [runTag, runTag.toLowerCase()]), ...remembered.values()];
+    /** The step's screen, captured on first use: at most one capture per passed check. */
     const shotOf = (id) => {
         if (capture === undefined) return undefined;
         let taken = null;
         return () => {
-            taken ??= capture(id, { texts: varying() });
+            taken ??= capture(id);
             return taken;
         };
     };
@@ -1476,7 +1475,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
                 break;
             }
             const shot = shotOf(step.id);
-            await judge(step.id, result, shot);
+            await judge(step.id, result);
             await inspect(step.id, shot);
             if (hintLook !== undefined && results.get(step.id)?.status === 'pass') lookHints.set(step.id, await hintLook(step.id, { page: session.page(), texts: varying() }).catch(() => null));
         }
@@ -1647,7 +1646,7 @@ export const stepRecords = ({ ids, results, broken = null, requests, effects, de
         ...(requests?.has(id) ? { requests: summarizeRequests(requests.get(id)) } : {}),
         ...(effectsShown && seen !== undefined ? { effects: [...seen].map(([action, effect]) => ({ action, ...effect })) } : {}),
         ...(shownDeviation === undefined ? {} : { deviation: shownDeviation }),
-        ...(design === undefined ? {} : { design: { file: design.file, verdict: design.verdict, missing: design.missing ?? [], extra: design.extra ?? [], styleDiffs: design.styleDiffs ?? [], ...(design.ratio === undefined ? {} : { ratio: design.ratio }), ...(design.diff === undefined ? {} : { diff: design.diff }) } }),
+        ...(design === undefined ? {} : { design: { file: design.file, verdict: design.verdict, missing: design.missing ?? [], extra: design.extra ?? [], styleDiffs: design.styleDiffs ?? [] } }),
         ...(looks?.get(id) ?? {}),
         ...(proposal === undefined ? {} : { proposal: effectsShown ? proposal : { ...proposal, evidence: { check: proposal.evidence.check } } }),
     };

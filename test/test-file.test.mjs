@@ -382,45 +382,27 @@ test('two files: when the tool learns, only the recording changes', (t) => {
     assert.equal(writeTest(root, learned, new Set(['S2'])), 'keine Änderung');
 });
 
-test('two files: a learned look goes into the recording, its image beside it per platform; written once', (t) => {
+test('two files: a learned look goes into the recording; written once', (t) => {
     const root = testRoot(t);
     const whole = spec(recorded('S1'), recorded('S2', [], { after: 'S1' }));
     writeTest(root, whole);
     const description = readFileSync(testPath(root, 't'), 'utf8');
-    const image = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
-    const visual = { runs: 1, styles: ['button ×1: color #ffffff'], images: { linux: 1 } };
-    const learned = { ...whole, steps: [whole.steps[0], { ...whole.steps[1], recording: { ...whole.steps[1].recording, visual, lookPng: { platform: 'linux', data: image } } }] };
-    assert.equal(writeTest(root, learned, new Set(['S2'])), 'caw/recordings/t.yaml, caw/recordings/t/S2.linux.png');
+    const visual = { runs: 1, styles: ['button ×1: color #ffffff'] };
+    const learned = { ...whole, steps: [whole.steps[0], { ...whole.steps[1], recording: { ...whole.steps[1].recording, visual } }] };
+    assert.equal(writeTest(root, learned, new Set(['S2'])), 'caw/recordings/t.yaml');
     assert.equal(readFileSync(testPath(root, 't'), 'utf8'), description, 'the description stays');
-    assert.deepEqual(readFileSync(join(root, 'caw/recordings/t/S2.linux.png')), image);
-    assert.match(readFileSync(recordingPath(root, 't'), 'utf8'), /images: \{linux: 1\}/);
     assert.deepEqual(loadTest(root, 't').steps[1].recording.visual, visual);
-    assert.equal(writeTest(root, learned, new Set(['S2'])), 'keine Änderung', 'the same image is not written again');
-    // Adopted in a window: no image, the old ones of every platform are deleted (the next headless runs learn them). Images of
-    // other steps stay, also one whose id starts the same.
-    writeFileSync(join(root, 'caw/recordings/t/S2.win32.png'), image);
-    writeFileSync(join(root, 'caw/recordings/t/S2.darwin.png'), image);
-    writeFileSync(join(root, 'caw/recordings/t/S1.win32.png'), image);
-    writeFileSync(join(root, 'caw/recordings/t/S2.x.win32.png'), image);
-    const adopted = { ...learned, steps: [learned.steps[0], { ...learned.steps[1], recording: { ...learned.steps[1].recording, visual: { runs: 2, styles: visual.styles, images: {}, adopted: '2026-11-21' }, lookPng: { platform: 'linux', data: null, allPlatforms: true } } }] };
-    assert.equal(writeTest(root, adopted, new Set(['S2'])), 'caw/recordings/t.yaml, caw/recordings/t/S2.darwin.png, caw/recordings/t/S2.win32.png, caw/recordings/t/S2.linux.png');
-    for (const platform of ['linux', 'win32', 'darwin']) assert.equal(existsSync(join(root, `caw/recordings/t/S2.${platform}.png`)), false, platform);
-    assert.ok(existsSync(join(root, 'caw/recordings/t/S1.win32.png')), 'another step\'s image stays');
-    assert.ok(existsSync(join(root, 'caw/recordings/t/S2.x.win32.png')), 'not this step\'s image');
-    assert.deepEqual(loadTest(root, 't').steps[1].recording.visual.images, {});
-    assert.equal(writeTest(root, adopted, new Set(['S2'])), 'keine Änderung', 'nothing left to delete');
-    // Adopted headless: its image is written, the other platforms' images go.
-    writeFileSync(join(root, 'caw/recordings/t/S2.win32.png'), image);
-    const headless = { ...adopted, steps: [adopted.steps[0], { ...adopted.steps[1], recording: { ...adopted.steps[1].recording, visual: { ...adopted.steps[1].recording.visual, images: { linux: 2 } }, lookPng: { platform: 'linux', data: image, allPlatforms: true } } }] };
-    assert.equal(writeTest(root, headless, new Set(['S2'])), 'caw/recordings/t.yaml, caw/recordings/t/S2.win32.png, caw/recordings/t/S2.linux.png');
-    assert.deepEqual(readFileSync(join(root, 'caw/recordings/t/S2.linux.png')), image);
-    assert.equal(existsSync(join(root, 'caw/recordings/t/S2.win32.png')), false);
+    assert.equal(writeTest(root, learned, new Set(['S2'])), 'keine Änderung', 'the same look is not written again');
+    const adopted = { ...learned, steps: [learned.steps[0], { ...learned.steps[1], recording: { ...learned.steps[1].recording, visual: { runs: 2, styles: visual.styles, adopted: '2026-11-21' } } }] };
+    assert.equal(writeTest(root, adopted, new Set(['S2'])), 'caw/recordings/t.yaml');
+    assert.deepEqual(loadTest(root, 't').steps[1].recording.visual, { runs: 2, styles: visual.styles, adopted: '2026-11-21' });
 });
 
 test('recordings: a visual field that is not as caw learns it is an error', () => {
     const recording = (visual) => `test: t\nsteps:\n  - id: S1\n    hash: h\n    recordedOn: a/dev\n    recordedAt: x\n    locale: de-DE\n    timezone: Europe/Berlin\n    actions: []\n    check: "true"\n    visual: ${visual}\n`;
-    assert.doesNotThrow(() => parseRecordings(recording('{runs: 2, styles: [], images: {win32: 2}, adopted: "2026-11-21"}')));
-    for (const bad of ['{runs: 2, styles: []}', '{runs: 0, styles: [], images: {}}', '{runs: 1, styles: [], images: {win32: 1}, adopted: yesterday}', '{runs: 1, styles: [], images: {"../x": 1}}', '{runs: 1, styles: [], images: {}, png: x}']) {
+    assert.doesNotThrow(() => parseRecordings(recording('{runs: 2, styles: [], adopted: "2026-11-21"}')));
+    assert.doesNotThrow(() => parseRecordings(recording('{runs: 1, basis: "r1", styles: ["button ×1: color #ffffff"]}')));
+    for (const bad of ['{runs: 2}', '{runs: 0, styles: []}', '{runs: 1, styles: [], adopted: yesterday}', '{runs: 1, styles: [], images: {win32: 1}}', '{runs: 1, styles: [], png: x}']) {
         assert.throws(() => parseRecordings(recording(bad)), /recording\.visual/, bad);
     }
 });

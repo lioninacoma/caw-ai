@@ -6,9 +6,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 
-import { compareStructure, createDesignJudge, designKind, designPath, designProblem, isDesignName, listDesigns, maskedView, missingNeeds, normalStyle, pngSize, renderDesign, structureFrom, structureOf, viewLines, writeDesign } from '../src/host/design.mjs';
+import { compareStructure, createDesignJudge, designKind, designPath, designProblem, isDesignName, listDesigns, maskedView, missingNeeds, normalStyle, renderDesign, structureFrom, structureOf, viewLines, writeDesign } from '../src/host/design.mjs';
 import { frameworkOf } from '../src/host/framework/index.mjs';
-import { captureStep, comparePixels, createLook, learnLook, learnedLooks, styleLines, windowLookWarning, withAdoptedLooks } from '../src/host/visual.mjs';
+import { captureStep, createLook, learnLook, learnedLooks, maskProbe, styleLines, withAdoptedLooks } from '../src/host/visual.mjs';
 import { launchChrome } from './chrome.mjs';
 
 test('View lines (target designs): ARIA lines without links, field contents, long texts and numbers', () => {
@@ -31,25 +31,15 @@ const tempCaw = (t) => {
     return dir;
 };
 
-/** A PNG header: signature, IHDR with width and height, and a few bytes after it. */
-const png = (width, height) => {
-    const bytes = Buffer.alloc(45);
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes, 0);
-    bytes.writeUInt32BE(13, 8);
-    bytes.write('IHDR', 12, 'latin1');
-    bytes.writeUInt32BE(width, 16);
-    bytes.writeUInt32BE(height, 20);
-    return bytes;
-};
-
-test('design names: under design/, plain segments, .html or .png', () => {
+test('design names: under design/, plain segments, .html', () => {
     assert.ok(isDesignName('design/order.html'));
-    assert.ok(isDesignName('design/screens/order.png'));
-    for (const name of ['order.html', '../design/order.html', 'design/../x.html', 'design/a\\b.html', 'design/x.svg', '/design/x.html', 'design/', 'design/.hidden/x.html']) {
+    assert.ok(isDesignName('design/screens/order.html'));
+    for (const name of ['design/order.png', 'order.html', '../design/order.html', 'design/../x.html', 'design/a\\b.html', 'design/x.svg', '/design/x.html', 'design/', 'design/.hidden/x.html']) {
         assert.equal(isDesignName(name), false, name);
     }
     assert.equal(designKind('design/order.html'), 'html');
     assert.equal(designKind('design/tokens.json'), null);
+    assert.equal(designKind('design/order.png'), null);
 });
 
 test('the view without data rows and free text; numbers neutral', () => {
@@ -110,13 +100,7 @@ test('the same control twice is told apart for its styles', () => {
     assert.deepEqual(Object.keys(styles), ['button "Delete"', 'button "Delete" #2']);
 });
 
-test('caw_design checks: PNG signature and size, DTCG tokens, html, size caps', () => {
-    assert.deepEqual(pngSize(png(390, 844)), { width: 390, height: 844 });
-    assert.equal(pngSize(Buffer.from('not a png at all, just some text here')), null);
-    assert.equal(designProblem('png', png(390, 844)), null);
-    assert.match(designProblem('png', Buffer.from('GIF89a and more bytes to be long enough....')), /kein PNG/);
-    assert.match(designProblem('png', png(0, 844)), /0×844/);
-    assert.match(designProblem('png', png(100_000, 10)), /100000×10/);
+test('caw_design checks: html, size cap', () => {
     assert.match(designProblem('html', Buffer.alloc(3 * 1024 * 1024, 'a')), /größer als 2 MB/);
     assert.match(designProblem('html', Buffer.from('just text')), /keine HTML-Seite/);
     assert.equal(designProblem('html', Buffer.from('<!doctype html><body><button>Save</button></body>')), null);
@@ -126,15 +110,19 @@ test('caw_design checks: PNG signature and size, DTCG tokens, html, size caps', 
 
 test('writeDesign: only under caw/design, never through a link, and listDesigns finds what it wrote', (t) => {
     const caw = tempCaw(t);
-    const written = writeDesign(caw, 'design/screens/order.png', png(390, 844));
-    assert.deepEqual(written, { file: 'design/screens/order.png', kind: 'png', bytes: 45, replaced: false, width: 390, height: 844 });
-    assert.ok(existsSync(join(caw, 'design', 'screens', 'order.png')));
-    assert.equal(writeDesign(caw, 'design/screens/order.png', png(10, 10)).replaced, true);
+    const page = Buffer.from('<!doctype html><body><button>Order</button></body>');
+    const written = writeDesign(caw, 'design/screens/order.html', page);
+    assert.deepEqual(written, { file: 'design/screens/order.html', kind: 'html', bytes: page.length, replaced: false });
+    assert.ok(existsSync(join(caw, 'design', 'screens', 'order.html')));
+    assert.equal(writeDesign(caw, 'design/screens/order.html', page).replaced, true);
+    assert.throws(() => writeDesign(caw, 'design/order.png', Buffer.from('png')), /unter design\//);
     assert.throws(() => writeDesign(caw, 'design/../tests/x.html', Buffer.from('<body></body>')), /unter design\//);
     assert.throws(() => writeDesign(caw, 'tests/x.html', Buffer.from('<body></body>')), /unter design\//);
     assert.throws(() => writeDesign(caw, 'design/x.html', Buffer.from('plain')), /keine HTML-Seite/);
-    assert.deepEqual(listDesigns(caw).map(({ file, kind }) => [file, kind]), [['design/screens/order.png', 'png']]);
-    assert.equal(designPath(caw, 'design/screens/order.png'), join(caw, 'design', 'screens', 'order.png'));
+    writeFileSync(join(caw, 'design', 'old.png'), 'png');
+    assert.deepEqual(listDesigns(caw).map(({ file, kind }) => [file, kind]), [['design/screens/order.html', 'html']], 'other files are left out');
+    assert.equal(designPath(caw, 'design/screens/order.html'), join(caw, 'design', 'screens', 'order.html'));
+    assert.equal(designPath(caw, 'design/old.png'), null);
     assert.equal(designPath(caw, 'design/missing.html'), null);
 
     // A folder under caw/design that is a link to elsewhere: nothing is written through it, and a step cannot name a file there.
@@ -209,11 +197,10 @@ test('rendered: the design page runs no scripts and loads nothing', async (t) =>
     }
 });
 
-test('the judge: met, missing file, image; its own browser closes', async (t) => {
+test('the judge: met, missing file; its own browser closes', async (t) => {
     if (needsChrome()) return t.skip('no Chrome');
     const caw = tempCaw(t);
     writeDesign(caw, 'design/a.html', Buffer.from('<!doctype html><body><button>Go</button></body>'));
-    writeDesign(caw, 'design/b.png', png(390, 844));
     let launched = 0;
     const judge = createDesignJudge({ cawDir: caw, launch: async () => { launched += 1; return launchChrome(); }, read: (path) => readFileSync(path, 'utf8') });
     const context = await browser.newContext();
@@ -221,7 +208,6 @@ test('the judge: met, missing file, image; its own browser closes', async (t) =>
         const page = await context.newPage();
         await page.setContent('<!doctype html><body><button>Go</button></body>');
         assert.equal((await judge.judge({ file: 'design/a.html' }, page)).verdict, 'met');
-        assert.equal((await judge.judge({ file: 'design/b.png' }, page)).verdict, 'image');
         assert.equal((await judge.judge({ file: 'design/none.html' }, page)).verdict, 'missing');
         await page.setContent('<!doctype html><body><button>Stop</button></body>');
         const notMet = await judge.judge({ file: 'design/a.html' }, page);
@@ -247,60 +233,27 @@ test('needs: the locators missing on the page', async (t) => {
     }
 });
 
-test('the errand example has its design and tokens, and no step links a design that would fail', () => {
+test('the errand example has its design, and no step links a design that would fail', () => {
     assert.ok(existsSync(new URL('design/todo-detail.html', EXAMPLE)));
     assert.doesNotMatch(readFileSync(new URL('tests/first-errand.yaml', EXAMPLE), 'utf8'), /^\s+design:/m);
 });
 
 // ------------------------------------------------------------------------------------------------------------ visual layer
 
-/** A page as PNG at a small viewport: the fixture for pixel comparisons. */
-const shotOf = async (html, viewport = { width: 200, height: 100 }) => {
-    const context = await browser.newContext({ viewport });
+test('capture: the step\'s screen as PNG at the page\'s viewport, for the report', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    const context = await browser.newContext({ viewport: { width: 400, height: 300 } });
     try {
         const page = await context.newPage();
-        await page.setContent(html);
-        return await page.screenshot({ scale: 'css' });
+        await page.setContent('<body><h1>Screen</h1></body>');
+        const { png } = await captureStep(page);
+        assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [400, 300]);
     } finally {
         await context.close();
     }
-};
-const BOX = (left, color = '#e5533a') => `<body style="margin:0;background:#fff"><div style="position:absolute;left:${left}px;top:20px;width:40px;height:40px;background:${color}"></div></body>`;
-
-test('pixels: the share of differing pixels, masks leave areas out, the tolerance absorbs small shifts in colour', async (t) => {
-    if (needsChrome()) return t.skip('no Chrome');
-    const base = await shotOf(BOX(20));
-    const same = await comparePixels(browser, base, await shotOf(BOX(20)));
-    assert.equal(same.ratio, 0);
-    assert.deepEqual([same.width, same.height], [200, 100]);
-    const moved = await comparePixels(browser, base, await shotOf(BOX(120)));
-    // Two boxes of 40×40 that do not overlap: 3200 of 20000 pixels.
-    assert.ok(Math.abs(moved.ratio - 0.16) < 0.01, String(moved.ratio));
-    assert.deepEqual(pngSize(moved.diffPng), { width: 200, height: 100 }, 'the difference image has the actual size');
-    const masked = await comparePixels(browser, base, await shotOf(BOX(120)), { masks: [{ x: 0, y: 0, width: 200, height: 100 }] });
-    assert.equal(masked.compared, 0);
-    assert.equal(masked.ratio, 0, 'everything masked: nothing to differ');
-    const half = await comparePixels(browser, base, await shotOf(BOX(120)), { masks: [{ x: 100, y: 0, width: 100, height: 100 }] });
-    assert.ok(Math.abs(half.ratio - 1600 / 10000) < 0.01, String(half.ratio));
-    const tinted = await shotOf(BOX(20, '#ea5a40'));
-    assert.equal((await comparePixels(browser, base, tinted, { tolerance: 24 })).ratio, 0);
-    assert.ok((await comparePixels(browser, base, tinted, { tolerance: 2 })).ratio > 0);
 });
 
-test('pixels: a @2x export is scaled to the screen, a taller design is compared where both have pixels', async (t) => {
-    if (needsChrome()) return t.skip('no Chrome');
-    const actual = await shotOf(BOX(20));
-    const double = await shotOf('<body style="margin:0;background:#fff"><div style="position:absolute;left:40px;top:40px;width:80px;height:80px;background:#e5533a"></div></body>', { width: 400, height: 200 });
-    const scaled = await comparePixels(browser, actual, double);
-    assert.equal(scaled.scaled, true);
-    assert.ok(scaled.ratio < 0.01, String(scaled.ratio));
-    const tall = await comparePixels(browser, actual, await shotOf(BOX(20), { width: 200, height: 300 }));
-    assert.equal(tall.cropped, true);
-    assert.equal(tall.height, 100);
-    assert.equal(tall.ratio, 0);
-});
-
-test('capture: masks for run tag, remembered values, dates, list rows, list entries, cards and visualIgnore', async (t) => {
+test('masks for the look suggestion: run tag, remembered values, dates, list rows, list entries, cards and visualIgnore', async (t) => {
     if (needsChrome()) return t.skip('no Chrome');
     const context = await browser.newContext({ viewport: { width: 400, height: 600 } });
     try {
@@ -310,10 +263,9 @@ test('capture: masks for run tag, remembered values, dates, list rows, list entr
             <ul><li>Errand one</li><li>Errand two</li></ul><div role="list"><div role="listitem">Entry</div></div>
             <article>Card</article><div role="article">Card two</div>
             <nav><ul><li>Home</li></ul></nav><ul role="menu"><li role="menuitem">Open</li></ul></body>`);
-        const shot = await captureStep(page, { texts: ['CAW-77', 'Ada', 'x'], ignore: ['#clock', '::invalid('] });
-        assert.deepEqual([shot.width, shot.height], [400, 600]);
-        const why = shot.masks.map(({ why: reason }) => reason);
-        assert.equal(why.filter((reason) => reason === 'text').length, 2, 'the heading (run tag, value) and the date; "x" is too short to mask');
+        const masks = await page.mainFrame().evaluate(maskProbe, { texts: ['CAW-77', 'Ada', 'x'], ignore: ['#clock', '::invalid('], max: 400 });
+        const why = masks.map(({ why: reason }) => reason);
+        assert.equal(why.filter((reason) => reason === 'text').length, 2, 'the heading (run tag, value) and the date; "x" is too short to count');
         assert.equal(why.filter((reason) => reason === 'row').length, 7, 'data rows (not the header row), list entries and cards; not navigation or menu entries');
         assert.equal(why.filter((reason) => reason === 'ignore').length, 1);
     } finally {
@@ -321,64 +273,28 @@ test('capture: masks for run tag, remembered values, dates, list rows, list entr
     }
 });
 
-test('the judge: a .png design is judged by pixels against the step\'s capture; a miss saves the difference image', async (t) => {
-    if (needsChrome()) return t.skip('no Chrome');
-    const caw = tempCaw(t);
-    writeDesign(caw, 'design/box.png', await shotOf(BOX(20)));
-    const saved = [];
-    const judge = createDesignJudge({ cawDir: caw, launch: launchChrome, read: (path) => readFileSync(path, 'utf8'), pixels: { tolerance: 24, designMaxRatio: 0.02 }, save: (name, image) => { saved.push([name, image.length > 0]); return name; } });
-    try {
-        const capture = (html) => async () => ({ png: await shotOf(html), masks: [] });
-        const met = await judge.judge({ file: 'design/box.png', step: 'S3' }, null, { capture: capture(BOX(20)) });
-        assert.equal(met.verdict, 'met');
-        assert.equal(met.ratio, 0);
-        const notMet = await judge.judge({ file: 'design/box.png', step: 'S3' }, null, { capture: capture(BOX(120)) });
-        assert.equal(notMet.verdict, 'not-met');
-        assert.equal(notMet.diff, 'step-S3-diff.png');
-        assert.deepEqual(saved, [['step-S3-diff.png', true]]);
-        assert.match(notMet.note, /16 % der Pixel weichen ab, höchstens 2 % erlaubt; Differenzbild step-S3-diff\.png/);
-    } finally {
-        await judge.close();
-    }
-});
-
-test('look: learned over two runs like effects; a count that flickers becomes ×?, an image that differs starts over', () => {
-    const observed = (extra = {}) => ({ png: Buffer.from('a'), styles: ['button ×2: color #ffffff', 'tab ×1: color #000000'], imageRuns: 0, platform: 'linux', basis: 'b', changed: false, ...extra });
-    const first = learnLook(undefined, observed(), { maxRatio: 0.01 });
-    assert.deepEqual(first.visual, { runs: 1, basis: 'b', styles: ['button ×2: color #ffffff', 'tab ×1: color #000000'], images: { linux: 1 } });
-    assert.equal(first.png.platform, 'linux');
-    const second = learnLook(first.visual, observed({ imageRuns: 1, ratio: 0.001, styles: ['button ×2: color #ffffff', 'tab ×1: color #111111'] }), { maxRatio: 0.01 });
-    assert.deepEqual(second.visual, { runs: 2, basis: 'b', styles: ['button ×2: color #ffffff', 'tab ×?: color #000000', 'tab ×?: color #111111'], images: { linux: 2 } });
-    assert.equal(second.png, undefined, 'a confirmed image is not written again');
-    const restarted = learnLook(first.visual, observed({ imageRuns: 1, ratio: 0.2 }), { maxRatio: 0.01 });
-    assert.deepEqual(restarted.visual.images, { linux: 1 });
-    assert.ok(restarted.png !== undefined);
-    assert.equal(learnLook(second.visual, observed({ imageRuns: 2, ratio: 0, styles: second.visual.styles }), { maxRatio: 0.01 }), null, 'learned stays');
-    const other = learnLook(second.visual, observed({ platform: 'win32', styles: second.visual.styles }), { maxRatio: 0.01 });
-    assert.deepEqual(other.visual.images, { linux: 2, win32: 1 }, 'each platform learns its own image');
+test('look: learned over two runs like effects; a count that flickers becomes ×?', () => {
+    const observed = (extra = {}) => ({ styles: ['button ×2: color #ffffff', 'tab ×1: color #000000'], basis: 'b', changed: false, ...extra });
+    const first = learnLook(undefined, observed());
+    assert.deepEqual(first.visual, { runs: 1, basis: 'b', styles: ['button ×2: color #ffffff', 'tab ×1: color #000000'] });
+    const second = learnLook(first.visual, observed({ styles: ['button ×2: color #ffffff', 'tab ×1: color #111111'] }));
+    assert.deepEqual(second.visual, { runs: 2, basis: 'b', styles: ['button ×2: color #ffffff', 'tab ×?: color #000000', 'tab ×?: color #111111'] });
+    assert.equal(learnLook(second.visual, observed({ styles: second.visual.styles })), null, 'learned stays');
 
     const spec = { id: 't', steps: [{ id: 'S1', recording: { recordedOn: 'a/dev', recordedAt: 'r1' } }, { id: 'S2', recording: { recordedOn: 'a/dev', recordedAt: 'r2' } }, { id: 'S3', recording: { recordedOn: 'b/dev', recordedAt: 'r3' } }] };
     const results = new Map([['S1', { status: 'pass' }], ['S2', { status: 'fail' }], ['S3', { status: 'pass' }]]);
     const seen = new Map([['S1', observed()], ['S2', observed()], ['S3', observed()]]);
     assert.deepEqual([...learnedLooks({ spec, results, seen, target: 'a/dev' }).keys()], ['S1'], 'passed, on its recording target');
     assert.deepEqual([...learnedLooks({ spec, results, seen: new Map([['S1', observed({ changed: true })]]), target: 'a/dev' }).keys()], [], 'a changed look is the human\'s to adopt');
-    // A window's run (no image) learns the styles and leaves the image as it is.
-    const windowed = learnLook(first.visual, { styles: ['button ×2: color #ffffff', 'tab ×1: color #000000'], platform: 'linux', basis: 'b', changed: false }, { maxRatio: 0.01 });
-    assert.deepEqual(windowed.visual, { runs: 2, basis: 'b', styles: first.visual.styles, images: { linux: 1 } });
-    assert.equal(windowed.png, undefined);
 
-    // Adopting takes every changed step at once. Seen in a window: no image, the stored one goes and is learned anew headless.
+    // Adopting takes every changed step at once.
     const two = { id: 't', steps: [{ id: 'S1', recording: { visual: second.visual } }, { id: 'S2', recording: { visual: second.visual } }, { id: 'S3', recording: { visual: second.visual } }] };
-    const seenInWindow = { styles: ['button ×3: color #000000'], platform: 'win32', basis: 'b', changed: true };
-    const adopted = withAdoptedLooks(two, new Map([['S1', seenInWindow], ['S2', seenInWindow]]), '2026-11-21');
+    const changed = { styles: ['button ×3: color #000000'], basis: 'b', changed: true };
+    const adopted = withAdoptedLooks(two, new Map([['S1', changed], ['S2', changed]]), '2026-11-21');
     for (const step of adopted.steps.slice(0, 2)) {
-        assert.deepEqual(step.recording.visual, { runs: 2, basis: 'b', styles: ['button ×3: color #000000'], images: {}, adopted: '2026-11-21' });
-        assert.deepEqual(step.recording.lookPng, { platform: 'win32', data: null, allPlatforms: true }, 'the images of every platform go');
+        assert.deepEqual(step.recording.visual, { runs: 2, basis: 'b', styles: ['button ×3: color #000000'], adopted: '2026-11-21' });
     }
     assert.deepEqual(adopted.steps[2].recording.visual, second.visual, 'an unchanged step stays');
-    const headless = withAdoptedLooks(two, new Map([['S1', observed({ platform: 'win32', changed: true })]]), '2026-11-21');
-    assert.deepEqual(headless.steps[0].recording.visual.images, { win32: 2 }, 'seen headless, its image comes along');
-    assert.equal(headless.steps[0].recording.lookPng.data.toString(), 'a');
 
     // By role and style, not by name: names carry data.
     assert.deepEqual(styleLines({ 'button "Complete Feed the raven"': { color: '#fff' }, 'button "Complete Buy bread"': { color: '#fff' }, 'button "Save"': { color: '#000' }, link: { color: '#fff' } }),
@@ -392,58 +308,42 @@ test('look: a learned look whose style changed fails the step (design.fail visua
     try {
         const page = await context.newPage();
         await page.setContent('<body style="margin:0"><button style="color:#000000;background:#ffffff">Save</button></body>');
-        const stepWith = (styles, extra = {}) => ({ id: 'S1', look: true, ...extra, recording: { recordedAt: 'r1', recordedOn: 'a/dev', visual: { runs: 2, styles, images: { [process.platform]: 2 } } } });
-        const looks = (designFail, step, pixels = true) => createLook({
-            spec: { id: 't', steps: [step] }, cawDir: caw, root: caw, settings: { screenshots: false, maxRatio: 0.01 }, compare: async () => ({ ratio: 0.5, diffPng: Buffer.from('d') }), save: (name) => name, readImage: () => Buffer.from('stored'), designFail, pixels,
-        });
+        const stepWith = (styles, extra = {}) => ({ id: 'S1', look: true, ...extra, recording: { recordedAt: 'r1', recordedOn: 'a/dev', visual: { runs: 2, styles } } });
+        const looks = (designFail, step, settings = { screenshots: false }) => createLook({ spec: { id: 't', steps: [step] }, cawDir: caw, settings, save: (name) => name, designFail });
         let captures = 0;
-        const capture = async () => { captures += 1; return { png: await page.screenshot(), masks: [] }; };
-        const styleOnly = await looks([], stepWith([]), true)('S1', { capture, page });
+        const capture = async () => { captures += 1; return { png: await page.screenshot() }; };
+        const styleOnly = await looks([], stepWith([]))('S1', { capture, page });
         assert.deepEqual(styleOnly.observed.styles.map((line) => line.replace(/: .*/, '')), ['button ×1'], 'by role and style, the name is gone');
         assert.ok(styleOnly.observed.styles[0].includes('color #000000'), styleOnly.observed.styles[0]);
         const learned = styleOnly.observed.styles;
 
         // A color changed: one button fewer with the learned style, one more with the new one.
         const changedStyle = [learned[0].replace('color #000000', 'color #ff0000')];
-        const failing = await looks(['visual'], stepWith(changedStyle), false)('S1', { capture, page });
+        const failing = await looks(['visual'], stepWith(changedStyle))('S1', { capture, page });
         assert.equal(failing.fail.kind, 'visual');
         assert.equal(failing.record.visual.verdict, 'changed');
-        assert.equal(failing.record.visual.pixels, 'headless-only');
         assert.equal(failing.record.visual.styles.length, 2);
         assert.match(failing.record.visual.styles[0], /^1 button weniger mit .*color #ff0000/);
         assert.match(failing.record.visual.styles[1], /^1 button mehr mit .*color #000000/);
-        const warning = await looks([], stepWith(changedStyle), false)('S1', { capture, page });
+        const warning = await looks([], stepWith(changedStyle))('S1', { capture, page });
         assert.equal(warning.fail, undefined);
         assert.equal(warning.warnings[0].type, 'visual');
         assert.match(warning.warnings[0].text, /S1 sieht anders aus als gelernt: Styles geändert: 1 button weniger mit/);
 
-        // In a window the styles alone decide: same styles are the same look, the image is neither captured nor compared.
+        // The same styles are the same look; the look takes no capture.
         captures = 0;
-        const inWindow = await looks(['visual'], stepWith(learned), false)('S1', { capture, page });
-        assert.deepEqual(inWindow.record.visual, { verdict: 'same', pixels: 'headless-only' });
-        assert.equal(inWindow.fail, undefined);
-        assert.equal(captures, 0, 'no capture for the look in a window');
-        assert.equal(inWindow.observed.png, undefined);
-        // Headless the same styles with 50 % differing pixels: changed by pixels.
-        const headless = await looks(['visual'], stepWith(learned), true)('S1', { capture, page });
-        assert.equal(headless.record.visual.verdict, 'changed');
-        assert.equal(headless.record.visual.ratio, 0.5);
-        assert.equal(headless.record.visual.diff, 'step-S1-look-diff.png');
-        assert.equal(headless.record.visual.pixels, undefined);
-        // Only pixels see it, a window offers no adopting: the finding names the image file to delete.
-        const file = `caw/recordings/t/S1.${process.platform}.png`;
-        assert.ok(headless.fail.text.includes(`ein Lauf im Fenster nicht`) && headless.fail.text.includes(`lösche ${file}: Die nächsten 2 Läufe headless lernen das Bild neu`), headless.fail.text);
-        assert.ok(headless.fail.evidence.includes(file), headless.fail.evidence);
-        assert.doesNotMatch(failing.fail.text, /lösche/, 'a style change is seen in the window too');
-        const both = await looks(['visual'], stepWith(changedStyle), true)('S1', { capture, page });
-        assert.doesNotMatch(both.fail.text, /lösche/, 'styles and pixels: the window offers adopting');
+        const same = await looks(['visual'], stepWith(learned))('S1', { capture, page });
+        assert.deepEqual(same.record.visual, { verdict: 'same' });
+        assert.equal(same.fail, undefined);
+        assert.equal(captures, 0, 'no capture for the look');
         // A count that flickered while learning (×?) allows any number.
-        const flickered = await looks(['visual'], stepWith([learned[0].replace('×1', '×?')]), false)('S1', { capture, page });
+        const flickered = await looks(['visual'], stepWith([learned[0].replace('×1', '×?')]))('S1', { capture, page });
         assert.equal(flickered.record.visual.verdict, 'same');
-        // Without look: true nothing is learned or compared.
-        const off = await looks(['visual'], { ...stepWith(changedStyle), look: undefined }, true)('S1', { capture, page });
+        // Without look: true nothing is learned or compared; with screenshots the step's screen goes into the run folder.
+        const off = await looks(['visual'], { ...stepWith(changedStyle), look: undefined }, { screenshots: true })('S1', { capture, page });
         assert.equal(off.record.visual, undefined);
         assert.equal(off.observed, undefined);
+        assert.equal(off.record.screenshot, 'step-S1.png');
     } finally {
         await context.close();
     }
@@ -468,10 +368,10 @@ test('look: the style lines leave out the controls in masked areas, a list with 
                 + `${button('Save', '#ff0000')}</body>`;
         };
         const step = { id: 'S1', look: true, recording: { recordedAt: 'r1', recordedOn: 'a/dev' } };
-        const look = createLook({ spec: { id: 't', steps: [step] }, cawDir: caw, root: caw, settings: { screenshots: false, maxRatio: 0.01, ignore: ['.feed'] }, compare: async () => assert.fail('no pixels'), save: () => undefined, readImage: () => null, pixels: false });
+        const look = createLook({ spec: { id: 't', steps: [step] }, cawDir: caw, settings: { screenshots: false, ignore: ['.feed'] }, save: () => undefined });
         const linesOf = async (count) => {
             await page.setContent(screen(count));
-            return (await look('S1', { capture: async () => assert.fail('no capture in a window'), page })).observed.styles;
+            return (await look('S1', { capture: async () => assert.fail('no capture for a look'), page })).observed.styles;
         };
         const two = await linesOf(2);
         assert.deepEqual(await linesOf(3), two, 'the third row, entry, card and feed item change nothing');
@@ -480,15 +380,4 @@ test('look: the style lines leave out the controls in masked areas, a list with 
     } finally {
         await context.close();
     }
-});
-
-test('look: a CI run with a window warns once that the pixels of its played look steps were not compared', () => {
-    const spec = { steps: [{ id: 'S1', look: true }, { id: 'S2' }, { id: 'S3', look: true }, { id: 'S4', look: true }] };
-    const results = new Map([['S1', { status: 'pass' }], ['S2', { status: 'pass' }], ['S3', { status: 'fail' }]]);
-    const warning = windowLookWarning({ spec, results, ci: true, headless: false });
-    assert.equal(warning.type, 'visual');
-    assert.match(warning.text, /Look-Schritte S1, S3 werden nur headless verglichen.*Ergänze --headless\./);
-    assert.equal(windowLookWarning({ spec, results, ci: true, headless: true }), null, 'headless compares the pixels');
-    assert.equal(windowLookWarning({ spec, results, ci: false, headless: false }), null, 'outside CI the window is the person\'s choice');
-    assert.equal(windowLookWarning({ spec, results: new Map([['S2', { status: 'pass' }]]), ci: true, headless: false }), null, 'no look step played');
 });

@@ -2,18 +2,17 @@
 // structure: the same controls, the same view lines and a few computed styles per control. A design comes from a person (Claude
 // Design, Figma), the attached Claude Code session writes it with caw_design; caw itself never fetches anything.
 
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 import { t } from '../shared/i18n.mjs';
 import { controlsProbe } from './effects.mjs';
 import { waitForLocator } from './framework/index.mjs';
 import { redactFor } from './secrets.mjs';
-import { DEFAULT_VISUAL, comparePixels, percent } from './visual.mjs';
 
 export const DESIGN_DIR = 'design';
-/** What a step's `design:` may name: a page (judged by structure) or an image (judged by pixels, visual.mjs). */
-export const DESIGN_KINDS = ['.html', '.png'];
+/** What a step's `design:` may name: a page, judged by structure. */
+export const DESIGN_KINDS = ['.html'];
 // A target design not met and a changed learned look fail their step (the look only on steps with look: true, once learned).
 export const DEFAULT_DESIGN_FAIL = ['target', 'visual'];
 const DEFAULT_VIEWPORT = { width: 1280, height: 720 };
@@ -26,7 +25,7 @@ const SEGMENT = /^[\w-][\w.-]*$/;
 
 /**
  * Is this a design path as a step names it: relative to the caw folder, under design/, plain segments (no `..`, no
- * absolute path, no backslashes), ending in .html or .png? Only the shape; designPath checks the file.
+ * absolute path, no backslashes), ending in .html? Only the shape; designPath checks the file.
  */
 export const isDesignName = (name) => {
     if (typeof name !== 'string' || name.length > 200) return false;
@@ -62,27 +61,15 @@ export const designPath = (cawDir, name) => {
 export const designName = (cawDir, path) => relative(cawDir, path).split(sep).join('/');
 
 // What caw_design writes, per kind: the most a file may have. A Claude Design or Figma export of one screen stays far below.
-export const DESIGN_LIMITS = { html: 2 * 1024 * 1024, png: 8 * 1024 * 1024 };
-// A PNG larger than this on either side is no screen, whatever it claims.
-const MAX_PNG_SIDE = 16_384;
-const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+export const DESIGN_LIMITS = { html: 2 * 1024 * 1024 };
 
-/** The kind of a file caw_design writes: html, png, or null. */
+/** The kind of a file caw_design writes: html, or null. */
 export const designKind = (name) => {
     if (typeof name !== 'string' || name.length > 200) return null;
     const segments = name.split('/');
     if (segments.length < 2 || segments[0] !== DESIGN_DIR || !segments.slice(1).every((segment) => SEGMENT.test(segment))) return null;
     const lower = name.toLowerCase();
-    if (lower.endsWith('.html')) return 'html';
-    if (lower.endsWith('.png')) return 'png';
-    return null;
-};
-
-/** Width and height from a PNG's IHDR, or null when the bytes are no PNG. */
-export const pngSize = (bytes) => {
-    if (bytes.length < 33 || !bytes.subarray(0, 8).equals(PNG_SIGNATURE)) return null;
-    if (bytes.readUInt32BE(8) !== 13 || bytes.toString('latin1', 12, 16) !== 'IHDR') return null;
-    return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+    return lower.endsWith('.html') ? 'html' : null;
 };
 
 /**
@@ -93,12 +80,6 @@ export const pngSize = (bytes) => {
 export const designProblem = (kind, data) => {
     if (data.length === 0) return t('run.mcp.designEmpty');
     if (data.length > DESIGN_LIMITS[kind]) return t('run.mcp.designTooLarge', { max: Math.round(DESIGN_LIMITS[kind] / 1024 / 1024) || 1 });
-    if (kind === 'png') {
-        const size = pngSize(data);
-        if (size === null) return t('run.mcp.designNoPng');
-        if (size.width < 1 || size.height < 1 || size.width > MAX_PNG_SIDE || size.height > MAX_PNG_SIDE) return t('run.mcp.designPngSize', { width: size.width, height: size.height, max: MAX_PNG_SIDE });
-        return null;
-    }
     const text = data.toString('utf8');
     if (text.includes('\u0000') || !Buffer.from(text, 'utf8').equals(data)) return t('run.mcp.designNoText');
     return /<(?:html|body|main|div|form|section)\b/i.test(text) ? null : t('run.mcp.designNoHtml');
@@ -107,7 +88,7 @@ export const designProblem = (kind, data) => {
 /**
  * Writes a design file under caw/design. The folders on the way must not be links, and an existing file is replaced only if it
  * is a regular file: nothing ends up outside caw/design.
- * @returns { file, kind, bytes, replaced, width?, height? }
+ * @returns { file, kind, bytes, replaced }
  */
 export const writeDesign = (cawDir, name, data) => {
     const kind = designKind(name);
@@ -129,7 +110,7 @@ export const writeDesign = (cawDir, name, data) => {
     const replaced = existsSync(path);
     if (replaced && (lstatSync(path).isSymbolicLink() || !lstatSync(path).isFile())) throw new Error(t('run.mcp.designLink', { file: name }));
     writeFileSync(path, data);
-    return { file: name, kind, bytes: data.length, replaced, ...(kind === 'png' ? pngSize(data) : {}) };
+    return { file: name, kind, bytes: data.length, replaced };
 };
 
 /** The files in caw/design, relative to the caw folder, with their kind; links and other files are left out. */
@@ -280,43 +261,20 @@ export const designText = ({ file, missing = [], extra = [], styleDiffs = [] }) 
 ].join(' ');
 
 /**
- * Judges the target designs of a run. The design browser starts on the first design (or comparison) and is separate from the
- * app's: headless, no profile, no network; scripts run only in the comparison page, which holds nothing but the two images.
+ * Judges the target designs of a run. The design browser starts on the first design and is separate from the app's: headless,
+ * no profile, no network, no scripts.
  * @param cawDir  the project's caw folder
  * @param launch  () => a Playwright Browser (same binary as the session)
  * @param read    (path) => file text, for tests
- * @param pixels  { tolerance, designMaxRatio } (visual.mjs visualSettings)
- * @param save    (name, png) => the file name the diff image was saved as, or undefined (nothing saved)
- * @returns { judge(design, page, { capture }), compare(actual, target, masks), close() }; judge returns { file, verdict,
- *          missing?, extra?, styleDiffs?, ratio?, diff?, note? } with verdict met, not-met, image (a .png without a capture of
- *          the step, never fails), missing (no such file under caw/design)
+ * @returns { judge(design, page), close() }; judge returns { file, verdict, missing?, extra?, styleDiffs?, note? } with verdict
+ *          met, not-met, missing (no such file under caw/design)
  */
-export const createDesignJudge = ({ cawDir, launch, read, secrets = () => [], pixels = DEFAULT_VISUAL, save = () => undefined }) => {
+export const createDesignJudge = ({ cawDir, launch, read, secrets = () => [] }) => {
     let browser = null;
-    const compare = async (actual, target, masks) => {
-        browser ??= await launch();
-        return comparePixels(browser, actual, target, { masks, tolerance: pixels.tolerance ?? DEFAULT_VISUAL.tolerance });
-    };
     return {
-        compare,
-        judge: async ({ file, viewport, step }, page, { capture } = {}) => {
+        judge: async ({ file, viewport }, page) => {
             const path = designPath(cawDir, file);
             if (path === null) return { file, verdict: 'missing', note: t('session.design.noFile', { file }) };
-            if (path.toLowerCase().endsWith('.png')) {
-                if (capture === undefined) return { file, verdict: 'image', note: t('session.design.image', { file }) };
-                const shot = await capture();
-                const compared = await compare(shot.png, readFileSync(path), shot.masks);
-                const max = pixels.designMaxRatio ?? DEFAULT_VISUAL.designMaxRatio;
-                const met = compared.ratio <= max;
-                const diff = met ? undefined : save(`step-${step ?? 'design'}-diff.png`, compared.diffPng);
-                return {
-                    file,
-                    verdict: met ? 'met' : 'not-met',
-                    ratio: compared.ratio,
-                    ...(diff === undefined ? {} : { diff }),
-                    note: t(met ? 'session.design.pixelsMet' : 'session.design.pixelsNotMet', { file, ratio: percent(compared.ratio), max: percent(max), diff: diff ?? '-' }),
-                };
-            }
             browser ??= await launch();
             const html = await read(path);
             const rendered = await renderDesign(browser, html, viewport ?? DEFAULT_VIEWPORT);

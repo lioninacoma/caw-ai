@@ -10,29 +10,21 @@ label, flags), the view lines (headings, buttons, links, landmarks, field labels
 color, background-color, border-radius and padding. List rows, free text, numbers and whether a field is filled are data and
 do not count. Anything missing or a differing style: the step fails with kind `design` (with `design.fail: []` in the config it
 only warns). Controls only in the app are reported but do not fail. The replay goes on; the step is not retried and learns no
-effects in that run. A `.png` design is judged by pixels against the step's screen (run tag, remembered values, dates, list
-rows, list entries, cards and `visualIgnore` masked): above `visual.designMaxRatio` differing pixels it fails the same way,
-with a difference image `agent/step-S<n>-diff.png`. `result.json` holds per judged step `design: { file, verdict, missing,
-extra, styleDiffs }` (a `.png` also `ratio` and `diff`).
+effects in that run. `result.json` holds per judged step `design: { file, verdict, missing, extra, styleDiffs }`.
 
 **A learned look.** `look: true` on a step (also only the person's: never set or remove it yourself; caw may suggest steps to
 the person after `record`) learns that step's look and then fails with kind `visual` when it changes. A look learns when
 the step passes in a run outside CI (in CI only with `--learn`) on the environment it was recorded on. Its style lines (per
-role and style, how many controls have it; controls inside masked areas such as rows, list entries, cards and `visualIgnore`
-do not count) learn in every such run, with a window too: the first stores them, the second confirms them (a count that
-differed becomes `×?`), then they are compared. Its pixels learn only in headless runs, per platform, at a fixed viewport (the
-recorded one, else 1920 x 1080): the first headless run stores the image, a second one whose image matches confirms it (one
-that differs replaces it and starts over), then it is compared. A run with a window compares the styles only
-(`pixels: "headless-only"` in `result.json`; a CI run without `--headless` warns about it). Only the person takes a changed
-look over ("{{label:run.button.adoptLook}}", which deletes the step's images of every platform). A change only pixels see has
-no such button: the failure names the image file `caw/recordings/<test>/<step>.<platform>.png`; only the person deletes it,
-the next two headless runs then learn it anew. The person sees the design over the app with `caw open <test>@S<n> --design` (F7
+role and style, how many controls have it; controls inside rows, list entries, cards and `visualIgnore` areas
+do not count) learn in every such run, in a window and headless alike: the first stores them, the second confirms them (a
+count that differed becomes `×?`), then they are compared. Only the person takes a changed look over
+("{{label:run.button.adoptLook}}"). The person sees the design over the app with `caw open <test>@S<n> --design` (F7
 toggles it).
 
 **Fetch and write a design.**
 1. Get the design yourself: a Claude Design artifact (read it with your own tools and save one screen as a self-contained
-   `.html` page with inline CSS), or a Figma export (HTML or PNG). caw never fetches anything.
-2. Write it with `caw_design` `{action: "put", file: "design/<name>.html", content}`; a PNG goes as `base64`. Never write into `caw/` with your own Edit or Write tools.
+   `.html` page with inline CSS), or a Figma export as HTML. caw never fetches anything.
+2. Write it with `caw_design` `{action: "put", file: "design/<name>.html", content}`. Never write into `caw/` with your own Edit or Write tools.
    A design a step already links is what that step is judged against: replace it only when the person asked for it, with
    `personAsked: true`; without it `put` refuses and names the steps.
 3. Link it to a step only when the person asked for exactly that: `caw_design` `{action: "link", test, step, file,

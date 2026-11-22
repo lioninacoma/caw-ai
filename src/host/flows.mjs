@@ -937,8 +937,7 @@ export const runFlow = async (options) => {
                     chat.notice(text);
                     rerun = true;
                 }
-                // The new look of every changed step becomes the learned one at once; audit lists it as adopted. Its image is
-                // learned by the next headless runs.
+                // The new look of every changed step becomes the learned one at once; audit lists it as adopted.
                 if (settled.adoptLooks !== undefined) {
                     current = withAdoptedLooks(current, settled.adoptLooks);
                     const ids = [...settled.adoptLooks.keys()];

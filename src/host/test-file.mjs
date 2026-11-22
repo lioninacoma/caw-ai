@@ -4,8 +4,8 @@
 // sandbox has no yaml package and reads its plan as text.
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { Document, LineCounter, isMap, parseDocument } from 'yaml';
 
@@ -22,7 +22,6 @@ import { checkLocator } from './locator.mjs';
 import { isDesignName } from './design.mjs';
 import { dialogProblem } from './dialogs.mjs';
 import { isPattern } from './patterns.mjs';
-import { lookImage } from './visual.mjs';
 
 export { DRAFT_DIR, RECORDING_DIR, TEST_DIR } from '../shared/names.mjs';
 const RECORDING_TOP_FIELDS = ['test', 'steps', 'knownMessages'];
@@ -52,16 +51,14 @@ const checkEffects = (raw, at, report) => {
             && EFFECT_LISTS.every((list) => entry[list] === undefined || (Array.isArray(entry[list]) && entry[list].every(isText))));
     if (!ok) report(at, t('config.test.effects'));
 };
-const VISUAL_FIELDS = new Set(['runs', 'basis', 'styles', 'images', 'adopted']);
+const VISUAL_FIELDS = new Set(['runs', 'basis', 'styles', 'adopted']);
 /**
- * The learned look (visual.mjs): how many runs confirmed its style lines, per platform how many confirmed its image (the PNG
- * beside the recording), its basis, and the day a person adopted it.
+ * The learned look (visual.mjs): how many runs confirmed its style lines, its basis, and the day a person adopted it.
  */
 const checkVisual = (raw, at, report) => {
     const ok = isObject(raw) && Object.keys(raw).every((key) => VISUAL_FIELDS.has(key))
         && Number.isInteger(raw.runs) && raw.runs > 0 && (raw.basis === undefined || isText(raw.basis))
         && Array.isArray(raw.styles) && raw.styles.every(isText)
-        && isObject(raw.images) && Object.entries(raw.images).every(([platform, runs]) => /^[a-z\d]+$/.test(platform) && Number.isInteger(runs) && runs > 0)
         && (raw.adopted === undefined || (typeof raw.adopted === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.adopted)));
     if (!ok) report(at, t('config.test.visual'));
 };
@@ -809,8 +806,6 @@ const recordingFields = (recording) => ({
 const compactRecording = (node) => {
     for (const entry of node?.get('network', true)?.items ?? []) entry.flow = true;
     for (const action of node?.get('actions', true)?.items ?? []) if (isMap(action)) action.flow = true;
-    const images = node?.get('visual', true)?.get('images', true);
-    if (images !== undefined) images.flow = true;
 };
 
 /**
@@ -981,33 +976,6 @@ export const writeTest = (root, spec, only, { withNotes = false, prune = false }
     if (empty && oldRecordings === undefined) return changed.length === 0 ? t('config.test.unchanged') : changed.join(', ');
     mkdirSync(join(root, RECORDING_DIR), { recursive: true });
     if (writeIfChanged(recordingFile, renderRecordings(recorded), oldRecordings)) changed.push(`${RECORDING_DIR}/${spec.id}.yaml`);
-    // A learned or adopted look brings its image (withLooks): beside the recording, per test, step and platform. A look adopted
-    // in a window has none (data null): its old image goes, the next headless runs learn it. An adopted look (allPlatforms)
-    // also takes the images of the other platforms along: they show the old look.
-    for (const step of spec.steps) {
-        const image = (only === undefined || only.has(step.id)) ? step.recording?.lookPng : undefined;
-        if (image === undefined) continue;
-        const file = lookImage(spec.id, step.id, image.platform);
-        if (image.allPlatforms === true) {
-            const dir = dirname(join(root, file));
-            const others = existsSync(dir) ? readdirSync(dir).filter((name) => name !== `${step.id}.${image.platform}.png` && name.startsWith(`${step.id}.`) && /^[a-z\d]+\.png$/.test(name.slice(step.id.length + 1))) : [];
-            for (const name of others.sort()) {
-                rmSync(join(dir, name), { force: true });
-                changed.push(lookImage(spec.id, step.id, name.slice(step.id.length + 1, -'.png'.length)));
-            }
-        }
-        if (image.data === null) {
-            if (existsSync(join(root, file))) {
-                rmSync(join(root, file), { force: true });
-                changed.push(file);
-            }
-            continue;
-        }
-        if (existsSync(join(root, file)) && readFileSync(join(root, file)).equals(image.data)) continue;
-        mkdirSync(dirname(join(root, file)), { recursive: true });
-        writeFileSync(join(root, file), image.data);
-        changed.push(file);
-    }
     return changed.length === 0 ? t('config.test.unchanged') : changed.join(', ');
 };
 

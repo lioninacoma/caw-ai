@@ -51,7 +51,7 @@ import { agentGuide, runTopics } from './guide.mjs';
 import { SELECTION_FILE } from '../shared/names.mjs';
 import { withStepBudget } from './step-budget.mjs';
 import { redactDeep } from './secrets.mjs';
-import { captureStep, createLook, designOverlay, learnedLooks, maskProbe, visualSettings, windowLookWarning } from './visual.mjs';
+import { captureStep, createLook, designOverlay, learnedLooks, maskProbe, visualSettings } from './visual.mjs';
 import { MAX_TEXTS, lookCandidates, showsServed, textProbe } from './look-hints.mjs';
 
 const DEFAULT_READY_TIMEOUT_MS = 60_000;
@@ -468,7 +468,7 @@ export const keptCheck = (olds, step, check) => {
     return same.length === 0 || same.some((old) => old.recording.check === check) ? null : same[0];
 };
 
-export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, ci = false, learns = true, reproduce, withDesign = false, suggestLooks = false }) => {
+export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true, reproduce, withDesign = false, suggestLooks = false }) => {
     // Mutable: repairing in the same browser turns the test run into a run that fixes exactly this step.
     let repairing = repair === undefined ? undefined : givenSpec.steps.find(({ id }) => id === repair.id);
     // Re-recording from a step on: that step and all after it, as they are in the test file.
@@ -1277,8 +1277,6 @@ ${text}`) ?? 0;
             viewport,
             page: session.page(),
             launch: () => chromium.launch({ ...browserLaunch(config), headless: true }),
-            settings: visualSettings(config),
-            unscaled: bench.unscaled,
             secrets: session.secrets?.() ?? [],
         }).catch((error) => {
             chat?.notice(t('run.develop.designFailed', { file: step.design, message: String(error?.message ?? error).split(/\r?\n/)[0] }));
@@ -1838,36 +1836,28 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             else seen.end = undefined;
             timedOwner = owner;
         };
-        // Target designs are rendered (and screens compared) in a browser of their own, started only when a step needs it. Not
+        // Target designs are rendered in a browser of their own, started only when a step needs it. Not
         // while reaching a state to develop in (open): there the screen is still being built, and a run judges it.
         // Only open: a run with chat gets `develop` too, for developing after it ended, and judges its steps like any run.
         const opening = runAs === 'open';
         const cawDir = join(root, PROJECT_DIR);
         const visual = visualSettings(config);
-        const pngDesign = Object.values(replay.designs ?? {}).some(({ file }) => file.toLowerCase().endsWith('.png'));
-        const looking = !opening && (visual.screenshots || givenSpec.steps.some(({ look: on }) => on === true) || pngDesign);
-        const designJudge = (Object.keys(replay.designs ?? {}).length === 0 && !looking) || opening ? null : createDesignJudge({
+        const looking = !opening && (visual.screenshots || givenSpec.steps.some(({ look: on }) => on === true));
+        const designJudge = Object.keys(replay.designs ?? {}).length === 0 || opening ? null : createDesignJudge({
             cawDir,
             launch: () => chromium.launch({ ...browserLaunch(config), headless: true }),
             read: (path) => readFileSync(path, 'utf8'),
             secrets: () => session.secrets?.() ?? [],
-            pixels: visual,
-            save: saveImage,
         });
-        // The visual layer per passed check: one capture of the step at its recorded viewport (unscaled in the workbench).
-        const capture = looking ? (id, { texts }) => captureStep(session.page(), { unscaled: session.workbench?.unscaled, texts, ignore: visual.ignore }) : undefined;
+        // The visual layer per passed check: a screenshot of the step at its recorded viewport (unscaled in the workbench).
+        const capture = looking ? () => captureStep(session.page(), { unscaled: session.workbench?.unscaled }) : undefined;
         const look = looking ? createLook({
             spec: givenSpec,
             cawDir,
-            root,
             settings: visual,
-            compare: (actual, image, masks) => designJudge.compare(actual, image, masks),
             save: saveImage,
-            readImage: (path) => (existsSync(path) && lstatSync(path).isFile() ? readFileSync(path) : null),
             designFail: config.design?.fail ?? DEFAULT_DESIGN_FAIL,
             secrets: () => session.secrets?.() ?? [],
-            // Pixels of a learned look only headless, at a fixed viewport; a window compares its styles.
-            pixels: headless,
         }) : undefined;
         // After a recording, per passed step: text from the server on the screen, or masks (rows, list entries, cards, dates,
         // remembered values, the run tag)? Neither makes the step a candidate for look: true. Only with the chat that shows it.
@@ -1917,10 +1907,6 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             writeInterrupted(ended);
             return closeRun(ended);
         }
-        for (const judged of ended.designs?.values() ?? []) if (judged.verdict === 'image') ui.info(judged.note);
-        // CI with a window: the look steps compared their styles only, never their pixels.
-        const windowLooks = opening ? null : windowLookWarning({ spec: givenSpec, results: ended.results, ci, headless });
-        if (windowLooks !== null) session.warn(windowLooks);
         // The run ended healthy before the pending steps: is the first one ready to record? Only its needs say so.
         const healthy = ended.broken === null && [...ended.results.values()].every(({ status, kind }) => status === 'pass' || LOOK_KINDS.has(kind));
         if (replay.needs !== undefined && healthy) {
@@ -1987,7 +1973,7 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             }
         }
         // Looks learn like effects: passed steps, on the recording target; a changed look is the human's to adopt.
-        const looks = learnedLooks({ spec: givenSpec, results: ended.results, seen: ended.seenLooks, target, maxRatio: visual.maxRatio });
+        const looks = learnedLooks({ spec: givenSpec, results: ended.results, seen: ended.seenLooks, target });
         const deviating = ended.deviations?.size ?? 0;
         await session.workbench?.point(END, 'effects', 'pass', { label: deviating === 0 ? t('run.effects.asRecorded') : t('run.effects.deviations', { count: deviating }) });
         // Only a run that writes them shows learning (in CI only with --learn): other runs compute them but keep the file as it is.

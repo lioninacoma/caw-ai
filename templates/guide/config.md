@@ -27,8 +27,8 @@ automatically; then edit the file with your own Edit tool.
 | `readyIgnore`, `readyTimeoutMs` | Elements that never count as loading; how long to wait for a quiet page |
 | `effects` | `{ "fail": [...] }`: which learned effects fail a step (`controls`, `requests`, `responses`, `console`) |
 | `design` | `{ "fail": [...] }`: which design findings fail a step: `target` (target design not met) and `visual` (learned look changed) by default; `[]` only warns (topic `design`) |
-| `visual` | `screenshots` (a `step-S<n>.png` per passed step) and the thresholds `tolerance`, `maxRatio`, `designMaxRatio` |
-| `visualIgnore` | CSS selectors masked in pixel comparisons, e.g. a clock |
+| `visual` | `screenshots` (a `step-S<n>.png` per passed step) |
+| `visualIgnore` | CSS selectors whose controls a learned look leaves out of its style lines, e.g. a clock |
 | `maxActions` | The agent's action budget per run (default 100) |
 | `keepRuns` | how many run folders in `.caw/runs` caw keeps (default 30, 0 keeps all); older ones go when a run starts |
 | `lintCommand` | The project's lint command, named in recommendations |
