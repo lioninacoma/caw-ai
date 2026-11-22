@@ -221,6 +221,7 @@ export default {
     'config.report.decisions.by.session': 'by the session',
     'config.report.decisions.by.elicitation': 'by you in the session',
     'config.report.decisions.by.auto': 'by caw, nothing the test checks changes',
+    'config.report.decisions.known': 'adopted as known, the baseline of the first recording: {list}',
     'config.report.openDecision': 'Open decision',
     'config.report.openDecision.text': 'The run stopped at {id} and wrote nothing: it needs a person. Options: {options}.',
     'config.report.thirdParty': 'Third-party hosts',

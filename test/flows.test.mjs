@@ -27,6 +27,8 @@ const harness = ({ outcomes, answers = ['adopt'], ticks = [] }) => {
     const wishes = [...answers];
     const notices = [];
     const said = [];
+    // The decisions as data (decisions.mjs) the cards came with.
+    const decisions = [];
     const pick = (kind, text, options, card) => {
         const ids = options.map(({ id }) => id);
         // A result card stands for its whole text: title, details and consequence.
@@ -37,9 +39,15 @@ const harness = ({ outcomes, answers = ['adopt'], ticks = [] }) => {
         return wish ?? ids.at(-1);
     };
     const chat = {
-        choose: async (kind, text, options, card) => pick(kind, text, options, card),
+        choose: async (kind, text, options, card, decision) => {
+            decisions.push(decision);
+            return pick(kind, text, options, card);
+        },
         // A card with checkboxes: the human ticks `ticks`, then picks a button as usual.
-        choosePicks: async (kind, text, options, card) => ({ choice: pick(kind, text, options, card), picked: ticks }),
+        choosePicks: async (kind, text, options, card, decision) => {
+            decisions.push(decision);
+            return { choice: pick(kind, text, options, card), picked: ticks };
+        },
         discuss: async (text, options) => {
             const wish = pick('discussing', text, options);
             return typeof wish === 'object' ? wish : { choice: wish };
@@ -51,6 +59,7 @@ const harness = ({ outcomes, answers = ['adopt'], ticks = [] }) => {
         calls,
         adopted,
         questions,
+        decisions,
         progress,
         notices,
         // What conclude returns to the run: { next } opens a new window, { outcome } is the last line in the chat.
@@ -69,6 +78,21 @@ const harness = ({ outcomes, answers = ['adopt'], ticks = [] }) => {
         log: () => {},
     };
 };
+
+test('Recording: the first recording of a plan adopts its known messages as the baseline; recorded again they are the person\'s', async () => {
+    const plain = { id: 't', steps: spec.steps.map(({ recording: _recording, ...step }) => step), expectations: spec.expectations };
+    const first = harness({ outcomes: [{ ...pass, candidate: spec, fresh: ['Gespeichert'] }, pass] });
+    assert.equal(await recordFlow({ sandbox: 's', ...first, previous: plain }), EXIT.pass);
+    const adopting = first.decisions.find((decision) => decision?.id === 'recording.adopt');
+    assert.equal(adopting.context.firstRecording, true);
+    assert.deepEqual(adopting.context.known, ['Gespeichert']);
+    assert.equal(adopting.options.find(({ id }) => id === 'adopt').gate, 'free');
+    const again = harness({ outcomes: [{ ...pass, candidate: spec, fresh: ['Gespeichert'] }, pass] });
+    await recordFlow({ sandbox: 's', ...again, previous: spec });
+    const readopting = again.decisions.find((decision) => decision?.id === 'recording.adopt');
+    assert.equal(readopting.context.firstRecording, false);
+    assert.equal(readopting.options.find(({ id }) => id === 'adopt').gate, 'human');
+});
 
 test('Recording: passed and adopted writes the whole plan', async () => {
     const h = harness({ outcomes: [{ ...pass, candidate: spec }, pass] });

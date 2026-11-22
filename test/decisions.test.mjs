@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { createChat } from '../src/host/chat.mjs';
-import { DECISIONS, FREE, HUMAN, PHASE_DECISIONS, autoOption, decide, decisionOf, endOption, harmlessAdopt } from '../src/host/decisions.mjs';
+import { DECISIONS, FREE, HUMAN, PHASE_DECISIONS, autoOption, decide, decisionOf, endOption, harmlessAdopt, notedOf } from '../src/host/decisions.mjs';
 import { ANSWER_FILE, DECISION_FILE, answerRefusal, createDesk, readDecision, writeAnswer } from '../src/host/decision-desk.mjs';
 import { fixPhase } from '../src/host/bugfix.mjs';
 import { offerRecordRed, runFlow } from '../src/host/flows.mjs';
@@ -47,6 +47,14 @@ test('Gates: the plan is free to approve only unchanged and read-only; a changed
         assert.equal(decisionOf('recording.adopt', [option('adopt'), option('discard')], { ...same, [key]: value }).options[0].gate, HUMAN, key);
     }
     assert.deepEqual(decisionOf('recording.adopt', [option('adopt'), option('discard')], same).options.map(({ gate }) => gate), [FREE, FREE]);
+    // The first recording: its known messages are the baseline, nothing else changes; the log names them.
+    const first = { ...same, firstRecording: true, known: ['Gespeichert'] };
+    assert.equal(harmlessAdopt(first), true);
+    assert.equal(harmlessAdopt({ ...first, expectChange: [{ step: 'S2', before: 'a', after: 'b' }] }), false);
+    assert.equal(harmlessAdopt({ ...first, firstRecording: false }), false);
+    assert.deepEqual(notedOf({ id: 'recording.adopt', context: first }, 'adopt'), { known: ['Gespeichert'] });
+    assert.deepEqual(notedOf({ id: 'recording.adopt', context: first }, 'discard'), {});
+    assert.deepEqual(notedOf({ id: 'recording.adopt', context: { ...first, firstRecording: false } }, 'adopt'), {});
 
     // Fixing a step the app is blamed for is the person's; asking or closing never is.
     const failed = (side) => decisionOf('step.failed', [option('fix'), option('ask'), option('close')], { diagnosis: { side, strength: 'clear' } });
@@ -175,7 +183,11 @@ test('Desk without a window: the harmless taken at once, what needs a person end
     assert.equal(await decide(chat, { id: 'recording.adopt', context: same, question: 'Übernehmen?', options: adopt, card: { title: 'x' } }), 'adopt');
     assert.equal(await decide(chat, { id: 'recording.adopt', context: { ...same, known: ['Gespeichert'] }, question: 'Übernehmen?', options: adopt, card: { title: 'x' } }), 'discard');
     assert.deepEqual(stopped, ['recording.adopt']);
-    assert.deepEqual(settled.map(({ option: chosen, by }) => [chosen, by]), [['adopt', 'auto'], ['discard', 'auto']]);
+    // The first recording: adopted by caw, the log names the messages it took as known.
+    assert.equal(await decide(chat, { id: 'recording.adopt', context: { ...same, firstRecording: true, known: ['Gespeichert'] }, question: 'Übernehmen?', options: adopt, card: { title: 'x' } }), 'adopt');
+    assert.deepEqual(settled.map(({ option: chosen, by }) => [chosen, by]), [['adopt', 'auto'], ['discard', 'auto'], ['adopt', 'auto']]);
+    assert.deepEqual(settled.at(-1).known, ['Gespeichert']);
+    assert.equal(settled[0].known, undefined);
     const plan = decide(chat, { id: 'plan.approve', via: 'plan', context: { changed: true }, card: { steps: [] }, options: [{ id: 'approve', label: 'a' }, { id: 'revise', label: 'r' }] });
     await until(() => stuck.length > 0);
     assert.deepEqual(stuck, ['plan.approve']);
@@ -246,5 +258,7 @@ test('caw_status: a waiting decision of a living run as data; an open one of a r
 test('report.md lists the decisions and who took them, and the one left open', () => {
     const text = renderReport({ status: 'pass', testId: 'kauf', target: 'dev', testedCode: 'x', decisions: [{ id: 'plan.approve', option: 'approve', by: 'auto' }, { id: 'recording.adopt', option: 'discard', by: 'window' }], openDecision: { id: 'recording.adopt', options: [{ id: 'adopt', gate: HUMAN }, { id: 'discard', gate: FREE }] } });
     assert.match(text, /## Entscheidungen\n\n- plan\.approve: approve \(von caw, nichts ändert sich, was der Test prüft\)\n- recording\.adopt: discard \(im Fenster\)/);
+    const first = renderReport({ status: 'pass', testId: 'kauf', target: 'dev', testedCode: 'x', decisions: [{ id: 'recording.adopt', option: 'adopt', by: 'auto', known: ['Gespeichert', 'a|b'] }] });
+    assert.match(first, /- recording\.adopt: adopt \(von caw, nichts ändert sich, was der Test prüft\); als bekannt übernommen, die Basis der ersten Aufnahme: "Gespeichert"; "a\\\|b"/);
     assert.match(text, /## Offene Entscheidung\n\nDer Lauf hat bei recording\.adopt angehalten und nichts geschrieben: Das entscheidet ein Mensch\. Optionen: adopt \(human\), discard \(free\)\./);
 });

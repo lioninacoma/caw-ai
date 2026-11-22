@@ -90,7 +90,7 @@ const OUTSIDE_WINDOW = new Set(['auto', 'session', 'elicitation']);
  * The decisions taken outside the window that changed something: by caw itself (a run without a window), by the session
  * (caw_decide) or by the person in the session (elicitation). Newest first; for caw audit.
  * @param since a date: only runs started at or after it
- * @returns [{ run, test, decision, option, by }]
+ * @returns [{ run, test, decision, option, by, known? }]: known, the messages a first recording adopted as its baseline
  */
 export const decisionsOutsideWindow = (root, { since } = {}) => {
     const runs = join(root, RUN_DIR, 'runs');
@@ -99,7 +99,7 @@ export const decisionsOutsideWindow = (root, { since } = {}) => {
     return readdirSync(runs).filter((runId) => RUN_ID.test(runId) && (from === undefined || Date.parse(runDate(runId)) >= from))
         .flatMap((runId) => (readResult(join(runs, runId))?.decisions ?? [])
             .filter(({ by, option }) => OUTSIDE_WINDOW.has(by) && CHANGING.has(option))
-            .map(({ id, option, by }) => ({ run: runId, test: RUN_ID.exec(runId)[6], decision: id, option, by })))
+            .map(({ id, option, by, known }) => ({ run: runId, test: RUN_ID.exec(runId)[6], decision: id, option, by, ...(Array.isArray(known) && known.length > 0 ? { known } : {}) })))
         .sort((a, b) => b.run.localeCompare(a.run));
 };
 

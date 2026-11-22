@@ -457,6 +457,8 @@ const adoptContext = (current, changes, seen, warnings = [], { fresh = [], whole
     whole,
     steps: current.steps.length,
     samePlan: samePlan(previous, current),
+    // The test had no recording yet: what this one knows is the baseline (decisions.mjs harmlessAdopt).
+    firstRecording: whole && !(previous?.steps ?? []).some((step) => step.recording !== undefined),
     writes: current.writes === true,
     expectChange: [...changes.flatMap((change) => change.expectChange ?? []), ...expectChange].map(({ id, before, after }) => ({ step: id, before, after })),
     known: [...new Set([...fresh, ...changes.flatMap((change) => change.fresh)])],

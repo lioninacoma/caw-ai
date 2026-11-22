@@ -402,7 +402,7 @@ const code = (value) => {
  */
 const decidedLines = (decided = []) => (decided.length === 0 ? [] : [
     `### ${t('cli.audit.decided')} (${decided.length})`, '', t('cli.audit.decided.intro'), '',
-    ...decided.map(({ run, test, decision, option, by }) => `- ${code(test)}: ${t('cli.audit.decided.item', { decision, option, by, run })}`),
+    ...decided.map(({ run, test, decision, option, by, known = [] }) => `- ${code(test)}: ${t('cli.audit.decided.item', { decision, option, by, run })}${known.length === 0 ? '' : t('cli.audit.decided.known', { list: known.map(code).join(', ') })}`),
     '',
 ]);
 

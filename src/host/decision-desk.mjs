@@ -6,7 +6,7 @@
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { HUMAN, answerOption, autoOption, endOption } from './decisions.mjs';
+import { HUMAN, answerOption, autoOption, endOption, notedOf } from './decisions.mjs';
 
 export const DECISION_FILE = 'decision.json';
 export const ANSWER_FILE = 'decision-answer.json';
@@ -111,7 +111,7 @@ export const createDesk = ({ dir, onSettled = () => {}, auto = false, waitMs = 0
             clearTimeout(held.timer);
             const option = answerOption(answer);
             const gate = held.entry.options.find((offered) => offered.id === option)?.gate;
-            const entry = { seq: held.entry.seq, id: held.entry.id, option, ...(gate === undefined ? {} : { gate }), by, at: new Date().toISOString() };
+            const entry = { seq: held.entry.seq, id: held.entry.id, option, ...(gate === undefined ? {} : { gate }), by, at: new Date().toISOString(), ...notedOf(held.entry, option) };
             last = entry;
             if (option !== null) onSettled(entry);
             if (stack.length > 0) show();

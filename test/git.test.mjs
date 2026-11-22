@@ -189,7 +189,7 @@ test('caw audit: decisions this machine took outside the window since the merge 
         writeFileSync(join(runs, runId, 'result.json'), JSON.stringify({ status: 'pass', decisions }));
     };
     const now = new Date(Date.now() + 60_000).toISOString().replace(/[:.]/g, '-');
-    result(`${now}-bestellung`, [{ id: 'plan.approve', option: 'approve', by: 'auto' }, { id: 'recording.adopt', option: 'adopt', by: 'auto' }, { id: 'step.failed', option: 'close', by: 'session' }]);
+    result(`${now}-bestellung`, [{ id: 'plan.approve', option: 'approve', by: 'auto' }, { id: 'recording.adopt', option: 'adopt', by: 'auto', known: ['Gespeichert'] }, { id: 'step.failed', option: 'close', by: 'session' }]);
     result('2020-01-01T00-00-00-000Z-bestellung', [{ id: 'recording.adopt', option: 'adopt', by: 'auto' }]);
     result(`${now}-andere`, [{ id: 'fix.green', option: 'promote', by: 'elicitation' }, { id: 'recording.adopt', option: 'adopt', by: 'window' }]);
     let printed = '';
@@ -198,5 +198,5 @@ test('caw audit: decisions this machine took outside the window since the merge 
     assert.deepEqual(JSON.parse(printed).decided.map(({ test: id, decision, option, by }) => `${id} ${decision} ${option} ${by}`), ['bestellung recording.adopt adopt auto', 'andere fix.green promote elicitation']);
     assert.equal(auditCommand(root, ['main'], { print }), 0);
     assert.match(printed, /### Außerhalb des Fensters entschieden \(2\)/);
-    assert.match(printed, /- `bestellung`: recording\.adopt: adopt \(auto\), Lauf /);
+    assert.match(printed, /- `bestellung`: recording\.adopt: adopt \(auto\), Lauf \S+; erste Aufnahme, ab jetzt bekannt: `Gespeichert`/);
 });

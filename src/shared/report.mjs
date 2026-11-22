@@ -172,7 +172,11 @@ const decisionLines = (decisions, openDecision) => {
     const lines = [];
     if (decisions.length > 0) {
         lines.push('', `## ${t('config.report.decisions')}`, '');
-        for (const { id, option, by } of decisions) lines.push(`- ${id}: ${option} (${t(`config.report.decisions.by.${by}`)})`);
+        for (const { id, option, by, known = [] } of decisions) {
+            // A first recording's known messages: its baseline, named so the reader sees what counts as known from now on.
+            const noted = known.length === 0 ? '' : `; ${t('config.report.decisions.known', { list: known.map((text) => `"${cell(text)}"`).join('; ') })}`;
+            lines.push(`- ${id}: ${option} (${t(`config.report.decisions.by.${by}`)})${noted}`);
+        }
     }
     if (openDecision !== undefined) {
         lines.push('', `## ${t('config.report.openDecision')}`, '', t('config.report.openDecision.text', { id: openDecision.id, options: openDecision.options.map(({ id, gate }) => `${id} (${gate})`).join(', ') }));

@@ -633,6 +633,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.audit.decided': 'Decided outside the window',
     'cli.audit.decided.intro': 'Answers in this machine\'s runs since the merge base that changed something, taken by caw itself (auto: a run without a window), by the session or by the person in the session (elicitation). For information; they change nothing above.',
     'cli.audit.decided.item': '{decision}: {option} ({by}), run {run}',
+    'cli.audit.decided.known': '; first recording, known from now on: {list}',
     'cli.audit.before': 'before',
     'cli.audit.after': 'now',
     'cli.audit.kind.test-removed': 'The test was removed.',
