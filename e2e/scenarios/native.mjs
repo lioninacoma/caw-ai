@@ -1089,35 +1089,29 @@ steps:
     do: Klicke auf Show total.
     expect: 'Die Summe zeigt Total: 5.'`;
 
-scenario('N15', 'Reproduce → red draft → fix (server switch) → green → promote: draft in caw/drafts, red as expected, still red, green, fix report, test in caw/tests', async () => {
+/** A fresh fix project: no tests but the neighbour fix-page that run --all checks before promoting, the bug switched on. */
+const fixSetup = async () => {
     rmSync(join(fixRoot, 'caw'), { recursive: true, force: true });
     rmSync(join(fixRoot, '.caw'), { recursive: true, force: true });
-    // The neighbour that run --all checks before promoting, recorded by hand.
+    rmSync(join(fixRoot, 'src'), { recursive: true, force: true });
     const page = { id: 'S1', name: 'Seite', do: 'Öffne den Warenkorb.', expect: 'Der Knopf ist da.' };
     writeTest(fixRoot, { id: 'fix-page', environments: ['test'], writes: false, notes: '', steps: [{ ...page, recording: { hash: stepHash(page), recordedOn: 'test', recordedAt: '2026-11-21T09:00:00.000Z', locale: 'de-DE', timezone: 'Europe/Berlin', actions: [], check: "!!document.getElementById('total')" } }] });
     await switchBug(true);
-    try {
-        // (1) reproduce: Claude (scripted) sees Total: 0 and finishes with yes; the draft lands in caw/drafts with the trail.
-        const found = `exec 2>&1
+};
+const FIX_ID = 'bug-die-summe-zeigt-0-statt-5';
+// Claude (scripted) sees Total: 0 and finishes with yes; with a cause the fix card shows it.
+const foundScript = (cause = '') => `exec 2>&1
 A='caw agent'
 $A click '#total'
 sleep 1
 S=$($A eval "document.getElementById('sum').textContent")
 V=no; echo "$S" | grep -q 'Total: 0' && V=yes
 cat > /tmp/f.json <<JSON
-{"reproduced":"$V","observed":"$S","expected":"Total: 5","writes":false,"steps":[{"name":"Warenkorb","do":"Öffne den Warenkorb.","expect":"Der Knopf Show total ist da."},{"name":"Summe","do":"Klicke auf Show total.","expect":"Die Summe zeigt Total: 5."}]}
+{"reproduced":"$V","observed":"$S","expected":"Total: 5","writes":false,${cause === '' ? '' : `"cause":"${cause}",`}"steps":[{"name":"Warenkorb","do":"Öffne den Warenkorb.","expect":"Der Knopf Show total ist da."},{"name":"Summe","do":"Klicke auf Show total.","expect":"Die Summe zeigt Total: 5."}]}
 JSON
 $A finish --file /tmp/f.json`;
-        const reproduced = await reproduce(fixRoot, ['Die Summe zeigt 0 statt 5.', '--env', 'test', '--headless'], { interactive: true, containerCommand: ['bash', '-c', found] });
-        const repro = newestRunOf(fixRoot, 'reproduce').result?.reproduce;
-        const id = repro?.draft?.file?.replace(/^caw\/drafts\/|\.yaml$/g, '');
-        verify('(1) reproduced: exit 0, the draft in caw/drafts', reproduced === 0 && id === 'bug-die-summe-zeigt-0-statt-5' && existsSync(join(fixRoot, repro.draft.file)), `${reproduced} ${JSON.stringify(repro?.draft)}`);
-        const draftFile = readFileSync(join(fixRoot, 'caw/drafts', `${id}.yaml`), 'utf8');
-        verify('(1) its notes carry the trail with the locator', /click getByRole\('button', \{ name: 'Show total', exact: true \}\)/.test(draftFile), draftFile);
-        verify('(1) not in caw/tests', !existsSync(join(fixRoot, 'caw/tests', `${id}.yaml`)));
-
-        // (2) record the draft: S1 passes, S2's check of the expected total evaluates to false; the check run is red as expected.
-        const recorder = `exec 2>&1
+// The recording: S1 passes, S2's check of the expected total evaluates to false while the bug is there.
+const recorderScript = `exec 2>&1
 A='caw agent'
 ${planOf(FIX_PLAN)}
 $A plan --file /tmp/p.yaml > /dev/null
@@ -1127,15 +1121,58 @@ $A click '#total'
 sleep 1
 $A check S2 "document.getElementById('sum').textContent==='Total: 5'"
 echo '{"expectations":[{"id":"S1","status":"pass","evidence":{"type":"eval","value":"ok"}},{"id":"S2","status":"fail","evidence":{"type":"eval","value":"Total: 0"}}],"omit":[]}' > /tmp/e.json; $A finish --file /tmp/e.json; echo "finish Exit=$?"`;
+/** Reproduces headless; @returns the draft's id. */
+const reproduceHeadless = async () => {
+    const reproduced = await reproduce(fixRoot, ['Die Summe zeigt 0 statt 5.', '--env', 'test', '--headless'], { interactive: true, containerCommand: ['bash', '-c', foundScript()] });
+    const repro = newestRunOf(fixRoot, 'reproduce').result?.reproduce;
+    const id = repro?.draft?.file?.replace(/^caw\/drafts\/|\.yaml$/g, '');
+    verify('(1) reproduced: exit 0, the draft in caw/drafts', reproduced === 0 && id === FIX_ID && existsSync(join(fixRoot, repro.draft.file)), `${reproduced} ${JSON.stringify(repro?.draft)}`);
+    return id;
+};
+const findCard = (chat, text) => chat.locator('.message:is(.question,.result,.notice,.decision)', { hasText: text }).waitFor({ timeout: 120000 });
+/** The check run of the recording: S2 red as expected, the person saves the draft with its proof. */
+const adoptRed = async (chat) => {
+    await findCard(chat, 'S2 rot wie erwartet: der Test fängt den Fehler');
+    verify('(2) no step fix offered at the red card', await chat.locator('#choices button', { hasText: 'Schritt beheben' }).count() === 0);
+    await decide(chat, 'Testplan übernehmen');
+    await findCard(chat, 'Jetzt den Fehler beheben');
+};
+/** The run of the draft after the fix: green, then Übernehmen promotes it or Später keeps the draft. */
+const greenWindow = (choice) => async (chat) => {
+    await findCard(chat, 'S2 grün: der Fehler ist behoben');
+    await decide(chat, choice === 'promote' ? /^Übernehmen$/ : 'Später');
+    if (choice === 'promote') await findCard(chat, /Übernommen: caw\/tests\//);
+};
+/** Promoted: the test in caw/tests and caw/recordings, the draft gone, the green run's fix report. */
+const verifyPromoted = (label, red) => {
+    const { dir } = newestRunOf(fixRoot, FIX_ID);
+    const reportFile = join(dir, 'fix-report.md');
+    const fixReport = existsSync(reportFile) ? readFileSync(reportFile, 'utf8') : '';
+    verify(`${label} promoted: the test in caw/tests and caw/recordings, the draft gone`, existsSync(join(fixRoot, 'caw/tests', `${FIX_ID}.yaml`)) && existsSync(join(fixRoot, 'caw/recordings', `${FIX_ID}.yaml`)) && !existsSync(join(fixRoot, 'caw/drafts', `${FIX_ID}.yaml`)));
+    verify(`${label} the test file carries no red`, !/^red:/m.test(readFileSync(join(fixRoot, 'caw/tests', `${FIX_ID}.yaml`), 'utf8')));
+    verify(`${label} fix report: red at S2 with run and commit, green with its run, the changed files, one other test green`,
+        new RegExp(`Rot bei S2: Lauf ${red.run}, Commit ${red.head}`).test(fixReport) && new RegExp(`Grün: Lauf .*-${FIX_ID}`).test(fixReport)
+        && /## Geänderte Dateien seit/.test(fixReport) && /1 andere\(r\) Test\(s\) auf test grün/.test(fixReport), fixReport);
+};
+
+scenario('N15', 'Reproduce → red draft → fix (server switch) → green → promote on the command line: the workbench offers the fix after the red proof, Später ends there; still red, --promote refused, green, fix report', async () => {
+    await fixSetup();
+    try {
+        const id = await reproduceHeadless();
+        const draftFile = readFileSync(join(fixRoot, 'caw/drafts', `${id}.yaml`), 'utf8');
+        verify('(1) its notes carry the trail with the locator', /click getByRole\('button', \{ name: 'Show total', exact: true \}\)/.test(draftFile), draftFile);
+        verify('(1) not in caw/tests', !existsSync(join(fixRoot, 'caw/tests', `${id}.yaml`)));
+
+        // (2) record the draft; after the red proof the card offers the fix, Später ends the run with the proof saved.
         const redCard = async (chat) => {
-            await chat.locator('.message:is(.question,.result,.notice)', { hasText: 'S2 rot wie erwartet: der Test fängt den Fehler' }).waitFor({ timeout: 120000 });
-            verify('(2) no fix offered at the red card', await chat.locator('#choices button', { hasText: 'Schritt beheben' }).count() === 0);
-            await decide(chat, 'Testplan übernehmen');
+            await adoptRed(chat);
+            verify('(2) the fix card offers the agent, fixing myself and later', await chat.locator('#choices button', { hasText: /beheben lassen/ }).count() === 1 && await chat.locator('#choices button', { hasText: 'Ich behebe selbst' }).count() === 1);
+            await decide(chat, 'Später');
         };
         // Windows: follow the test plan, the recording (approve the plan), the check run with the red card.
         const h = humans(followAndAdopt, followAndAdopt, redCard);
-        const recorded = await record(fixRoot, [id, ...recordArgs], { interactive: true, containerCommand: ['bash', '-c', recorder], onChatOpen: h.onChatOpen });
-        await h.done();
+        const recorded = await record(fixRoot, [id, ...recordArgs], { interactive: true, containerCommand: ['bash', '-c', recorderScript], onChatOpen: h.onChatOpen });
+        verify('(2) three windows, none after Später', await h.done() === 3);
         const red = loadTest(fixRoot, id);
         verify('(2) recorded red: exit 0, red at S2 with run and commit, still a draft', recorded === 0 && red.draft === true && red.red?.step === 'S2' && /Z-bug-die-summe/.test(red.red?.run ?? '') && /^[0-9a-f]{4,40}$/.test(red.red?.head ?? ''), `${recorded} ${JSON.stringify(red.red)}`);
         verify('(2) S2 keeps the failing check of the expected total', red.steps[1].recording?.check === "document.getElementById('sum').textContent==='Total: 5'", red.steps[1].recording?.check);
@@ -1153,14 +1190,126 @@ echo '{"expectations":[{"id":"S1","status":"pass","evidence":{"type":"eval","val
 
         // (5) Promote: the draft and run --all (fix-page) green; the test moves to caw/tests, the draft goes, the fix report is written.
         const promoted = await run(fixRoot, [id, '--promote', ...target]);
-        const { dir } = newestRunOf(fixRoot, id);
-        const reportFile = join(dir, 'fix-report.md');
-        const fixReport = existsSync(reportFile) ? readFileSync(reportFile, 'utf8') : '';
-        verify('(5) promoted: exit 0, the test in caw/tests and caw/recordings, the draft gone', promoted === 0 && existsSync(join(fixRoot, 'caw/tests', `${id}.yaml`)) && existsSync(join(fixRoot, 'caw/recordings', `${id}.yaml`)) && !existsSync(join(fixRoot, 'caw/drafts', `${id}.yaml`)), String(promoted));
-        verify('(5) the test file carries no red', !/^red:/m.test(readFileSync(join(fixRoot, 'caw/tests', `${id}.yaml`), 'utf8')));
-        verify('(5) fix report: red at S2 with run and commit, green with its run, the changed files, one other test green',
-            new RegExp(`Rot bei S2: Lauf ${red.red.run}, Commit ${red.red.head}`).test(fixReport) && new RegExp(`Grün: Lauf .*-${id}`).test(fixReport)
-            && /## Geänderte Dateien seit/.test(fixReport) && /1 andere\(r\) Test\(s\) auf test grün/.test(fixReport), fixReport);
+        verify('(5) promoted: exit 0', promoted === 0, String(promoted));
+        verifyPromoted('(5)', red.red);
+    } finally {
+        await switchBug(false).catch(() => {});
+    }
+});
+
+scenario('N15b', 'Guided bug fix in one process: reproduce in a window → Rot aufnehmen → red → Ich behebe selbst → server switch → Erneut testen green → Übernehmen promotes with a fix report', async () => {
+    await fixSetup();
+    try {
+        // One process, one script for both agents: the reproduction and the recording.
+        const agent = `if caw agent task | grep -Eq '"mode": ?"reproduce"'; then
+${foundScript('serve.mjs: /api/total antwortet 0')}
+else
+${recorderScript}
+fi`;
+        const reproduced = async (chat) => {
+            await findCard(chat, `Nachgestellt: Entwurf caw/drafts/${FIX_ID}.yaml`);
+            await decide(chat, 'Rot aufnehmen');
+        };
+        let redProof = null;
+        const fixMyself = async (chat) => {
+            await adoptRed(chat);
+            const fix = await chat.locator('.message.decision', { hasText: 'Jetzt den Fehler beheben' }).last().textContent();
+            verify('(2) the fix card names the red step, its expectation, its check and the suspected cause', /Roter Schritt: S2/.test(fix) && /Erwartet: Die Summe zeigt Total: 5/.test(fix) && /textContent==='Total: 5'/.test(fix) && /Vermutete Ursache: serve\.mjs: \/api\/total antwortet 0/.test(fix), fix);
+            redProof = loadTest(fixRoot, FIX_ID).red;
+            await decide(chat, 'Ich behebe selbst');
+            await findCard(chat, 'Behebe den Fehler, dann teste erneut');
+            // The person's fix: the server computes the total again.
+            await switchBug(false);
+            await decide(chat, 'Erneut testen');
+        };
+        // Windows: the reproduction, follow the test plan, the recording, the check run (red, fix), the run after the fix.
+        const h = humans(reproduced, followAndAdopt, followAndAdopt, fixMyself, greenWindow('promote'));
+        const code = await reproduce(fixRoot, ['Die Summe zeigt 0 statt 5.', '--env', 'test'], { interactive: true, containerCommand: ['bash', '-c', agent], onChatOpen: h.onChatOpen });
+        verify('(1–3) one process, five windows, exit 0', await h.done() === 5 && code === 0, String(code));
+        verify('(2) the red proof was saved before the fix', redProof?.step === 'S2' && /^[0-9a-f]{4,40}$/.test(redProof?.head ?? ''), JSON.stringify(redProof));
+        verifyPromoted('(3)', redProof ?? {});
+        const notes = readFileSync(join(fixRoot, 'caw/tests', `${FIX_ID}.yaml`), 'utf8');
+        verify('(3) the suspected cause stays in the notes', /Vermutete Ursache: serve\.mjs: \/api\/total antwortet 0/.test(notes), notes);
+    } finally {
+        await switchBug(false).catch(() => {});
+    }
+});
+
+scenario('N15c', 'Guided bug fix, Von Claude Code beheben lassen: the advice gets the red step as its task, its edit is applied on its card, Erneut testen green, Später keeps the draft, --promote promotes it', async () => {
+    await fixSetup();
+    mkdirSync(join(fixRoot, 'src'), { recursive: true });
+    writeFileSync(join(fixRoot, 'src/total.mjs'), 'export const total = (items) => {\n    return 0;\n};\n');
+    try {
+        const id = await reproduceHeadless();
+        const advice = `exec 2>&1
+A='caw agent'
+$A task > /tmp/t.json; grep -q '"fix"' /tmp/t.json && echo TASK-FIX
+cat > /tmp/a.json <<'JSON'
+{"items":[{"about":"S2","side":"app","title":"Summe aus den Preisen","evidence":"src/total.mjs:2","reason":"total gibt immer 0 zurück.","edits":[{"file":"src/total.mjs","find":"return 0;","replace":"return items.reduce((sum, item) => sum + item.price, 0);","why":"Die Summe der Preise"}],"prompt":"Rechne die Summe in src/total.mjs aus den Preisen."}]}
+JSON
+$A advise --file /tmp/a.json; echo "ADVISE Exit=$?"`;
+        const byAgent = async (chat) => {
+            await adoptRed(chat);
+            await decide(chat, /beheben lassen/);
+            await stateOf(chat, 'reviewing');
+            const card = await chat.locator('.message.advice').last().textContent();
+            verify('(2) the advice card shows the edit to src/total.mjs', /src\/total\.mjs/.test(card) && /items\.reduce/.test(card), card);
+            await decide(chat, 'Änderung übernehmen');
+            await findCard(chat, 'Änderung übernommen');
+            // The fixture's bug lives in the server: the switch stands in for the edit taking effect.
+            await switchBug(false);
+            await decide(chat, 'Erneut testen');
+        };
+        const h = humans(followAndAdopt, followAndAdopt, byAgent, greenWindow('later'));
+        const recorded = await record(fixRoot, [id, ...recordArgs], { interactive: true, containerCommand: ['bash', '-c', recorderScript], adviseCommand: ['bash', '-c', advice], onChatOpen: h.onChatOpen });
+        verify('(2–3) four windows, the green run ends the process with exit 0', await h.done() === 4 && recorded === 0, String(recorded));
+        verify('(2) the edit is in the file, written only on the click', /return items\.reduce\(\(sum, item\) => sum \+ item\.price, 0\);/.test(readFileSync(join(fixRoot, 'src/total.mjs'), 'utf8')));
+        verify('(3) Später keeps the draft', existsSync(join(fixRoot, 'caw/drafts', `${id}.yaml`)));
+        const red = loadTest(fixRoot, id).red;
+        // The advice ran in the red check run: its log shows the task carried the red step.
+        const adviceFile = join(fixRoot, '.caw/runs', red?.run ?? '-', 'agent/claude-advice.log');
+        const adviceLog = existsSync(adviceFile) ? readFileSync(adviceFile, 'utf8') : '';
+        verify('(2) the advice task carried the red step (task.fix)', /TASK-FIX/.test(adviceLog), adviceLog.slice(-400));
+        const promoted = await run(fixRoot, [id, '--promote', ...target]);
+        verify('(4) --promote: exit 0', promoted === 0, String(promoted));
+        verifyPromoted('(4)', red);
+    } finally {
+        await switchBug(false).catch(() => {});
+        rmSync(join(fixRoot, 'src'), { recursive: true, force: true });
+    }
+});
+
+scenario('N15d', 'Guided bug fix, the cause outside the project: the agent says where, the card applies nothing, Ich behebe es dort → server switch → Erneut testen green → Übernehmen promotes', async () => {
+    await fixSetup();
+    try {
+        const id = await reproduceHeadless();
+        const advice = `exec 2>&1
+A='caw agent'
+cat > /tmp/a.json <<'JSON'
+{"items":[{"about":"S2","side":"outside","title":"Der Summendienst antwortet 0","evidence":"request GET /api/total answered total 0","reason":"Die Seite zeigt nur, was der Dienst liefert; sein Code liegt nicht in diesem Projekt.","where":"Dienst /api/total (eigenes Repository)","prompt":"Die Summe in /api/total aus den Preisen berechnen."}]}
+JSON
+$A advise --file /tmp/a.json; echo "ADVISE Exit=$?"`;
+        let redProof = null;
+        const outside = async (chat) => {
+            await adoptRed(chat);
+            redProof = loadTest(fixRoot, id).red;
+            await decide(chat, /beheben lassen/);
+            await stateOf(chat, 'reviewing');
+            const card = await chat.locator('.message.advice').last().textContent();
+            verify('(2) the advice card says the cause lies outside and where', /Ursache außerhalb des Projekts/.test(card) && /Dienst \/api\/total/.test(card), card);
+            verify('(2) nothing to apply on it', await chat.locator('#choices button', { hasText: 'Änderung übernehmen' }).count() === 0);
+            await decide(chat, 'Weiter');
+            await findCard(chat, 'Die Ursache liegt außerhalb dieses Projekts');
+            await decide(chat, 'Ich behebe es dort');
+            await findCard(chat, 'Behebe den Fehler, dann teste erneut');
+            // Fixed there: the service computes the total again.
+            await switchBug(false);
+            await decide(chat, 'Erneut testen');
+        };
+        const h = humans(followAndAdopt, followAndAdopt, outside, greenWindow('promote'));
+        const recorded = await record(fixRoot, [id, ...recordArgs], { interactive: true, containerCommand: ['bash', '-c', recorderScript], adviseCommand: ['bash', '-c', advice], onChatOpen: h.onChatOpen });
+        verify('(2–3) four windows, exit 0', await h.done() === 4 && recorded === 0, String(recorded));
+        verifyPromoted('(3)', redProof ?? {});
     } finally {
         await switchBug(false).catch(() => {});
     }

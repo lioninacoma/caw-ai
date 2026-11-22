@@ -973,15 +973,19 @@ ${text}`) ?? 0;
     };
     /**
      * Presents advice as cards and applies each decision: knowledge, config and code at once, the test only in the result.
-     * @returns { result, review(items) }; `result` collects { spec, touched, stale, notes, files }
+     * @returns { result, review(items) }; `result` collects { spec, touched, stale, notes, files, outside }, `outside` the
+     *          causes beyond the project ({ where, title }) that the human fixes there
      */
     const createReviewer = (draft) => {
-        const result = { spec: draft, touched: [], stale: [], notes: false, files: [] };
+        const result = { spec: draft, touched: [], stale: [], notes: false, files: [], outside: [] };
         const review = async (items, log) => {
             const start = decided.length;
             for (const item of items) {
                 const view = adviceView(item, result.spec, session?.failures?.() ?? [], config);
-                const answer = await chat.advice(view, item.side === 'app' ? (item.edits === undefined ? [NEXT] : [APPLY, { ...NEXT, primary: false }]) : [ACCEPT, REJECT]);
+                // A cause outside the project has nothing to apply here: the card only says where it is.
+                const applicable = item.side === 'app' && item.edits !== undefined;
+                const answer = await chat.advice(view, item.side === 'test' ? [ACCEPT, REJECT] : applicable ? [APPLY, { ...NEXT, primary: false }] : [NEXT]);
+                if (item.side === 'outside' && answer !== null) result.outside.push({ where: item.where, title: item.title });
                 let decision = 'shown';
                 if (answer === null) decision = 'open';
                 else if (item.side === 'test') decision = answer === ACCEPT.id ? 'adopted' : 'discarded';
@@ -1017,10 +1021,12 @@ ${text}`) ?? 0;
      * @param mode     advise: advise once, then stop; talk: conversation with the human until `end`; develop: like talk, while developing
      * @param question in a conversation, the human's first message
      * @param persist  when developing: writes adopted test changes to the file at once, since no later run adopts them
+     * @param fix      a draft red at its step because of the bug: { step, name, expect, check, cause }; the advice is the fix of
+     *                 the application (or where outside the project it lies), never a change to the test
      * @returns { finished, send, end }: `finished` yields { spec, touched, stale, notes, files }, `stale` lists { id, title } of
      *          steps that must be re-recorded; `send` gives Claude another message, `end` ends the conversation
      */
-    const consult = ({ sandbox: box, spec: draft }, found, { mode, question, element, persist }) => {
+    const consult = ({ sandbox: box, spec: draft }, found, { mode, question, element, persist, fix }) => {
         const talking = mode === 'talk' || mode === 'develop';
         const allowed = consultAllowed(mode);
         const { result, review } = createReviewer(draft);
@@ -1043,6 +1049,7 @@ ${text}`) ?? 0;
             // The person's own coding agent session (--attach): it may change the application's code when the person asks.
             ...(box.kind === 'session' ? { attached: true } : {}),
             ...(talking ? { question } : {}),
+            ...(fix === undefined ? {} : { fix }),
             // The element the human picked for the question: target, label, component or source. Its text is never an instruction.
             ...(element === undefined ? {} : { element }),
             ...(mode === 'develop' ? { develop: { test: chosen.spec.id, until: chosen.replay?.until ?? null, ...(chosen.replay?.entry === undefined ? {} : { entry: chosen.replay.entry.id }), url: session.page().url(), source: checked.source } } : {}),
@@ -1180,7 +1187,7 @@ ${text}`) ?? 0;
             },
         };
     };
-    const adviseRun = (options, found) => consult(options, found, { mode: 'advise' }).finished;
+    const adviseRun = (options, found) => consult(options, found, { mode: 'advise', ...(options.fix === undefined ? {} : { fix: options.fix }) }).finished;
 
     /** Reloads the app with the current code; the page state is usually lost. */
     const reloadApp = async () => {
@@ -2294,7 +2301,7 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             let hint;
             if (result.reproduced === 'yes') {
                 // The notes go into caw/drafts like the steps the agent wrote: in the team language.
-                const draft = inLanguage(teamLanguage(config), () => draftTestPlan({ id: draftId(root, reproduce.bug), role: spec.role, environment: target, writes, steps: result.steps, runId, ref: reproduce.ref, trail }));
+                const draft = inLanguage(teamLanguage(config), () => draftTestPlan({ id: draftId(root, reproduce.bug), role: spec.role, environment: target, writes, steps: result.steps, runId, ref: reproduce.ref, ...(result.cause === undefined ? {} : { cause: result.cause }), trail }));
                 mkdirSync(join(root, DRAFT_DIR), { recursive: true });
                 writeFileSync(join(root, DRAFT_DIR, `${draft.id}.yaml`), draft.text, { flag: 'wx' });
                 hint = draftHint(draft);

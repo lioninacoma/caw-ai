@@ -315,7 +315,8 @@ operates the page like a person would and ends with a verdict: reproduced, not r
 blocked or notable requests, a hint at the cause). When reproduced, `caw/drafts/<id>.yaml` holds a draft test in caw's format
 made from the agent's steps, with the agent's browser actions and their locators in its `notes`. Nothing goes into `caw/tests`: review
 the draft, record it red with `caw record <id>`, fix the bug, `caw run <id>` shows it green, and `caw run <id> --promote` makes
-it a test ([from the bug to a proven fix](guide.md#from-the-bug-to-a-proven-fix)).
+it a test ([from the bug to a proven fix](guide.md#from-the-bug-to-a-proven-fix)). With a window outside CI the chat offers
+**Record red** once reproduced and then guides through the fix in the same process; the terminal output stays the same.
 
 - **Where:** only on environments with `agent`, never on production (`reproduce-not-allowed`). Without `--env` the only such
   environment, or the test's with `--from`.
@@ -396,12 +397,12 @@ Started by Claude Code through `.mcp.json` (`claude mcp add caw --scope project 
 | `caw_config` | Read the config, or change it validated (`patch`, `dryRun`). A patch that adds or removes the `overlay` block changes the tool list. Refused: commands (`start`, `stop`, `reset`, `ready`, `lintCommand`, overlay `start`), environment flags, `browser.executablePath`, `sandboxImage`, `sandboxUser`, `agent.mode`; the session edits those in the file, where you see the diff | no |
 | `caw_validate` | `validate` as data; drafts from `caw/drafts` under `drafts` | no |
 | `caw_list` | `list` as data; drafts under `drafts`, each with `red` (`{ step, run, head }` or `null`) | no |
-| `caw_reproductions` | The reproductions in `.caw/runs`, newest first: `runId`, `date`, `ref`, `status`, `reproduced`, `observed`, `covered`, `draft`, `report`; `refs` (list) keeps those and names refs without a run as `missing` (never run, or pruned by `keepRuns`), `since` (ISO date) keeps newer runs | no |
+| `caw_reproductions` | The reproductions in `.caw/runs`, newest first: `runId`, `date`, `ref`, `status`, `reproduced`, `observed`, `expected`, `cause`, `covered`, `draft`, `phase`, `next`, `report`; `refs` (list) keeps those and names refs without a run as `missing` (never run, or pruned by `keepRuns`), `since` (ISO date) keeps newer runs | no |
 | `caw_design` | Target designs under `caw/design`: `put` writes `design/<name>.html`, `.png` (base64) or `<name>tokens.json` (DTCG, every token has `$value`) after checking name, size, PNG signature and dimensions; `list` returns the design files and the steps that link them; `link` sets or removes one step's `design:` (with `personAsked: true`, only when the person asked) | no |
 | `caw_overlay` | Only with an `overlay` block: `action: status` (`overlay status` in-process, fast), `check` or `apply` (`overlay check`, `--apply`; waits up to 3 minutes); `env`, `part` | no |
 | `caw_attach` | Attach this session: returns its key and the command to start with the Monitor tool; every chat message and task of an attached window then reaches the session as a line. |
 | `caw_start` | Start `run`, `record`, `open` or `reproduce` attached to this session (`--attach=<key>`) (`reproduce`: `bug`, `from`, `role`, `env`, `ref`, `headless`; `test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset`, or `args`; `step` for `record` and `open`, only with `test`; `promote` for `run` of a draft). With `overlay` it checks the local code server first: `down`, `wrong-app` or `stale` returns `state`, `url`, `start` and `partDir` instead of starting; `moved` starts with `--overlay <foundUrl>`. Never `--start` together with `overlay`: the session starts the local code server itself after asking you. `start` and `reset` run the environment's configured commands | none beyond your session |
-| `caw_status` | Is a run waiting for the session? Last lines of output; last run's result and artefacts as data. `wait` (up to 120 s) returns as soon as the run needs the session, ends or reports something new | no |
+| `caw_status` | Is a run waiting for the session? Last lines of output; last run's result and artefacts as data; for a reproduction with a draft and a run of a draft its `phase` and `next`. `wait` (up to 120 s) returns as soon as the run needs the session, ends or reports something new | no |
 | `caw` | The agent commands (`snapshot`, `click`, `plan`, `finish`, …) | in the run |
 | `caw_selection` | The element you picked with `/element` in the workbench chat | no |
 

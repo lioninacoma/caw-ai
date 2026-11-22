@@ -364,7 +364,7 @@ export const createChat = ({ show: shown = () => {}, status = () => {}, onAbort 
                         publish();
                     },
                 };
-                show('advice', `${view.side === 'app' ? 'Application' : 'Test'}: ${view.title}`, view);
+                show('advice', `${({ app: 'Application', outside: 'Outside' })[view.side] ?? 'Test'}: ${view.title}`, view);
                 publish();
             });
         },
@@ -824,7 +824,7 @@ window.addMessage=(who,text,about,at)=>{
     place(box);return;
   }
   if(who==='advice'){
-    const box=card('advice '+about.side);box.append(head('agent',about.side==='app'?T['chat.page.adviceApp']:T['chat.page.adviceTest']));
+    const box=card('advice '+about.side);box.append(head('agent',T[({app:'chat.page.adviceApp',outside:'chat.page.adviceOutside'})[about.side]??'chat.page.adviceTest']));
     const intro=el('div');intro.append(el('h2','',about.title));if(about.target)intro.append(el('div','target',about.target));if(about.about)intro.append(el('div','target',fill('chat.page.about',{about:about.about})));box.append(intro);
     box.append(el('p','reason txt',about.reason));
     if(about.evidence)box.append(el('p','muted',fill('chat.page.evidence',{evidence:about.evidence})));

@@ -319,7 +319,8 @@ die Aktionen im Browser, Screenshots, harte Fehler, gesperrte oder auffällige R
 wenn nachgestellt, `caw/drafts/<id>.yaml`, ein Testentwurf im Format von caw aus den Schritten des Agenten, mit seinen Aktionen im
 Browser und ihren Locatoren in seinen `notes`. Nichts landet in `caw/tests`: Prüf den Entwurf, nimm ihn mit `caw record <id>` rot
 auf, behebe den Fehler, `caw run <id>` zeigt ihn grün, und `caw run <id> --promote` macht ihn zum Test
-([vom Fehler zum belegten Fix](guide.de.md#vom-fehler-zum-belegten-fix)).
+([vom Fehler zum belegten Fix](guide.de.md#vom-fehler-zum-belegten-fix)). Mit Fenster außerhalb von CI bietet der Chat nach dem
+Nachstellen **Rot aufnehmen** an und führt dann im selben Prozess durch den Fix; die Ausgabe im Terminal bleibt dieselbe.
 
 - **Wo:** nur auf Umgebungen mit `agent`, nie auf Produktion (`reproduce-not-allowed`). Ohne `--env` die einzige solche
   Umgebung, mit `--from` die des Tests.
@@ -401,12 +402,12 @@ Startet Claude Code über `.mcp.json` (`claude mcp add caw --scope project -- np
 | `caw_config` | Config lesen oder geprüft ändern (`patch`, `dryRun`). Ein Patch, der den `overlay`-Block hinzufügt oder entfernt, ändert die Tool-Liste. Abgelehnt: Befehle (`start`, `stop`, `reset`, `ready`, `lintCommand`, Overlay-`start`), Umgebungs-Schalter, `browser.executablePath`, `sandboxImage`, `sandboxUser`, `agent.mode`; die ändert die Session in der Datei, wo du den Diff siehst | nein |
 | `caw_validate` | `validate` als Daten; Entwürfe aus `caw/drafts` unter `drafts` | nein |
 | `caw_list` | `list` als Daten; Entwürfe unter `drafts`, jeder mit `red` (`{ step, run, head }` oder `null`) | nein |
-| `caw_reproductions` | Die Nachstellungen in `.caw/runs`, die neueste zuerst: `runId`, `date`, `ref`, `status`, `reproduced`, `observed`, `covered`, `draft`, `report`; `refs` (Liste) behält nur diese und nennt Refs ohne Lauf als `missing` (nie gelaufen oder durch `keepRuns` gelöscht), `since` (ISO-Datum) behält neuere Läufe | nein |
+| `caw_reproductions` | Die Nachstellungen in `.caw/runs`, die neueste zuerst: `runId`, `date`, `ref`, `status`, `reproduced`, `observed`, `expected`, `cause`, `covered`, `draft`, `phase`, `next`, `report`; `refs` (Liste) behält nur diese und nennt Refs ohne Lauf als `missing` (nie gelaufen oder durch `keepRuns` gelöscht), `since` (ISO-Datum) behält neuere Läufe | nein |
 | `caw_design` | Zielbilder unter `caw/design`: `put` schreibt `design/<name>.html`, `.png` (base64) oder `<name>tokens.json` (DTCG, jedes Token hat `$value`), nachdem Name, Größe, PNG-Signatur und Abmessungen geprüft sind; `list` liefert die Entwurfsdateien und die Schritte, die sie nennen; `link` setzt oder entfernt `design:` an einem Schritt (mit `personAsked: true`, nur auf Wunsch des Menschen) | nein |
 | `caw_overlay` | Nur mit `overlay`-Block: `action: status` (`overlay status` im Prozess, schnell), `check` oder `apply` (`overlay check`, `--apply`; wartet bis zu 3 Minuten); `env`, `part` | nein |
 | `caw_attach` | Diese Session verbinden: liefert ihren Schlüssel und den Befehl, den sie mit dem Monitor-Werkzeug startet; jede Chat-Nachricht und jede Aufgabe eines verbundenen Fensters erreicht die Session dann als Zeile. |
 | `caw_start` | `run`, `record`, `open` oder `reproduce` mit dieser Session verbunden starten (`--attach=<key>`) (`reproduce`: `bug`, `from`, `role`, `env`, `ref`, `headless`; `test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset` oder `args`; `step` bei `record` und `open`, nur mit `test`; `promote` bei `run` eines Entwurfs). Mit `overlay` prüft es zuerst den lokalen Code-Server: `down`, `wrong-app` oder `stale` liefert `state`, `url`, `start` und `partDir`, statt zu starten; `moved` startet mit `--overlay <foundUrl>`. Nie `--start` zusammen mit `overlay`: Die Session startet den lokalen Code-Server selbst, nachdem sie dich gefragt hat. `start` und `reset` führen die konfigurierten Befehle der Umgebung aus | nur deine Session |
-| `caw_status` | Wartet ein Lauf auf die Sitzung? Letzte Zeilen der Ausgabe; Ergebnis und Artefakte des letzten Laufs als Daten. `wait` (bis 120 s) antwortet, sobald der Lauf die Sitzung braucht, endet oder etwas Neues meldet | nein |
+| `caw_status` | Wartet ein Lauf auf die Sitzung? Letzte Zeilen der Ausgabe; Ergebnis und Artefakte des letzten Laufs als Daten; zu einer Nachstellung mit Entwurf und einem Lauf eines Entwurfs dessen `phase` und `next`. `wait` (bis 120 s) antwortet, sobald der Lauf die Sitzung braucht, endet oder etwas Neues meldet | nein |
 | `caw` | Die Agenten-Befehle (`snapshot`, `click`, `plan`, `finish`, …) | im Lauf |
 | `caw_selection` | Das Element, das du mit `/element` im Chat der Werkbank gewählt hast | nein |
 

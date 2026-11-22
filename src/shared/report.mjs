@@ -121,7 +121,7 @@ const adviceLines = ({ items, note: adviceNote }) => {
     if (adviceNote !== undefined) lines.push(adviceNote, '');
     if (items.length === 0 && adviceNote === undefined) lines.push(t('config.report.advice.none'));
     for (const { side, title, reason, about, target, changes = [], prompt, decision, evidence, contradicts, edits = [] } of items) {
-        lines.push(`### ${side === 'app' ? t('config.report.advice.app') : t('config.report.advice.test')}: ${cell(title)} (${decisionLabel(decision)})`, '');
+        lines.push(`### ${t(`config.report.advice.${['app', 'outside'].includes(side) ? side : 'test'}`)}: ${cell(title)} (${decisionLabel(decision)})`, '');
         if (about !== undefined || target !== undefined) lines.push(t('config.report.advice.about', { list: [about, target].filter(Boolean).map(cell).join(', ') }), '');
         if (evidence !== undefined) lines.push(t('config.report.advice.evidence', { evidence: cell(evidence) }), '');
         if (contradicts) lines.push(t('config.report.advice.contradicts'), '');

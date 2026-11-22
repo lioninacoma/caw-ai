@@ -373,7 +373,8 @@ What the agent may and may not do here:
   Its `notes` list what the agent did in the browser, with locators, as orientation for recording. Drafts are not part of `run --all`; `list` shows them apart.
 
 From your Claude Code session, ask for it ("reproduce this bug: …"): the session starts `caw_start` with `command: "reproduce"`,
-is the agent itself at no extra tokens, and gets the verdict, the report and the draft from `caw_status`.
+is the agent itself at no extra tokens, and gets the verdict, the report and the draft from `caw_status`, with the draft's
+`phase` and `next`.
 
 ### From the bug to a proven fix
 
@@ -394,7 +395,24 @@ The draft turns the bug into a test that proves the fix: red before, green after
    uncommitted and untracked, without `caw/` and `.caw/`) and how many other tests passed. Exit 0 promoted, 1 not green,
    4 not recorded or never red.
 
-From your session the same steps are `caw_start` with `command: "record"`, `"run"` and `"run"` with `promote: true`.
+**Guided in the workbench.** With a window the chat leads through these steps in one process, each in a new window, and the
+chat so far goes along; "Later" on any card ends the run there, and the terminal still names the next command:
+
+- `caw reproduce` reproduced: the card offers **Record red**, the recording of the draft as with `caw record <id>`.
+- Saved red: the card **Now fix the bug** shows the red step, its expected result, its check and the cause the reproduction
+  suspected (it is also in the draft's `notes`). **Let the agent fix it** has the agent advise the fix, with every agent kind
+  (local, Docker, your attached session): its code changes come as cards you apply one by one ("Apply change"), caw's own agent
+  never writes code. If the cause lies outside the project (another repository, a service, the environment), its card says
+  where, there is nothing to apply, and **I fix it there** waits like **I fix it myself** until you **Test again**.
+- Still red: fix again, test again or end the run. Green: **S3 green: the bug is fixed**, and **Adopt** promotes the draft as
+  `--promote` does, while the window waits; the chat names the fix report. If another test is red, the card says so and the
+  draft stays.
+- `caw record <id>` and `caw run <id>` with a window join at their step. Headless, `--no-chat` and CI run as before.
+
+From your session the same steps are `caw_start` with `command: "record"`, `"run"` and `"run"` with `promote: true`. Your
+session need not keep track: `caw_status` (for the reproduction and every run of the draft) and each row of
+`caw_reproductions` carry `phase` (`reproduced`, `red`, `green`, `promoted`) and `next`, the step after it: record, fix the app
+(with the red step, its check and the suspected cause), run, promote, or done with the fix report.
 
 If the agent finds that an existing test already checks the reported behaviour, it names it in its verdict (`covered`: the test,
 optionally the step, and why). caw accepts only a recorded test and adds its newest run from `.caw/runs`; if that run passed,

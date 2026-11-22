@@ -173,6 +173,7 @@ export default {
     'config.report.advice.none': '{agent} hatte keine Empfehlung.',
     'config.report.advice.app': 'Anwendung',
     'config.report.advice.test': 'Test',
+    'config.report.advice.outside': 'Außerhalb des Projekts',
     'config.report.advice.about': 'Zu: {list}',
     'config.report.advice.evidence': 'Beleg: {evidence}',
     'config.report.advice.contradicts': 'Widerspricht der Einschätzung des Tools, die für einen Fehler der Anwendung spricht.',

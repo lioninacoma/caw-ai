@@ -194,6 +194,9 @@ A reproduced bug leaves a draft test in `caw/drafts`, the way to a proven fix:
 4. **Promote:** `caw run <draft> --promote` needs the draft and `run --all` green, then moves it to `caw/tests` and writes a
    fix report.
 
+With a window the chat guides you through all four in one process: **Record red**, **Now fix the bug** (by yourself or with
+the agent, whose code changes you apply card by card), **Test again** and **Adopt**.
+
 No plan to approve and no question to you: the agent only investigates. It runs only on environments you allow an agent on,
 never on production, only reads where the environment is not `writable`, and changes no code and no test. `--ref` keeps a
 ticket id from another tool in the report; caw never looks it up. Details:

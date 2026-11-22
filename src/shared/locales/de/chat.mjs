@@ -95,6 +95,7 @@ export default {
     'chat.page.warnings': 'Warnungen',
     'chat.page.adviceApp': 'Empfehlung für die Anwendung',
     'chat.page.adviceTest': 'Empfehlung für den Test',
+    'chat.page.adviceOutside': 'Ursache außerhalb des Projekts',
     'chat.page.about': 'zu {about}',
     'chat.page.evidence': 'Beleg: {evidence}',
     'chat.page.contradicts': 'Widerspricht der Einschätzung: Die Befunde sprechen für einen Fehler der Anwendung. Ein angepasster Test würde ihn verdecken.',

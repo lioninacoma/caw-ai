@@ -8,6 +8,7 @@ import { cutReplay, positionalActions, replayOf, replayToEntry, replayUpToStale,
 import { LEARN_RUNS, isEffectCause } from './effects.mjs';
 import { locatorLabel, locatorText } from './locator.mjs';
 import { redStep, staleSteps } from './test-file.mjs';
+import { redOf } from './bugfix.mjs';
 import { withAdoptedLooks, withLooks } from './visual.mjs';
 import { previewLines, withFixedData } from './fixed-data.mjs';
 
@@ -40,6 +41,16 @@ const RESTORE_PICKED = button('restore-picked', 'run.button.restorePicked', { pr
 /** The confirm button names the step it opens, so it reads as the answer to the question: "S2 öffnen". */
 const openPicked = (step) => (step === undefined ? RESTORE_PICKED : { ...RESTORE_PICKED, label: t('run.button.openStep', { step }) });
 const CANCEL_RESTORE = button('cancel-restore', 'run.button.cancelRestore');
+// The guided bug fix (bugfix.mjs): reproduced, red, fixed, green, promoted, each in a new window of the same process. Later
+// ends the run at any card; the terminal hints stay as they are.
+const RECORD_RED = button('record-red', 'run.button.recordRed', { primary: true });
+const LATER = button('later', 'run.button.later');
+const FIX_BY_AGENT = button('fix-by-agent', 'run.button.fixByAgent', { primary: true });
+const FIX_AGAIN = button('fix-by-agent', 'run.button.fixAgain', { primary: true });
+const FIX_MYSELF = button('fix-myself', 'run.button.fixMyself');
+const FIX_THERE = button('fix-there', 'run.button.fixThere', { primary: true });
+const RETEST = button('retest', 'run.button.rerun', { primary: true });
+const PROMOTE = button('promote', 'run.button.promote', { primary: true });
 
 const withoutDot = (text) => text.replace(/\.$/, '');
 /** The text as a closed sentence: a dot only when it does not end with . ! or ? already. */
@@ -269,6 +280,78 @@ const withRed = (spec, run, head) => {
     return { ...spec, red: { step: redStep(spec), run, ...(commit === undefined ? {} : { head: commit }) } };
 };
 
+/** The red step of a draft for the fix, also before its red proof is written: the step it must fail at. */
+const redBundle = (spec, cause) => redOf({ ...spec, red: spec.red ?? { step: redStep(spec) } }, cause);
+
+/** The red step as the fix card shows it: step, expected result, check and suspected cause, one point each. */
+const redFacts = (red) => [
+    t('run.guide.fixStep', { id: red.step, name: red.name ?? '' }).trim(),
+    ...(red.expect === undefined ? [] : [t('run.guide.fixExpect', { expect: withoutDot(red.expect) })]),
+    ...(red.check === undefined ? [] : [t('run.guide.fixCheck', { check: red.check })]),
+    t(red.cause === undefined ? 'run.guide.fixNoCause' : 'run.guide.fixCause', { cause: withoutDot(red.cause ?? '') }),
+];
+
+/**
+ * A reproduction with a window found the bug and wrote a draft: the next step is recording it red, in a new window.
+ * @param draft { file, record } from the verdict
+ * @returns { next: 'record' } or the outcome for the chat
+ */
+export const offerRecordRed = async (chat, draft) => {
+    const choice = await decide(chat, resultCard('next', t('run.guide.reproducedTitle', { file: draft.file }), t('run.guide.reproducedText'), t('run.guide.laterHint', { command: draft.record })), [RECORD_RED, LATER]);
+    return choice === RECORD_RED.id ? { next: 'record' } : { outcome: t('run.guide.later', { command: draft.record }) };
+};
+
+/**
+ * A draft red at its step, the bug still there: the person has the agent advise the fix (code changes come back as cards,
+ * applied one by one), fixes it themselves, or stops. A cause outside the project is fixed there.
+ * @param red       redBundle: the red step for the card and the agent's task
+ * @param again     still red after a fix: fix again, test again or end
+ * @param title     the card's head; by default "Now fix the bug"
+ * @param adviseFix () => the advice result ({ spec, touched, notes, files, outside }) or null if no agent could start
+ * @param store     (advice result) adopts what changed in the test (rare: the fix is the app's)
+ * @returns true to test again in a new window, false to end the run
+ */
+const guideFix = async (chat, { red, test, again = false, title, adviseFix, store }) => {
+    const ask = { title: title ?? t('run.guide.fixTitle'), facts: redFacts(red), question: t(again ? 'run.guide.againQuestion' : 'run.guide.fixQuestion') };
+    let card = ask;
+    let options = again ? [FIX_AGAIN, { ...RETEST, primary: false }, CLOSE] : [FIX_BY_AGENT, FIX_MYSELF, LATER];
+    const waiting = () => {
+        card = resultCard('next', t('run.guide.waitTitle'), t('run.guide.waitText', { id: red.step }), t('run.guide.laterHint', { command: `caw run ${test}` }));
+        options = [RETEST, LATER];
+    };
+    for (;;) {
+        const choice = await chat.choose('deciding', card.title, options, card);
+        if (choice === FIX_BY_AGENT.id) {
+            const advised = await adviseFix();
+            if (advised === null) {
+                card = resultCard('warn', t('run.guide.noAgent'), t('run.guide.noAgentText'));
+                options = [{ ...FIX_MYSELF, primary: true }, LATER];
+                continue;
+            }
+            store(advised);
+            const app = appFilesOf(advised.files);
+            const outside = advised.outside ?? [];
+            if (app.length > 0) {
+                card = resultCard('next', t('run.guide.appliedTitle'), t('run.guide.appliedText', { files: app.join(', '), id: red.step }));
+                options = [RETEST, LATER];
+            } else if (outside.length > 0) {
+                // Nothing to apply here: where it lies, and the person fixes it there; testing again shows the fix all the same.
+                card = resultCard('warn', t('run.guide.outsideTitle'), outside.map(({ where, title: what }) => `${where}: ${withoutDot(what)}.`).join(' '), t('run.guide.outsideMuted'));
+                options = [FIX_THERE, LATER];
+            } else {
+                card = resultCard('info', t('run.guide.nothingTitle'), t('run.guide.nothingText'));
+                options = [{ ...FIX_MYSELF, primary: true }, { ...RETEST, primary: false }, LATER];
+            }
+            continue;
+        }
+        if (choice === FIX_MYSELF.id || choice === FIX_THERE.id) {
+            waiting();
+            continue;
+        }
+        return choice === RETEST.id;
+    }
+};
+
 /** What happens after forgetting the learned effects, in one sentence. */
 const forgottenText = (id) => t('run.flow.forgotten', { id, runs: LEARN_RUNS });
 
@@ -431,8 +514,10 @@ const changeNote = (changes) => {
  * @param head         () => the checked-out commit's short hash or undefined: a draft's red proof records it
  * @param markLooks    (test, step ids) => the file: writes `look: true` on the steps the human ticked when adopting a whole
  *                     recording; without it nothing is suggested
+ * @param guide        a draft with a window (the guided bug fix): { cause, rerun }; once its red proof is saved the card offers the
+ *                     fix, and testing again is `rerun()`, a run of the draft in a new window of this process (its exit code)
  */
-export const fixFlow = async ({ draft, target = null, changes: done = [], whole = false, expectChange = [], fresh = [], discardCode, seenFailures = [], sandbox, openSandbox, execute, adopt, markLooks, log, head = () => undefined, advising: advisingFirst = true }) => {
+export const fixFlow = async ({ draft, target = null, changes: done = [], whole = false, expectChange = [], fresh = [], discardCode, seenFailures = [], sandbox, openSandbox, execute, adopt, markLooks, log, head = () => undefined, advising: advisingFirst = true, guide }) => {
     const fixer = createFixer({ sandbox, openSandbox });
     const changes = [...done];
     const seen = [...seenFailures];
@@ -517,6 +602,8 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
         let saved = null;
         // A draft that failed at its red step as it should: that is the proof, not a failure to fix.
         let red = false;
+        // Guided: after the fix, the draft runs again in a new window.
+        let retest = false;
         // A new recording: its check run measures which steps could get look: true, the card offers them.
         const suggesting = whole && markLooks !== undefined;
         const played = await execute({
@@ -534,6 +621,20 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
                     if (choice !== ADOPT.id) return { outcome: t('run.flow.discarded') };
                     current = withRed(current, runId, head);
                     saved = adopt(current, undefined, {});
+                    if (guide !== undefined) {
+                        chat.notice(t('run.flow.saved', { file: saved }));
+                        const adviseFix = async () => {
+                            const ready = await fixer.open(chat, (message) => { chat.progress(t('run.flow.cannotAdvise', { message })); });
+                            return ready === null ? null : concluded.advise({ sandbox: ready, spec: current, fix: redBundle(current, guide.cause) });
+                        };
+                        // Adopted test advice goes into the draft at once: the red proof is saved already.
+                        const store = (result) => {
+                            current = result.spec;
+                            if (result.touched.length > 0 || result.notes) log(t('run.flow.adviceAdopted', { file: adopt(current, new Set(result.touched), { withNotes: result.notes }) }));
+                        };
+                        retest = await guideFix(chat, { red: redBundle(current, guide.cause), test: current.id, adviseFix, store });
+                        return retest ? { next: 'run' } : { outcome: t('run.guide.later', { command: `caw run ${current.id}` }) };
+                    }
                     return { outcome: t('run.flow.saved', { file: saved }) };
                 }
                 offered = await takeAdvice(concluded);
@@ -607,7 +708,7 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
         if (red) {
             if (choice === ADOPT.id && saved !== null) {
                 log(t('run.flow.redSaved', { file: saved, id: redStep(current), test: current.id }));
-                return EXIT.pass;
+                return retest ? guide.rerun() : EXIT.pass;
             }
             log(t('run.flow.discarded'));
             return discardCode ?? played.exitCode;
@@ -630,8 +731,9 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
  * Record anew: Claude works with the human at the chat, then it continues as with fixing.
  * @param sandbox  Docker, token and image
  * @param execute  a single run, returns { exitCode, verdict, candidate, failed }
+ * @param guide    a draft: the guided bug fix after its red proof (fixFlow)
  */
-export const recordFlow = async ({ sandbox, execute, adopt, markLooks, log, head }) => {
+export const recordFlow = async ({ sandbox, execute, adopt, markLooks, log, head, guide }) => {
     const recorded = await execute({
         sandbox,
         conclude: async ({ verdict, candidate, chat }) => {
@@ -643,7 +745,7 @@ export const recordFlow = async ({ sandbox, execute, adopt, markLooks, log, head
     });
     if (recorded.candidate === undefined) return recorded.exitCode;
     // The check run of a recording costs no further tokens unless asked: advice only comes once a step gets fixed.
-    return fixFlow({ draft: recorded.candidate, whole: true, expectChange: recorded.expectChange ?? [], fresh: recorded.fresh ?? [], seenFailures: hardFailures(recorded.verdict), sandbox, execute, adopt, markLooks, log, head, advising: false });
+    return fixFlow({ draft: recorded.candidate, whole: true, expectChange: recorded.expectChange ?? [], fresh: recorded.fresh ?? [], seenFailures: hardFailures(recorded.verdict), sandbox, execute, adopt, markLooks, log, head, advising: false, guide });
 };
 
 /**
@@ -658,10 +760,30 @@ export const recordFlow = async ({ sandbox, execute, adopt, markLooks, log, head
  *                      outside CI, in CI with --learn)
  * @param onPlayed  gets the playback result before things continue
  * @param hint      (failed, { canFix }) after a failed step, if the run ends with it
+ * @param guide     a draft with chat (the guided bug fix): { cause, promote }; red, the card offers the fix and testing again;
+ *                  green, adopting it runs `promote({ runId })` -> { ok, test, report, others } or { ok: false, reason }
  */
 export const runFlow = async (options) => {
-    const { spec, entry, through, handover, canFix, advise = false, fillBaselines = false, sessionAgent = false, reads = [], openSandbox, execute, adopt, log, hint, head = () => undefined } = options;
+    const { spec, entry, through, handover, canFix, advise = false, fillBaselines = false, sessionAgent = false, reads = [], openSandbox, execute, adopt, log, hint, head = () => undefined, guide } = options;
     const fixer = createFixer({ openSandbox });
+    // What the run learned (baselines, effects, looks) is written once: before promoting, which moves the draft, or afterwards.
+    let learned = false;
+    const learnFrom = (played) => {
+        if (learned || !fillBaselines) return;
+        learned = true;
+        if (played.baselines !== undefined) {
+            current = withBaselines(current, played.baselines);
+            log(t('run.flow.baselinesAdded', { ids: [...played.baselines.keys()].join(', '), file: adopt(current, new Set(played.baselines.keys()), { learned: 'baselines' }) }));
+        }
+        if (played.effects !== undefined) {
+            current = withEffects(current, played.effects);
+            log(t('run.flow.effectsLearned', { ids: [...played.effects.keys()].join(', '), file: adopt(current, new Set(played.effects.keys()), { learned: 'effects' }) }));
+        }
+        if (played.looks !== undefined) {
+            current = withLooks(current, played.looks);
+            log(t('run.flow.looksLearned', { ids: [...played.looks.keys()].join(', '), file: adopt(current, new Set(played.looks.keys()), { learned: 'looks' }) }));
+        }
+    };
     let target = null;
     let repaired = null;
     let rerun = false;
@@ -809,6 +931,15 @@ export const runFlow = async (options) => {
                 if (failed && redAsExpected(current, failed, verdict)) {
                     const id = redStep(current);
                     const known = current.red !== undefined;
+                    if (guide !== undefined) {
+                        const adviseFix = async () => {
+                            const ready = await fixer.open(chat, (message) => { chat.progress(t('run.flow.cannotAdvise', { message })); });
+                            return ready === null ? null : concluded.advise({ sandbox: ready, spec: current, fix: redBundle(current, guide.cause) });
+                        };
+                        const title = t(known ? 'run.flow.stillRedTitle' : 'run.flow.redTitle', { id });
+                        rerun = await guideFix(chat, { red: redBundle(current, guide.cause), test: current.id, again: known, title, adviseFix, store: (advised) => keep(advised, chat, { offer: false }) });
+                        return rerun ? windowAfter() : { outcome: t('run.guide.later', { command: `caw run ${current.id}` }) };
+                    }
                     await decide(chat, resultCard('info', t(known ? 'run.flow.stillRedTitle' : 'run.flow.redTitle', { id }), t(known ? 'run.flow.stillRedText' : 'run.flow.redText', { id }), t('run.flow.stillRedMuted', { test: current.id })), [ONLY_CLOSE]);
                     return undefined;
                 }
@@ -828,6 +959,20 @@ export const runFlow = async (options) => {
                 };
                 const advised = advise ? await fixer.advise(concluded, current) : null;
                 if (await afterAdvice(advised)) return windowAfter();
+                // A proven red draft passes: the bug is fixed. Adopting it promotes the draft, after every other test on the
+                // environment passed too, while this window waits.
+                if (!failed && guide !== undefined && verdict.status === 'pass' && current.red !== undefined) {
+                    const id = current.red.step;
+                    if (await decide(chat, resultCard('next', t('run.guide.greenTitle', { id }), t('run.guide.greenText', { test: current.id })), [PROMOTE, LATER]) !== PROMOTE.id) {
+                        return { outcome: t('run.guide.later', { command: `caw run ${current.id} --promote` }) };
+                    }
+                    learnFrom(concluded);
+                    chat.progress(t('run.guide.promoting'));
+                    const promoted = await guide.promote({ runId: concluded.runId });
+                    if (promoted.ok) return { outcome: t('run.guide.promoted', promoted) };
+                    await decide(chat, resultCard('fail', t('run.guide.refusedTitle'), closed(withoutDot(promoted.reason)), t('run.guide.refusedMuted', { test: current.id })), [ONLY_CLOSE]);
+                    return undefined;
+                }
                 if (!failed) {
                     const summary = `${t(verdict.status === 'pass' ? 'run.flow.runPassed' : 'run.flow.runFailed')}${findingsText(verdict)}${advised === null ? '' : t('run.flow.adviceInReport')}`;
                     // Look steps that passed: the card offers to freeze their data (fixed-data.mjs). Only a person's click does it.
@@ -898,17 +1043,14 @@ export const runFlow = async (options) => {
         } : {}),
     });
     options.onPlayed?.(played);
-    if (fillBaselines && played.baselines !== undefined) {
-        current = withBaselines(current, played.baselines);
-        log(t('run.flow.baselinesAdded', { ids: [...played.baselines.keys()].join(', '), file: adopt(current, new Set(played.baselines.keys()), { learned: 'baselines' }) }));
-    }
-    if (fillBaselines && played.effects !== undefined) {
-        current = withEffects(current, played.effects);
-        log(t('run.flow.effectsLearned', { ids: [...played.effects.keys()].join(', '), file: adopt(current, new Set(played.effects.keys()), { learned: 'effects' }) }));
-    }
-    if (fillBaselines && played.looks !== undefined) {
-        current = withLooks(current, played.looks);
-        log(t('run.flow.looksLearned', { ids: [...played.looks.keys()].join(', '), file: adopt(current, new Set(played.looks.keys()), { learned: 'looks' }) }));
+    learnFrom(played);
+    // A draft red at its step: its first red run is the proof and is written into the draft, also before testing again; the hint
+    // to re-record the step would destroy it, so the next step is fixing the app.
+    const redNow = !handover && Boolean(played.failed) && redAsExpected(current, played.failed, played.verdict);
+    const knownRed = current.red !== undefined;
+    if (redNow && !knownRed) {
+        current = withRed(current, played.runId, head);
+        log(t('run.flow.redSaved', { file: adopt(current, undefined, {}), id: redStep(current), test: current.id }));
     }
     if (rerun) {
         log(t('run.flow.rerunning'));
@@ -919,13 +1061,8 @@ export const runFlow = async (options) => {
         return fixFlow({ ...shared, draft: carry(repaired.candidate, current, repaired.id), changes: [changeOf(repaired)], seenFailures: hardFailures(repaired.verdict) });
     }
     if (target !== null) return fixFlow({ ...shared, draft: current, target });
-    // A draft red at its step: its first red run is the proof and is written into the draft; the hint to re-record the step
-    // would destroy it, so the next step is fixing the app.
-    if (!handover && played.failed && redAsExpected(current, played.failed, played.verdict)) {
-        if (current.red === undefined) {
-            current = withRed(current, played.runId, head);
-            log(t('run.flow.redSaved', { file: adopt(current, undefined, {}), id: redStep(current), test: current.id }));
-        } else log(t('run.flow.stillRedLog', { id: redStep(current), test: current.id }));
+    if (redNow) {
+        if (knownRed) log(t('run.flow.stillRedLog', { id: redStep(current), test: current.id }));
         return played.exitCode;
     }
     // After every failure the next commands; without a chat also where the cause can be clarified.

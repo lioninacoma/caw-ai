@@ -94,6 +94,7 @@ export default {
     'chat.page.warnings': 'Warnings',
     'chat.page.adviceApp': 'Recommendation for the app',
     'chat.page.adviceTest': 'Recommendation for the test',
+    'chat.page.adviceOutside': 'Cause outside the project',
     'chat.page.about': 'on {about}',
     'chat.page.evidence': 'Evidence: {evidence}',
     'chat.page.contradicts': 'Contradicts the assessment: The findings point to an app bug. An adjusted test would hide it.',

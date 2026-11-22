@@ -6,6 +6,7 @@ import { test } from 'node:test';
 
 import { sessionMcpHandler, startArgs } from '../src/host/session-mcp.mjs';
 import { initProject, listProject, validateProject } from '../src/host/project-data.mjs';
+import { stepHash, writeTest } from '../src/host/test-file.mjs';
 
 const TEMPLATE = readFileSync(new URL('../templates/caw.config.example.json', import.meta.url), 'utf8');
 const STEPS = 'writes: false\nsteps:\n  - id: S1\n    name: Öffnen\n    do: ""\n    expect: Startseite\n  - id: S2\n    name: Bestellen\n    do: ""\n    expect: Bestätigung\n';
@@ -554,7 +555,67 @@ test('caw_start reproduce: the bug report goes into a file, the session is the a
     writeFileSync(join(runDir, 'report.md'), '');
     writeFileSync(join(root, '.caw', 'last-run.json'), JSON.stringify({ runId: '2026-11-18T12-00-00-000Z-reproduce', runDir, pid: 1, command: 'reproduce', test: 'reproduce', target: 'local', startedAt: new Date().toISOString() }));
     const data = (await call('caw_status')).structuredContent;
-    assert.deepEqual(data.reproduce, { reproduced: 'yes', observed: 'o', expected: 'e', report: '.caw/runs/2026-11-18T12-00-00-000Z-reproduce/report.md', draft: 'caw/drafts/bug-x.yaml', next: 'caw record bug-x' });
+    assert.deepEqual(data.reproduce, { reproduced: 'yes', observed: 'o', expected: 'e', report: '.caw/runs/2026-11-18T12-00-00-000Z-reproduce/report.md', draft: 'caw/drafts/bug-x.yaml' });
+    assert.equal(data.phase, undefined, 'the draft is gone (discarded): no phase');
+    writeTest(root, fixDraft());
+    const now = (await call('caw_status')).structuredContent;
+    assert.equal(now.phase, 'reproduced');
+    assert.deepEqual(now.next, { tool: 'caw_start', command: 'record', test: 'bug-x' });
+});
+
+/** A draft from caw reproduce, recorded; `red` once its red proof is saved. */
+const fixDraft = (red) => {
+    const step = (id, expect) => {
+        const plain = { id, name: id, do: 'Tu es.', expect };
+        return { ...plain, recording: { hash: stepHash(plain), recordedOn: 'local', recordedAt: '2026-11-18T12:00:00.000Z', locale: 'de-DE', timezone: 'Europe/Berlin', actions: [], check: `check${id}()` } };
+    };
+    return { id: 'bug-x', draft: true, writes: false, notes: '', steps: [step('S1', 'Da.'), step('S2', 'Total: 5.')], expectations: [{ id: 'S1', text: 'Da.' }, { id: 'S2', text: 'Total: 5.' }], ...(red === undefined ? {} : { red }) };
+};
+
+test('caw_status and caw_reproductions: phase and next of a draft on its way from reproduced over red and green to promoted', async (t) => {
+    const root = project(t);
+    const { call } = session(root);
+    const runs = join(root, '.caw', 'runs');
+    const run = (runId, result, files = {}) => {
+        mkdirSync(join(runs, runId), { recursive: true });
+        writeFileSync(join(runs, runId, 'result.json'), JSON.stringify(result));
+        for (const [name, text] of Object.entries(files)) writeFileSync(join(runs, runId, name), text);
+    };
+    const last = (runId, id) => writeFileSync(join(root, '.caw', 'last-run.json'), JSON.stringify({ runId, runDir: join(runs, runId), pid: 1, command: 'run', test: id, target: 'local', startedAt: new Date().toISOString() }));
+    run('2026-11-18T12-00-00-000Z-reproduce', { status: 'pass', reproduce: { bug: 'x', reproduced: 'yes', observed: 'Total: 0', expected: 'Total: 5', cause: 'server.mjs:12 rechnet ohne Preise.', draft: { file: 'caw/drafts/bug-x.yaml', record: 'caw record bug-x' } } });
+    const row = async () => (await call('caw_reproductions')).structuredContent.reproductions[0];
+
+    writeTest(root, fixDraft());
+    assert.deepEqual([(await row()).phase, (await row()).next], ['reproduced', { tool: 'caw_start', command: 'record', test: 'bug-x' }]);
+    assert.deepEqual([(await row()).expected, (await row()).cause], ['Total: 5', 'server.mjs:12 rechnet ohne Preise.']);
+
+    // Recorded red: the agent fixes the app, then runs the draft again.
+    writeTest(root, fixDraft({ step: 'S2', run: '2026-11-18T13-00-00-000Z-bug-x' }));
+    run('2026-11-18T13-00-00-000Z-bug-x', { status: 'fail' });
+    last('2026-11-18T13-00-00-000Z-bug-x', 'bug-x');
+    const red = { do: 'fix-app', red: { step: 'S2', name: 'S2', expect: 'Total: 5.', check: 'checkS2()', cause: 'server.mjs:12 rechnet ohne Preise.' }, then: { tool: 'caw_start', command: 'run', test: 'bug-x' } };
+    assert.deepEqual((await row()).next, red);
+    const status = (await call('caw_status')).structuredContent;
+    assert.deepEqual([status.phase, status.next], ['red', red], 'caw_status of the run of the draft');
+
+    // Green after the fix: promote.
+    run('2026-11-18T14-00-00-000Z-bug-x', { status: 'pass' });
+    last('2026-11-18T14-00-00-000Z-bug-x', 'bug-x');
+    const green = { tool: 'caw_start', command: 'run', test: 'bug-x', promote: true };
+    assert.deepEqual([(await row()).phase, (await row()).next], ['green', green]);
+    assert.deepEqual((await call('caw_status')).structuredContent.next, green);
+
+    // Promoted: the draft moved to caw/tests, the green run has the fix report.
+    writeFileSync(join(runs, '2026-11-18T14-00-00-000Z-bug-x', 'fix-report.md'), '# Fix');
+    rmSync(join(root, 'caw', 'drafts', 'bug-x.yaml'));
+    writeTest(root, { ...fixDraft(), draft: undefined });
+    const done = { done: true, fixReport: '.caw/runs/2026-11-18T14-00-00-000Z-bug-x/fix-report.md' };
+    assert.deepEqual([(await row()).phase, (await row()).next], ['promoted', done]);
+    assert.deepEqual((await call('caw_status')).structuredContent.next, done);
+    // A run of a test that never was a draft has neither.
+    run('2026-11-18T15-00-00-000Z-bestellung', { status: 'pass' });
+    last('2026-11-18T15-00-00-000Z-bestellung', 'bestellung');
+    assert.equal((await call('caw_status')).structuredContent.phase, undefined);
 });
 
 test('caw_start reproduce with ref: passed on as --ref, checked before starting; caw_status names ref and covering test', async (t) => {

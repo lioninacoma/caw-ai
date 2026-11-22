@@ -149,6 +149,19 @@ test('advice: retry alone does not make a step stale, a text change does', () =>
     assert.deepEqual([changesFiles(item({ kind: 'context' })), changesFiles(item({ kind: 'step' })), changesFiles({ side: 'app' })], [true, false, false]);
 });
 
+test('advice: a cause outside the project names where it lies, changes nothing here and shows as its own card', () => {
+    const outside = { side: 'outside', title: 'The price service answers 0', reason: 'The project only shows what it gets.', evidence: 'request GET /api/total answered total 0', where: 'repository billing-api', prompt: 'Fix the sum there.' };
+    const [read] = readAdvice({ items: [outside] }, SPEC, CONFIG);
+    assert.equal(read.where, 'repository billing-api');
+    assert.deepEqual(adviceView(read, SPEC), { side: 'outside', title: outside.title, reason: outside.reason, evidence: outside.evidence, target: 'repository billing-api', prompt: 'Fix the sum there.' });
+    assert.equal(adviceView({ ...read, prompt: undefined }, SPEC).prompt, undefined);
+    assert.match(problems({ items: [{ ...outside, where: undefined }] }), /needs where/);
+    assert.match(problems({ items: [{ ...outside, where: 'two\nlines' }] }), /needs where/);
+    assert.match(problems({ items: [{ ...outside, edits: [{ file: 'a.js', find: 'a', replace: 'b' }] }] }), /changes nothing here/);
+    assert.match(problems({ items: [{ ...outside, change: { kind: 'test', notes: 'x' } }] }), /changes nothing here/);
+    assert.equal(changesFiles(read), false);
+});
+
 test('advice: knowledge, config and test file are extended, comments and line endings stay', () => {
     const root = mkdtempSync(join(tmpdir(), 'caw-advice-'));
     try {

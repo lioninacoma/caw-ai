@@ -44,6 +44,15 @@ recommend what to do. The browser is still as the run left it.
   - `prompt`: for the person's own agent session, even if there are `edits`: the error verbatim, file and line, the
     cause, the change and how to check it (`lintCommand` from the task, if set, and `caw run <test>` again). It must be understandable without this
     run.
+- **The cause outside the project** (another repository, a third-party service, the environment or its configuration outside
+  the project): `side: "outside"` with `where` (one line naming the place, e.g. `repository billing-api`, `the payment
+  provider`), no `change` and no `edits`; `prompt` optionally describes the change there. Only when you checked the project
+  first; the card tells the person to fix it there.
+- **Fixing a bug (`task.fix`):** the run is a draft from caw reproduce, red at its step because the bug is still there. `fix`
+  names the step, its expected result (`expect`), the check it fails (`check`) and the cause the reproduction suspected
+  (`cause`). The test is right: advise the fix of the application (`side: app` with `edits` and `prompt`), or `side:
+  outside` when the cause lies beyond the project, never a change to the test. The person applies each edit on its card and
+  tests again.
 - **Submit:** Write the advice and call `advise --file <file>` (in the session: `advise` with the content in `file`). At most 10 entries, the
   most important recommendation first, without e-mail addresses and credentials:
 

@@ -64,7 +64,7 @@ const readResult = (dir) => {
 };
 
 /** The run folders of one name with their result, newest first; a folder without a readable result.json has none to give. */
-const runsWithResult = (root, name) => {
+export const runsWithResult = (root, name) => {
     const runs = join(root, RUN_DIR, 'runs');
     if (!existsSync(runs)) return [];
     return readdirSync(runs, { withFileTypes: true })
@@ -83,7 +83,7 @@ export const newestRunOf = (root, testId) => {
 /**
  * The reproductions in .caw/runs as rows for the session, newest first. `refs` keeps only runs with one of these ids and
  * names those without any run as missing (never run, or pruned by keepRuns); `since` keeps runs started at or after it.
- * @returns { reproductions: [{ runId, date, ref?, status, reproduced, observed?, covered?, draft?, report }], missing: [ref] }
+ * @returns { reproductions: [{ runId, date, ref?, status, reproduced, observed?, expected?, cause?, covered?, draft?, report }], missing: [ref] }
  */
 export const listReproductions = (root, { refs, since } = {}) => {
     const from = since === undefined ? undefined : Date.parse(since);
@@ -91,7 +91,7 @@ export const listReproductions = (root, { refs, since } = {}) => {
         .filter(({ runId }) => from === undefined || Date.parse(runDate(runId)) >= from)
         .filter(({ result }) => refs === undefined || refs.includes(result.reproduce?.ref))
         .map(({ runId, dir, result }) => {
-            const { ref, reproduced, observed, covered, draft } = result.reproduce ?? {};
+            const { ref, reproduced, observed, expected, cause, covered, draft } = result.reproduce ?? {};
             return {
                 runId,
                 date: runDate(runId),
@@ -100,6 +100,8 @@ export const listReproductions = (root, { refs, since } = {}) => {
                 // null: the run ended before a verdict (state not reached, browser closed, no finish).
                 reproduced: reproduced ?? null,
                 ...(observed === undefined ? {} : { observed }),
+                ...(expected === undefined ? {} : { expected }),
+                ...(cause === undefined ? {} : { cause }),
                 ...(covered === undefined ? {} : { covered }),
                 ...(draft === undefined ? {} : { draft: draft.file }),
                 report: relative(root, join(dir, 'report.md')).replaceAll('\\', '/'),

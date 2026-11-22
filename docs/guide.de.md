@@ -398,7 +398,26 @@ Der Entwurf macht aus dem Fehler einen Test, der den Fix belegt: vorher rot, dan
    geänderten Dateien (committet, nicht committet und neu, ohne `caw/` und `.caw/`) und wie viele andere Tests bestanden haben.
    Exit 0 übernommen, 1 nicht grün, 4 nicht aufgenommen oder nie rot.
 
-Aus deiner Session sind das `caw_start` mit `command: "record"`, `"run"` und `"run"` mit `promote: true`.
+**Geführt in der Werkbank.** Mit Fenster führt der Chat in einem Prozess durch diese Schritte, jeden in einem neuen Fenster,
+und der bisherige Chat läuft mit; „Später“ auf jeder Karte beendet den Lauf dort, und das Terminal nennt weiter den nächsten
+Befehl:
+
+- `caw reproduce` nachgestellt: Die Karte bietet **Rot aufnehmen**, die Aufnahme des Entwurfs wie mit `caw record <id>`.
+- Rot gespeichert: Die Karte **Jetzt den Fehler beheben** zeigt den roten Schritt, sein erwartetes Ergebnis, seine Prüfung und
+  die Ursache, die das Nachstellen vermutet hat (sie steht auch in den `notes` des Entwurfs). **Vom Agenten beheben lassen**
+  lässt den Agenten den Fix empfehlen, mit jeder Art Agent (lokal, Docker, deine verbundene Session): Seine Codeänderungen kommen
+  als Karten, die du einzeln übernimmst („Änderung übernehmen“); caws eigener Agent schreibt nie Code. Liegt die Ursache außerhalb
+  des Projekts (ein anderes Repository, ein Dienst, die Umgebung), sagt seine Karte wo, es gibt nichts zu übernehmen, und **Ich
+  behebe es dort** wartet wie **Ich behebe selbst**, bis du **Erneut testen** klickst.
+- Noch rot: erneut beheben lassen, erneut testen oder den Lauf beenden. Grün: **S3 grün: der Fehler ist behoben**, und
+  **Übernehmen** übernimmt den Entwurf wie `--promote`, während das Fenster wartet; der Chat nennt den Fix-Bericht. Ist ein
+  anderer Test rot, sagt die Karte das, und der Entwurf bleibt.
+- `caw record <id>` und `caw run <id>` mit Fenster steigen an ihrem Schritt ein. Headless, `--no-chat` und CI laufen wie bisher.
+
+Aus deiner Session sind das `caw_start` mit `command: "record"`, `"run"` und `"run"` mit `promote: true`. Deine Session muss
+nicht mitzählen: `caw_status` (zum Nachstellen und zu jedem Lauf des Entwurfs) und jede Zeile von `caw_reproductions` tragen
+`phase` (`reproduced`, `red`, `green`, `promoted`) und `next`, den Schritt danach: aufnehmen, die App beheben (mit dem roten
+Schritt, seiner Prüfung und der vermuteten Ursache), ablaufen lassen, übernehmen oder fertig mit dem Fix-Bericht.
 
 Findet der Agent, dass ein bestehender Test das gemeldete Verhalten schon prüft, nennt er ihn im Urteil (`covered`: der Test,
 wahlweise der Schritt, und warum). caw nimmt nur einen aufgenommenen Test an und ergänzt seinen neuesten Lauf aus `.caw/runs`;

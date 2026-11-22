@@ -933,8 +933,9 @@ const startRecording = async (root, config, spec, checked, { exists, conversatio
  * `lazyChat` true opens it only on a failed step, 'warnings' also on errors and warnings; `testing` shows a test run in the
  * chat instead of a verification run.
  */
-const claudeRuns = (root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, ...rest }) => {
-    const conversation = { transcript: [], onChatOpen };
+const claudeRuns = (root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, conversation: shared, ...rest }) => {
+    // The guided bug fix chains reproduce, record and run in one process: the next phase keeps the chat so far.
+    const conversation = shared ?? { transcript: [], onChatOpen };
     return {
         conversation,
         execute: async ({ lazyChat, testing, ...options }) => {
@@ -1050,11 +1051,14 @@ export const changeTracker = (root) => {
  * run; with --strict it stops the run before anything starts (exit 4).
  * @param quiet in a batch: no mode line, the batch prints it once
  * @param nextSteps false: no "next" hints after a failed step (caw bisect, where neither a chat nor a re-record belongs)
+ * @param guided false: no guided bug fix for a draft (promoting runs it as proof only)
+ * @param conversation the chat so far, when an earlier phase of the guided bug fix ran in this process
  * @returns { code, failed, verdict, report, pending } with the failed step ({ id, reason, diagnosis }), if one failed, the
  *          playback's verdict, its report.md relative to the project, and the pending steps' ids
  */
-export const runOne = async (root, options, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive, git } = {}, loaded = undefined) => {
-    const { test, handover = false, stepTimeoutSec, entry, through, design = false, advise: withAdvice, headless, noChat, learn = false, strict = false, agent, attach, timeoutMin, maxActions, overlay, start, lifecycle, quiet = false, nextSteps = true } = options;
+export const runOne = async (root, options, deps = {}, loaded = undefined) => {
+    const { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive, git } = deps;
+    const { test, handover = false, stepTimeoutSec, entry, through, design = false, advise: withAdvice, headless, noChat, learn = false, strict = false, agent, attach, timeoutMin, maxActions, overlay, start, lifecycle, quiet = false, nextSteps = true, guided = true, conversation } = options;
     const { config, spec, target, checked } = loaded ?? loadChecked(root, test, options.target, 'run', { overlay, start });
     const position = entry === undefined ? -1 : spec.steps.findIndex(({ id }) => id === entry);
     if (entry !== undefined && position === -1) throw stepUnknown('cli.stepUnknown', spec, entry);
@@ -1085,7 +1089,14 @@ export const runOne = async (root, options, { containerCommand, adviseCommand, t
     if (!quiet) ui.head();
     if (!quiet) ui.info(runMode({ withAgent, noChat, headless, inCi, withAdvice, environments: agentEnvironments(config), env: target, language: teamLanguage(config), learn: learns, opened: handover, file: `${spec.draft === true ? DRAFT_DIR : RECORDING_DIR}/${test}.yaml` }));
     const { runFlow } = await import('./flows.mjs');
-    const { execute } = claudeRuns(root, config, { spec, checked, target, timeoutMin: timeoutMin ?? CLAUDE_TIMEOUT_MIN, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, headless, ci: inCi, withDesign: design });
+    const { execute } = claudeRuns(root, config, { spec, checked, target, timeoutMin: timeoutMin ?? CLAUDE_TIMEOUT_MIN, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, conversation, headless, ci: inCi, withDesign: design });
+    // A draft in the window: the chat guides through the fix (red: fix it, test again; green: promote). Headless, CI and
+    // promoting run it as before.
+    const guide = canFix && guided && !handover && entry === undefined && through === undefined && spec.draft === true ? {
+        cause: (await import('./bugfix.mjs')).reproductionOf(root, spec.id)?.cause,
+        // The red proof as the file has it now: a run that proved it red first wrote it only after that run.
+        promote: ({ runId }) => promoteGreen(root, { ...options, target }, deps, { config, test, target, red: loadDraft(root, test).red, report: posix.join(RUN_DIR, 'runs', runId, 'report.md') }),
+    } : undefined;
     const tracker = changeTracker(root);
     let failed;
     let played;
@@ -1108,6 +1119,7 @@ export const runOne = async (root, options, { containerCommand, adviseCommand, t
         adopt: tracker.adopt,
         head: () => headOf(root, git),
         log: ui.info,
+        guide,
         onPlayed: (result) => {
             played = result;
             failed = result.failed;
@@ -1132,7 +1144,7 @@ export const runOne = async (root, options, { containerCommand, adviseCommand, t
     // After the result, so the pending steps are not mistaken for a failure; a batch names them in its table instead.
     if (pending.length > 0 && !quiet) ui.info(t('cli.pendingSteps', { ids: pending.join(', '), count: pending.length, test, step: pending[0], target }));
     // A draft proven red that passes now: the bug is fixed, promoting proves it against all other tests.
-    if (spec.draft === true && spec.red !== undefined && code === EXIT.pass && !quiet && !handover) ui.info(t('cli.draftGreen', { test, step: spec.red.step, target }));
+    if (spec.draft === true && spec.red !== undefined && code === EXIT.pass && !quiet && !handover && existsSync(draftPath(root, test))) ui.info(t('cli.draftGreen', { test, step: spec.red.step, target }));
     // The batch reports carry the playback's verdict (diagnosis, steps) and its report.md.
     return { code, failed, verdict: played?.verdict, report: played?.report, pending };
 };
@@ -1393,10 +1405,11 @@ const recordFrom = async (root, options, deps = {}) => {
         requireTestUser(root, config, spec.role, target);
         const { fixFlow } = await import('./flows.mjs');
         const sandbox = await openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent, attach });
-        const { execute } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen });
+        const { execute, conversation } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, conversation: options.conversation });
         return fixFlow({
             draft: spec,
             target: { id: step, reason: t('cli.recordFromReason', { step }), rerecord: true, from: true },
+            guide: await fixGuide(root, options, deps, { spec, target, lifecycle, conversation }),
             sandbox,
             execute,
             adopt: (draft, only, adoptOptions) => writeTest(root, draft, only, adoptOptions),
@@ -1411,8 +1424,28 @@ const recordFrom = async (root, options, deps = {}) => {
  * the path through container, channel and browser can be tested without model or token. `<test>@S<n>` re-records from that
  * step to the end (recordFrom); at the first step that is the same as the whole test.
  */
-export const record = async (root, args, deps = {}) => {
-    const options = parseRunArgs('record', args);
+export const record = async (root, args, deps = {}) => recordTest(root, parseRunArgs('record', args), deps);
+
+/**
+ * After a draft's red proof the guided bug fix tests again in a new window of this process: a run of the draft, with the chat
+ * so far. Undefined for a test that is no draft.
+ */
+const fixGuide = async (root, options, deps, { spec, target, lifecycle, conversation }) => {
+    if (spec.draft !== true) return undefined;
+    const { reproductionOf } = await import('./bugfix.mjs');
+    const { test, agent, attach, overlay, timeoutMin, maxActions, stepTimeoutSec } = options;
+    const again = { ...parseRunArgs('run', [test]), target, lifecycle, conversation, stepTimeoutSec, ...(agent === undefined ? {} : { agent }), ...(attach === undefined ? {} : { attach }), ...(overlay === undefined ? {} : { overlay }), ...(timeoutMin === undefined ? {} : { timeoutMin }), ...(maxActions === undefined ? {} : { maxActions }) };
+    return {
+        cause: reproductionOf(root, spec.id)?.cause,
+        rerun: async () => (await runOne(root, again, deps)).code,
+    };
+};
+
+/**
+ * `caw record` with parsed options.
+ * @param options.conversation the chat so far, when the guided bug fix continues a reproduction in this process
+ */
+const recordTest = async (root, options, deps = {}) => {
     const { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive } = deps;
     const { test, step, target: given, timeoutMin, stepTimeoutSec, maxActions, role, readOnly, agent, attach, overlay, start } = options;
     // In CI nobody demonstrates or decides: said first, before --role or the environment.
@@ -1441,7 +1474,7 @@ export const record = async (root, args, deps = {}) => {
         // Before the demonstration: if Docker failed only afterwards, the human's work would be wasted.
         const sandbox = await openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent, attach });
         const previous = exists ? spec : undefined;
-        const { execute, conversation } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, previous });
+        const { execute, conversation } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, previous, conversation: options.conversation });
         // Driven from the developer's Claude Code session: it follows an existing test plan without asking the human first.
         // A new test without a plan still starts with the human's demonstration.
         const demonstration = (attach !== undefined || (agent === undefined && agentMode(config) === 'session')) && exists ? undefined : await startRecording(root, config, spec, checked, { exists, conversation });
@@ -1453,6 +1486,7 @@ export const record = async (root, args, deps = {}) => {
             markLooks: (draft, steps) => setStepLooks(root, draft, steps),
             head: () => headOf(root, deps.git),
             log: ui.info,
+            guide: await fixGuide(root, options, deps, { spec, target, lifecycle, conversation }),
         });
     });
 };
@@ -1520,11 +1554,28 @@ const promote = async (root, options, deps) => {
         return EXIT.needsRecording;
     }
     const red = { ...spec.red };
-    const played = await withLifecycle(lifecycleOf(root, config, target, options, 'run'), async (lifecycle) => (deps.runOne ?? runOne)(root, { ...options, target, lifecycle }, deps));
+    const played = await withLifecycle(lifecycleOf(root, config, target, options, 'run'), async (lifecycle) => (deps.runOne ?? runOne)(root, { ...options, target, lifecycle, guided: false }, deps));
     if (played.code !== EXIT.pass) {
         ui.warn(t('cli.promoteDraftFailed', { test, step: red.step }));
         return EXIT.fail;
     }
+    const promoted = await promoteGreen(root, options, deps, { config, test, target, red, report: played.report });
+    return promoted.ok ? EXIT.pass : EXIT.fail;
+};
+
+/**
+ * The part of promoting after the draft's green run: every other test on the environment (`run --all`) must pass, then the
+ * draft moves to caw/tests and the green run's folder gets fix-report.md. The guided bug fix calls it from the green run's chat.
+ * @param red    the draft's red proof
+ * @param report the green run's report.md, relative to the project
+ * @returns { ok: true, test, files, report, others } or { ok: false, reason }
+ */
+const promoteGreen = async (root, options, deps, { config, test, target, red, report }) => {
+    const refused = (reason) => {
+        ui.warn(reason);
+        return { ok: false, reason };
+    };
+    if (existsSync(testPath(root, test))) return refused(t('cli.promoteExists', { test, file: `${TEST_DIR}/${test}.yaml` }));
     // The other tests on the same environment, as `run --all` picks them.
     const load = testLoader(root);
     const others = testIds(root).filter((id) => {
@@ -1536,11 +1587,8 @@ const promote = async (root, options, deps) => {
         }
     });
     if (others.length > 0) {
-        const code = await runMany(root, { ...options, promote: false, test: undefined, tests: [], all: true, batch: true, noChat: true, target }, deps);
-        if (code !== EXIT.pass) {
-            ui.warn(t('cli.promoteOthersFailed', { test, target }));
-            return EXIT.fail;
-        }
+        const code = await runMany(root, { ...options, promote: false, test: undefined, tests: [], all: true, batch: true, noChat: true, target, guided: false, conversation: undefined }, deps);
+        if (code !== EXIT.pass) return refused(t('cli.promoteOthersFailed', { test, target }));
     }
     // The draft as the green run left it, learned baselines included, becomes the test; red stays in the fix report only.
     const written = writeTest(root, asTest(loadDraft(root, test)));
@@ -1554,11 +1602,12 @@ const promote = async (root, options, deps) => {
             if (!(error instanceof CawError)) throw error;
         }
     }
-    const runDir = dirname(join(root, played.report));
-    const text = inLanguage(teamLanguage(config), () => fixReport({ id: test, red, green: runOf(played.report), target, others: others.length, changed }));
+    const runDir = dirname(join(root, report));
+    const text = inLanguage(teamLanguage(config), () => fixReport({ id: test, red, green: runOf(report), target, others: others.length, changed }));
     writeFileSync(join(runDir, 'fix-report.md'), text);
-    ui.success(t('cli.promoted', { test, files: written, report: posix.join(dirname(played.report), 'fix-report.md') }));
-    return EXIT.pass;
+    const shownReport = posix.join(dirname(report), 'fix-report.md');
+    ui.success(t('cli.promoted', { test, files: written, report: shownReport }));
+    return { ok: true, test, files: written, report: shownReport, others: others.length, target };
 };
 
 /** The name a reproduction runs under: report and window title. */
@@ -1575,6 +1624,8 @@ export const reproduce = async (root, args, deps = {}) => {
     const options = parseReproduceArgs(args, { root, ...(deps.readStdin === undefined ? {} : { readStdin: deps.readStdin }) });
     const { containerCommand, adviseCommand, talkCommand, docker, onChatOpen } = deps;
     const config = loadConfig(root);
+    // With a window outside CI the chat guides on: reproduced, the draft is recorded red next, in this process.
+    const guided = !options.headless && (deps.interactive ?? (process.env.CI === undefined || process.env.CI === ''));
     let known = null;
     if (options.from !== undefined) {
         const { test, step } = options.from;
@@ -1614,11 +1665,22 @@ export const reproduce = async (root, args, deps = {}) => {
         const prefix = known === null ? undefined : options.from.step === undefined ? replayOf(known) : replayToEntry(known, options.from.step, { reads: config.reads ?? [] });
         const sandbox = await openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent: options.agent, attach: options.attach });
         const { execute, conversation } = claudeRuns(root, config, { spec, checked, target, timeoutMin: CLAUDE_TIMEOUT_MIN, stepTimeoutSec: 30, containerCommand, adviseCommand, talkCommand, onChatOpen });
+        let recordNext = false;
         const result = await execute({
             sandbox,
             headless: options.headless,
-            // With a window the chat shows what Claude does; nobody decides anything there.
+            // With a window the chat shows what the agent does; the person decides only whether the draft is recorded red next.
             ...(options.headless ? {} : { conversation }),
+            ...(guided ? {
+                conclude: async ({ verdict, chat }) => {
+                    const draft = verdict.reproduce?.draft;
+                    if (draft === undefined) return undefined;
+                    const { offerRecordRed } = await import('./flows.mjs');
+                    const said = await offerRecordRed(chat, draft);
+                    recordNext = said.next === 'record';
+                    return said;
+                },
+            } : {}),
             reproduce: {
                 bug: options.bug,
                 writes: writable,
@@ -1629,7 +1691,10 @@ export const reproduce = async (root, args, deps = {}) => {
         });
         const outcome = result.verdict?.reproduce;
         if (outcome?.draft !== undefined) ui.info(t('cli.reproduceDraft', outcome.draft));
-        return result.exitCode;
+        if (!recordNext || outcome?.draft === undefined) return result.exitCode;
+        // Recorded red next, as `caw record <draft>` would, with the chat so far.
+        const id = basename(outcome.draft.file, '.yaml');
+        return recordTest(root, { ...parseRunArgs('record', [id]), target, conversation, ...(options.agent === undefined ? {} : { agent: options.agent }), ...(options.attach === undefined ? {} : { attach: options.attach }) }, deps);
     });
 };
 

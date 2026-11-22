@@ -204,6 +204,9 @@ Ein nachgestellter Fehler hinterlässt einen Testentwurf in `caw/drafts`, den We
 4. **Übernehmen:** `caw run <entwurf> --promote` braucht den Entwurf und `run --all` grün, verschiebt ihn dann nach
    `caw/tests` und schreibt einen Fix-Bericht.
 
+Mit Fenster führt dich der Chat in einem Prozess durch alle vier: **Rot aufnehmen**, **Jetzt den Fehler beheben** (selbst oder
+mit dem Agenten, dessen Codeänderungen du Karte für Karte übernimmst), **Erneut testen** und **Übernehmen**.
+
 Kein Plan zum Freigeben und keine Frage an dich: Der Agent untersucht nur. Er läuft nur auf Umgebungen, auf denen du einen
 Agenten zulässt, nie auf Produktion, liest nur, wo die Umgebung nicht `writable` ist, und ändert weder Code noch Tests. `--ref`
 hält eine Ticket-ID aus einem anderen Werkzeug im Bericht fest; caw schlägt sie nie nach. Details:

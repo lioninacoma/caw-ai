@@ -16,7 +16,7 @@ import { CONTROL, EMAIL, replaceStep } from './test-plan.mjs';
 
 export { CONTEXT_FILE } from '../shared/names.mjs';
 const MAX_ITEMS = 10;
-const LIMITS = { title: 200, reason: 2000, prompt: 8000, text: 2000, notes: 4000 };
+const LIMITS = { title: 200, reason: 2000, prompt: 8000, text: 2000, notes: 4000, where: 200 };
 const STEP_FIELDS = ['name', 'do', 'expect', 'note', 'retry'];
 const CONFIG_KEYS = ['consoleIgnore', 'foreignCode'];
 // Where the page shows messages: the advice replaces the whole list, e.g. the toast container with the single toast.
@@ -28,7 +28,9 @@ const CONTEXT_FILES = ['project', 'personal'];
 const contextTarget = (root, change) => (change.file === 'personal'
     ? { path: personalContextPath(), shown: shownPath(personalContextPath()), personal: true }
     : { path: join(root, CONTEXT_FILE), shown: CONTEXT_FILE, personal: false });
-const SIDES = ['test', 'app'];
+// outside: the cause lies beyond the project's reach (another repository, a third-party service, the environment or its
+// configuration outside the project): nothing here to apply, the card says where it has to be fixed.
+const SIDES = ['test', 'app', 'outside'];
 
 const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
 const isText = (value, max) => typeof value === 'string' && value.trim() !== '' && value.length <= max;
@@ -224,7 +226,7 @@ export const readAdvice = (raw, spec, config, { root, diagnosis } = {}) => {
         const texts = textsOf(item);
         if (texts.some((text) => CONTROL.test(text))) report('Contains control characters.');
         if (texts.some((text) => EMAIL.test(text))) report('Contains an email address.');
-        if (!SIDES.includes(item.side)) report('side must be test or app.');
+        if (!SIDES.includes(item.side)) report('side must be test, app or outside.');
         if (!isText(item.title, LIMITS.title)) report(`title is missing or longer than ${LIMITS.title} characters.`);
         if (!isText(item.reason, LIMITS.reason)) report('reason is missing.');
         if (item.about !== undefined && !isText(item.about, 100)) report('about must be short text.');
@@ -233,6 +235,11 @@ export const readAdvice = (raw, spec, config, { root, diagnosis } = {}) => {
             if (!isText(item.prompt, LIMITS.prompt)) report('App-side advice needs a prompt.');
             if (item.change !== undefined) report('App-side advice does not change the test; omit change.');
             if (item.edits !== undefined) edits = readEdits(item.edits, root, report);
+        }
+        if (item.side === 'outside') {
+            if (!isText(item.where, LIMITS.where) || /[\r\n]/.test(item.where)) report('Outside advice needs where: one line naming the place beyond the project (a repository, a service, the server configuration).');
+            if (item.change !== undefined || item.edits !== undefined) report('Outside advice changes nothing here; omit change and edits, describe the change in prompt.');
+            if (item.prompt !== undefined && !isText(item.prompt, LIMITS.prompt)) report('prompt must be text.');
         }
         if (item.side === 'test') {
             readChange(item.change, spec, config, report);
@@ -290,6 +297,7 @@ export const adviceView = (item, spec, failures = [], config = {}) => {
         ...(item.contradicts ? { contradicts: true } : {}),
     };
     if (item.side === 'app') return { ...base, prompt: item.prompt, ...(item.edits === undefined ? {} : { edits: item.edits }) };
+    if (item.side === 'outside') return { ...base, target: item.where, ...(item.prompt === undefined ? {} : { prompt: item.prompt }) };
     const { change } = item;
     if (change.kind === 'step') {
         const step = spec.steps.find(({ id }) => id === change.id);

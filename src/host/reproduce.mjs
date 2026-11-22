@@ -206,11 +206,13 @@ const MAX_TRAIL = 40;
  * one that must fail while the bug is there; recording it proves that (topic record).
  * @param trail what Claude did in the browser, with resolved locators (`click getByRole('button', …)`): in the notes as
  *              orientation for recording
+ * @param cause the cause the agent suspected, with its evidence: in the notes, so whoever fixes the bug later still has it
  * @returns { id, text }
  */
-export const draftTestPlan = ({ id, role, environment, writes, steps, runId, ref, trail = [] }) => {
+export const draftTestPlan = ({ id, role, environment, writes, steps, runId, ref, cause, trail = [] }) => {
     // The ticket id stays with the test once promoted: where the bug came from.
-    const head = ref === undefined ? t('run.reproduce.draftNotes', { run: runId }) : t('run.reproduce.draftNotesRef', { run: runId, ref });
+    const intro = ref === undefined ? t('run.reproduce.draftNotes', { run: runId }) : t('run.reproduce.draftNotesRef', { run: runId, ref });
+    const head = cause === undefined ? intro : [intro, t('run.reproduce.draftCause', { cause: cause.replace(/\s+/g, ' ') })].join('\n');
     const shown = trail.slice(0, MAX_TRAIL).map((line) => `- ${line.replace(/\s+/g, ' ')}`);
     const more = trail.length > MAX_TRAIL ? [t('run.reproduce.draftTrailMore', { count: trail.length - MAX_TRAIL })] : [];
     const spec = composeTest({ id, ...(role === undefined ? {} : { role }), writes, environments: [environment] }, {
