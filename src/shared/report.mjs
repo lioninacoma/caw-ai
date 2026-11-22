@@ -164,7 +164,7 @@ const diagnosisLines = ({ step, text, findings = [], requests = [], recorded }) 
 /** An error code such as `unreachable`, as opposed to the describeCode line ("dev server localhost:4174, …"). */
 export const isErrorCode = (value) => typeof value === 'string' && /^[a-z][a-z0-9-]*$/.test(value);
 
-export const renderReport = ({ status, reason, note, testId, target, testedCode, expectations = [], results = [], failures = [], warnings = [], writes = [], thirdParty = [], dropped = [], advice, diagnosis, overlay, personalContext, afterHandover = [], pending = [], steps = [], fixedData }) => {
+export const renderReport = ({ status, reason, note, testId, target, testedCode, expectations = [], results = [], failures = [], warnings = [], writes = [], thirdParty = [], dropped = [], effectsDropped = [], advice, diagnosis, overlay, personalContext, afterHandover = [], pending = [], steps = [], fixedData }) => {
     const lines = [
         t('config.report.title', { testId: String(testId), target: String(target), status: String(status) }),
         '',
@@ -200,6 +200,11 @@ export const renderReport = ({ status, reason, note, testId, target, testedCode,
     if (warnings.length > 0) {
         lines.push('', `## ${t('config.report.warnings')}`, '', t('config.report.warnings.intro'), '');
         for (const { type, text, origin, url, count } of warnings) lines.push(`- ${warningLabel(type)}: ${text}${origin || url ? ` (${origin ?? url})` : ''}${count > 1 ? ` (${count}x)` : ''}`);
+    }
+    // Lines this learning run dropped from the effects: flicker, or a regression in the first runs. The verdict stays.
+    if (effectsDropped.length > 0) {
+        lines.push('', `## ${t('config.report.effectsDropped')}`, '', t('config.report.effectsDropped.intro'), '');
+        for (const { step, lines: gone } of effectsDropped) lines.push(`- ${step}: ${gone.map(cell).join('; ')}`);
     }
     if (writes.length > 0) {
         lines.push('', `## ${t('config.report.writes')}`, '', t('config.report.writes.intro'), '');

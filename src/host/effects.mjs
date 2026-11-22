@@ -208,6 +208,22 @@ export const learnEffects = (recorded, observed) => {
 };
 
 /**
+ * What a learning run dropped: lines every earlier run had and this one did not. While learning that is how flicker goes, but a
+ * regression in the first runs goes the same way, so the run names them. The console only collects, it never drops.
+ * @param recorded the effects before the run (undefined: the first run, nothing to drop)
+ * @param learned  learnEffects' result
+ * @returns lines `<action> <list>: <line>`
+ */
+export const droppedEffects = (recorded, learned) => {
+    if (recorded === undefined || learned === null || learned === undefined) return [];
+    return recorded.actions.flatMap((entry) => {
+        const now = learned.actions.find(({ action }) => action === entry.action) ?? {};
+        return EFFECT_LISTS.filter((list) => list !== 'console')
+            .flatMap((list) => (entry[list] ?? []).filter((line) => !(now[list] ?? []).includes(line)).map((line) => `${entry.action} ${list}: ${line}`));
+    });
+};
+
+/**
  * Do the effects deviate from the learned ones? Missing entries count for everything except the console, where new ones count.
  * @returns { missing, extra, instead } or null
  */

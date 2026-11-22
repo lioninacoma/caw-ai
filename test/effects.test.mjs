@@ -124,3 +124,22 @@ test('Effects only apply to the state before: after fixing the previous step the
     assert.equal(learnedEffects({ spec: unchanged, results, effects: observed, target: 'a/dev' }).has('S2'), false, 'fully learned');
     assert.deepEqual(replayOf(unchanged).effects, { S2: learned });
 });
+
+test('learning: a line seen in earlier runs and missing now is dropped by the intersection and named, not lost silently', async () => {
+    const effects = await import('../src/host/effects.mjs');
+    const before = { runs: 2, actions: [{ action: 1, controls: ['+ button "Stornieren"'], requests: ['POST /api/orders 201', 'GET /api/orders 200'], console: ['warn: a'] }] };
+    const after = learnEffects(before, new Map([[1, { controls: ['+ button "Stornieren"'], requests: ['GET /api/orders 200'] }]]));
+    assert.deepEqual(after.actions[0].requests, ['GET /api/orders 200'], 'the intersection drops the line');
+    assert.equal(typeof effects.droppedEffects, 'function', 'something names what a learning run dropped');
+    assert.deepEqual(effects.droppedEffects(before, after), ['1 requests: POST /api/orders 201']);
+    // A whole action gone, the first run (nothing seen before) and a console line (collected, never dropped).
+    assert.deepEqual(effects.droppedEffects(before, learnEffects(before, new Map())), ['1 controls: + button "Stornieren"', '1 requests: POST /api/orders 201', '1 requests: GET /api/orders 200']);
+    assert.deepEqual(effects.droppedEffects(undefined, learnEffects(undefined, new Map([[1, { requests: ['GET /x 200'] }]]))), []);
+    assert.deepEqual(effects.droppedEffects(before, learnEffects(before, new Map([[1, { controls: ['+ button "Stornieren"'], requests: ['POST /api/orders 201', 'GET /api/orders 200'] }]]))), []);
+    // Per step of a run, from the effects the run learned.
+    const { droppedWhileLearning } = await import('../src/host/replay.mjs');
+    const plain = { id: 'S1', name: 'S1', do: 'd', expect: 'e' };
+    const spec = { id: 't', steps: [{ ...plain, recording: { hash: stepHash(plain), recordedOn: 'local', actions: [{ action: 'click', target: 'x' }], check: 'true', effects: before } }] };
+    assert.deepEqual(droppedWhileLearning(spec, new Map([['S1', after]])), [{ step: 'S1', lines: ['1 requests: POST /api/orders 201'] }]);
+    assert.deepEqual(droppedWhileLearning(spec, new Map()), []);
+});

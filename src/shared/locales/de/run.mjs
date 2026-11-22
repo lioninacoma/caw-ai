@@ -32,6 +32,7 @@ export default {
     'run.point.attempt': 'Versuch',
     'run.effects.asRecorded': 'wie aufgenommen',
     'run.effects.deviations': ({ count }) => `${count} ${count === 1 ? 'Abweichung' : 'Abweichungen'}`,
+    'run.effects.dropped': 'Das Lernen hat Effektzeilen von {step} verworfen, die alle früheren Läufe sahen: {lines}. Flackern oder eine Regression in den ersten Läufen? Der Bericht nennt sie.',
     'run.learn.kind': 'Vergleichswerte',
     'run.learn.label': 'gespeichert',
 

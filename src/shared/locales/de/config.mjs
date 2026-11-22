@@ -233,6 +233,8 @@ export default {
     'config.report.writes.intro': 'Requests an die Hosts der Anwendung außer GET, HEAD, OPTIONS, einer GraphQL-Query, An- und Abmeldung und dem, was reads nennt. So siehst du, was der Lauf in der Anwendung angestoßen haben kann.',
     'config.report.dropped': 'Aus der Aufzeichnung gestrichen',
     'config.report.dropped.intro': 'Diese Schritte sind ausgeführt worden, gehören aber nicht zum Weg. In der Anwendung sind sie trotzdem passiert.',
+    'config.report.effectsDropped': 'Beim Lernen der Effekte verworfen',
+    'config.report.effectsDropped.intro': 'Alle früheren Läufe sahen diese Zeilen, dieser nicht, also hat das Lernen sie verworfen: Flackern oder eine Änderung der App in den ersten Läufen. Prüfe, dass es keine Regression ist; das Ergebnis bleibt.',
 
     // test-file.mjs
     'config.test.line': ({ line, message }) => `Zeile ${line}: ${yamlMessage(message)}`,

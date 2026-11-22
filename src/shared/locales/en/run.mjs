@@ -32,6 +32,7 @@ export default {
     'run.point.attempt': 'Attempt',
     'run.effects.asRecorded': 'as recorded',
     'run.effects.deviations': ({ count }) => `${count} ${count === 1 ? 'deviation' : 'deviations'}`,
+    'run.effects.dropped': 'Learning dropped effect lines of {step} that every earlier run saw: {lines}. Flicker, or a regression in the first runs? The report names them.',
     'run.learn.kind': 'Baselines',
     'run.learn.label': 'saved',
 

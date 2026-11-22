@@ -38,7 +38,7 @@ import { frameworkOf } from './framework/index.mjs';
 import { demonstrate, feedLabel, itemLabel, markedTarget, recordableSteps } from './demonstrate.mjs';
 import { CLAUDE_TIMEOUT_MIN, claudeFailureReason, parseEnvFile } from './linux.mjs';
 import { fillDates, zonedNow } from './dates.mjs';
-import { LOOK_KINDS, buildReplay, createRecorder, cutReplay, dropNumbers, failedStep, fillRun, groupSteps, learnedEffects, missingBaselines, missingRemembered, newRunTag, playReplay, recordedBrowser, replayBefore, replayToEntry, replayVerdict, stepGroups, stepLabel, stepRecords, tidyNumbers, trailingNumbers } from './replay.mjs';
+import { LOOK_KINDS, buildReplay, createRecorder, cutReplay, dropNumbers, droppedWhileLearning, failedStep, fillRun, groupSteps, learnedEffects, missingBaselines, missingRemembered, newRunTag, playReplay, recordedBrowser, replayBefore, replayToEntry, replayVerdict, stepGroups, stepLabel, stepRecords, tidyNumbers, trailingNumbers } from './replay.mjs';
 import { canRestore, loadStateTest, stateCatalog } from './states.mjs';
 import { IDLE_AGENT, createTokenGate } from './token-gate.mjs';
 import { sandboxRunArgs } from './sandbox-config.mjs';
@@ -2138,6 +2138,17 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
         }
         const baselines = missingBaselines({ spec: givenSpec, results: ended.results, requests: ended.requests, target });
         const effects = learnedEffects({ spec: givenSpec, results: ended.results, effects: ended.effects, deviations: ended.deviations, target });
+        // While learning, a line this run did not see is dropped (flicker goes that way, a regression in the first runs too): a run
+        // that writes the effects names those lines in the terminal and the report. The verdict stays.
+        const dropped = learns ? droppedWhileLearning(givenSpec, effects) : [];
+        if (dropped.length > 0) {
+            for (const { step, lines } of dropped) ui.info(t('run.effects.dropped', { step, lines: lines.join('; ') }));
+            if (verdict !== null) {
+                verdict = { ...verdict, effectsDropped: dropped };
+                writeFileSync(join(runDir, 'result.json'), JSON.stringify(verdict, null, 2));
+                writeFileSync(join(runDir, 'report.md'), inLanguage(teamLanguage(config), () => renderReport(verdict)));
+            }
+        }
         // Looks learn like effects: passed steps, on the recording target; a changed look is the human's to adopt.
         const looks = learnedLooks({ spec: givenSpec, results: ended.results, seen: ended.seenLooks, target, maxRatio: visual.maxRatio });
         const deviating = ended.deviations?.size ?? 0;

@@ -123,3 +123,10 @@ test('pending steps: one step is named in the singular, several in the plural', 
     assert.equal(t('cli.pendingSteps', { ids: 'S5', count: 1, test: 'a', step: 'S5', target: 'local' }), 'Offen, noch nicht aufgenommen: S5. Er lief nicht. Nimm ihn auf: caw record a@S5 --env local');
     assert.match(t('cli.pendingSteps', { ids: 'S4, S5', count: 2, test: 'a', step: 'S4', target: 'local' }), /Sie liefen nicht\. Nimm sie auf: caw record a@S4/);
 });
+
+test('renderReport: effect lines a learning run dropped have their own section; the result stays', () => {
+    const md = renderReport({ status: 'pass', testId: 'x', target: 'local', results: [ok('E1')], expectations: [{ id: 'E1', text: 'a' }], effectsDropped: [{ step: 'S2', lines: ['1 requests: POST /api/orders 201', '1 controls: + a | b'] }] });
+    assert.match(md, /## Beim Lernen der Effekte verworfen\n\nAlle früheren Läufe sahen diese Zeilen/);
+    assert.match(md, /- S2: 1 requests: POST \/api\/orders 201; 1 controls: \+ a \\\| b/);
+    assert.doesNotMatch(renderReport({ status: 'pass', testId: 'x', target: 'local', results: [ok('E1')], expectations: [{ id: 'E1', text: 'a' }] }), /verworfen/);
+});

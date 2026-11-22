@@ -233,6 +233,8 @@ export default {
     'config.report.writes.intro': 'Requests to the app\'s hosts other than GET, HEAD, OPTIONS, a GraphQL query, sign-in machinery or what reads names. Shows what the run may have triggered in the app.',
     'config.report.dropped': 'Dropped from the recording',
     'config.report.dropped.intro': 'These steps were executed but aren\'t part of the path. They still happened in the app.',
+    'config.report.effectsDropped': 'Dropped while learning effects',
+    'config.report.effectsDropped.intro': 'Every earlier run saw these lines, this one did not, so learning dropped them: flicker, or a change of the app in the first runs. Check that it is not a regression; the result stays.',
 
     // test-file.mjs
     'config.test.line': ({ line, message }) => `Line ${line}: ${yamlMessage(message)}`,

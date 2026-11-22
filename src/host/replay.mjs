@@ -17,7 +17,7 @@ import { selfAbort } from './diagnose.mjs';
 import { DATE_NAMES, fillDates, markDates, zonedNow } from './dates.mjs';
 import { dialogFindings, recordedDialog } from './dialogs.mjs';
 import { DEFAULT_DESIGN_FAIL, designText } from './design.mjs';
-import { DEFAULT_EFFECT_FAIL, LEARN_RUNS, createEffects, deviationText, effectCause, effectChange, failsStep, isEffectCause, learnEffects, stepDeviation, withoutLate } from './effects.mjs';
+import { DEFAULT_EFFECT_FAIL, LEARN_RUNS, createEffects, deviationText, droppedEffects, effectCause, effectChange, failsStep, isEffectCause, learnEffects, stepDeviation, withoutLate } from './effects.mjs';
 import { summarizeRequests } from './network-log.mjs';
 import { ambiguityText, elementHint, explainLocator, explainText, frameworkOf, readPageState, waitForLocator } from './framework/index.mjs';
 import { escapeRegex, isPositional, locatorLabel, locatorText, mapStrings, parseLocator, printLocator, renamedLocator } from './locator.mjs';
@@ -1528,6 +1528,17 @@ export const effectsLearning = (spec, target) => spec.steps
     .filter(({ recording }) => recording !== undefined && recording.recordedOn === target && recording.actions.some(({ action }) => EFFECT_ACTIONS.has(action)))
     .map((step) => ({ id: step.id, runs: currentEffects(spec, step)?.runs ?? 0 }))
     .filter(({ runs }) => runs < LEARN_RUNS);
+
+/**
+ * The lines a learning run drops from the effects it learns (droppedEffects), per step.
+ * @param effects learnedEffects' result
+ * @returns [{ step, lines }]
+ */
+export const droppedWhileLearning = (spec, effects) => spec.steps.flatMap((step) => {
+    if (!effects.has(step.id)) return [];
+    const lines = droppedEffects(currentEffects(spec, step), effects.get(step.id));
+    return lines.length === 0 ? [] : [{ step: step.id, lines }];
+});
 
 /**
  * Learned effects per action from passed steps, only on the recording target. After LEARN_RUNS healthy runs they are
