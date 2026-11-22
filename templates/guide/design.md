@@ -27,10 +27,12 @@ the step passes in a run outside CI (in CI only with `--learn`) on the environme
 role and style, how many controls have it; controls inside rows, list entries, cards and `visualIgnore` areas
 do not count) learn in every such run, in a window and headless alike: the first stores them, the second confirms them (a
 count that differed becomes `×?`), then they are compared. Only the person takes a changed look over
-("{{label:run.button.adoptLook}}"). The person sees the design beside the app with `caw open <test>@S<n> --design` (F7
-lays it over the app, hides it, puts it beside again; from your session `caw_start`
-`{command: "open", test, step, design: true}`), or from the card of a design not met with
-"{{label:run.button.openDesign}}". The deviations below it are listed anew after a reload or a restored state.
+("{{label:run.button.adoptLook}}"). The person compares the app with the design with `caw open <test>@S<n> --design` (from
+your session `caw_start` `{command: "open", test, step, design: true}`), or from the card of a design not met with
+"{{label:run.button.openDesign}}": a page over the workbench (F7 opens and closes it, Esc closes it) with app and design side
+by side, overlaid or only their differences, and the deviations as numbered cards that mark their element in both images. It
+is computed anew after a reload or a restored state. Its "{{label:run.button.buildDesign}}" asks the person in the chat, as
+the card of a design not met does (`design.unmet`, option `ask`); on yes you get the task with the deviations as a message.
 
 **Fetch and write a design.**
 1. Get the design yourself: one artboard of a Claude Design artifact as a static page ("Take a draft from a Design artifact"

@@ -203,6 +203,7 @@ const benchSession = () => {
             return () => handlers.reloads.delete(listener);
         },
         onState: (handler) => { handlers.state = handler; },
+        onDesignBuild: (handler) => { handlers.build = handler; },
     };
     const workbench = new Proxy(own, {
         get: (target, name) => {
@@ -215,12 +216,22 @@ const benchSession = () => {
     return { make, calls, handlers };
 };
 
-test('Seam: open --design lists the deviations anew after F5, a reload of the window and restoring the state', async () => {
+/** What designComparison gives the comparison page, with one deviation per text. */
+const comparison = (viewport, texts = []) => ({
+    met: texts.length === 0,
+    design: { src: 'data:image/png;base64,AA', width: viewport.width, height: viewport.height },
+    app: { src: 'data:image/png;base64,AA', width: viewport.width, height: viewport.height },
+    deviations: texts.map((text) => ({ kind: 'style', text, design: { x: 1, y: 2, width: 3, height: 4 }, app: { x: 1, y: 2, width: 3, height: 4 } })),
+    extra: [],
+});
+
+test('Seam: open --design compares anew after F5, a reload of the window and restoring the state; the page opens once, then stays as the person left it', async () => {
     const bench = benchSession();
     let computed = 0;
-    const designOverlay = async () => {
+    const designComparison = async ({ viewport, capture }) => {
         computed += 1;
-        return { src: 'data:image/png;base64,AA', width: 1280, rows: [{ text: `Abweichung ${computed}` }] };
+        assert.equal(typeof capture, 'function', 'the app is captured at the recorded size');
+        return comparison(viewport, [`Abweichung ${computed}`]);
     };
     let round = 0;
     const developing = (ids, chat) => {
@@ -233,15 +244,45 @@ test('Seam: open --design lists the deviations anew after F5, a reload of the wi
             });
         } else if (round === 2) setImmediate(() => chat.human.choose('end'));
     };
-    const h = harness({ session: bench.make, seams: { designOverlay }, extra: { withDesign: true }, developing });
+    const h = harness({ session: bench.make, seams: { designComparison }, extra: { withDesign: true }, developing });
     const spec = testOf();
     spec.steps[1] = { ...spec.steps[1], design: 'design/form.html' };
     const code = await runFlow({ spec, through: 'S2', handover: true, canFix: true, execute: h.execute, adopt: h.adopt, log: () => {}, openSandbox: async () => null });
     assert.equal(code, EXIT.pass);
-    const designs = bench.calls.filter(([name]) => name === 'design').map(([, given]) => given.rows.map(({ text }) => text).join());
-    assert.deepEqual(designs, ['Abweichung 1', 'Abweichung 2', 'Abweichung 3', 'Abweichung 4'], 'once at open, then after F5, the window reload and restoring');
-    assert.deepEqual(bench.calls.filter(([name]) => name === 'design').map(([, given]) => given.mode), ['side', undefined, undefined, undefined], 'side by side at first, then the view F7 left stays');
+    const designs = bench.calls.filter(([name]) => name === 'design');
+    assert.deepEqual(designs.map(([, given]) => given.deviations.map(({ text }) => text).join()), ['Abweichung 1', 'Abweichung 2', 'Abweichung 3', 'Abweichung 4'], 'once at open, then after F5, the window reload and restoring');
+    assert.deepEqual(designs.map(([, , how]) => how), [{ open: true }, {}, {}, {}], 'opened at first, then as the person left it');
+    const [, first] = designs[0];
+    assert.deepEqual({ step: first.step, file: first.file, met: first.met, rail: first.steps }, { step: { id: 'S2', name: spec.steps[1].name }, file: 'design/form.html', met: false, rail: [{ id: 'S2', name: spec.steps[1].name, status: 'deviations', count: 1 }] });
+    assert.match(first.run, /^\d{2}-\d{2}-\d{2}$/, 'the run by its time');
+    // Restoring the state operates the app: the page steps aside meanwhile; F5 and a reload do not.
+    assert.deepEqual(bench.calls.filter(([name]) => name === 'designAside').map(([, on]) => on), [true, false]);
     assert.equal(h.notices.filter((text) => /neu aufgelistet/.test(text)).length, 3);
+});
+
+test('Seam: the comparison page\'s "have the agent build it" asks in the chat as the design card does (design.unmet, ask); only then the agent starts', async () => {
+    for (const [answer, starts] of [['ask', 1], ['close', 0]]) {
+        const bench = benchSession();
+        let opened = 0;
+        let asked;
+        const developing = (ids, chat) => {
+            if (asked !== undefined) return;
+            asked = (async () => {
+                await bench.handlers.build();
+                chat.human.choose('end');
+            })();
+        };
+        const h = harness({ session: bench.make, answers: [answer], seams: { designComparison: async ({ viewport }) => comparison(viewport, ['button "Speichern": color #ffffff → #000000']) }, extra: { withDesign: true }, developing });
+        const spec = testOf();
+        spec.steps[1] = { ...spec.steps[1], design: 'design/form.html' };
+        const code = await runFlow({ spec, through: 'S2', handover: true, canFix: true, execute: h.execute, adopt: h.adopt, log: () => {}, openSandbox: async () => { opened += 1; return null; } });
+        assert.equal(code, EXIT.pass);
+        await asked;
+        const question = h.decisions.find(({ text }) => /umsetzen lassen, bis er Entwurf design\/form\.html erfüllt/.test(text ?? ''));
+        assert.ok(question !== undefined, h.decisions.map(({ text }) => text).join('\n'));
+        assert.deepEqual(question.options, ['ask', 'close'], 'the design card\'s options');
+        assert.equal(opened, starts, `${answer}: the agent ${starts === 1 ? 'starts' : 'does not start'}`);
+    }
 });
 
 test('Seam: the target design of the first pending step, judged at its entry, is named and written to result.json; the run still passes', async () => {
@@ -281,9 +322,9 @@ test('Seam: the first pending step ready to record is named with the record comm
 });
 
 /** open <test>@<step> --design in the seam: ends developing at once; @returns the harness after the run. */
-const openDesign = async (spec, at, designOverlay) => {
+const openDesign = async (spec, at, designComparison) => {
     const bench = benchSession();
-    const h = harness({ session: bench.make, seams: { designOverlay }, extra: { withDesign: true }, developing: (ids, chat) => setImmediate(() => chat.human.choose('end')) });
+    const h = harness({ session: bench.make, seams: { designComparison }, extra: { withDesign: true }, developing: (ids, chat) => setImmediate(() => chat.human.choose('end')) });
     const code = await runFlow({ spec, ...at, handover: true, canFix: true, execute: h.execute, adopt: h.adopt, log: () => {}, openSandbox: async () => null });
     assert.equal(code, EXIT.pass);
     return { ...h, bench };
@@ -306,7 +347,7 @@ test('Seam: open --design at a pending step names the step whose recorded size t
     let viewport;
     const h = await openDesign(spec, { entry: 'S3' }, async (given) => {
         viewport = given.viewport;
-        return { src: 'data:image/png;base64,AA', width: given.viewport.width, rows: [] };
+        return comparison(given.viewport);
     });
     assert.deepEqual(viewport, { width: 1024, height: 700 });
     const shown = h.notices.find((text) => /design\/form\.html/.test(text));
@@ -321,7 +362,7 @@ test('Seam: the window with a design does not report a passed test in the termin
     const log = console.log;
     console.log = (text) => lines.push(String(text));
     try {
-        await openDesign(spec, { through: 'S2' }, async (given) => ({ src: 'data:image/png;base64,AA', width: given.viewport.width, rows: [] }));
+        await openDesign(spec, { through: 'S2' }, async (given) => comparison(given.viewport));
     } finally {
         console.log = log;
     }

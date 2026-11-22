@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 
 import { t } from '../shared/i18n.mjs';
-import { compareStructure, designPath, renderDesign, structureOf } from './design.mjs';
+import { compareDetailed, designPath, renderDesign, structureOf } from './design.mjs';
 
 /** The config's visual settings with the defaults. */
 export const visualSettings = (config = {}) => ({ screenshots: false, ...(config.visual ?? {}), ignore: config.visualIgnore ?? [] });
@@ -259,26 +259,43 @@ export const withAdoptedLooks = (spec, looks, day = new Date().toISOString().sli
     },
 }])));
 
-// ------------------------------------------------------------------------------------------------------------ design overlay
+// -------------------------------------------------------------------------------------------------------- design comparison
+
+/** A PNG as the page shows it: data URL and size (CSS px, the screenshots are taken at scale css). */
+const pngImage = (png) => ({ src: `data:image/png;base64,${png.toString('base64')}`, width: png.readUInt32BE(16), height: png.readUInt32BE(20) });
 
 /**
- * What the workbench shows beside (F7: over) the app for `open <test>@S3 --design`: the .html design rendered without scripts or network
- * as an image at the recorded width, and the deviations as rows.
+ * What the comparison page of `open <test>@S3 --design` shows: the .html design rendered without scripts or network at the
+ * recorded viewport, as a whole page; the app as the window shows it now, its frame captured at the recorded viewport; the
+ * deviations (design.mjs compareDetailed) with where their element is in both images. The app's boxes are moved by its
+ * scroll position, so they sit on the captured part; the design is captured from its top.
  * @param page     the app (session.page())
+ * @param capture  () => { png } of the app frame at the recorded viewport (captureStep)
  * @param launch   () => a Playwright Browser for the design (closed again here)
- * @returns { src, width, rows } or null without a design file
+ * @returns { met, design: { src, width, height }, app: { src, width, height }, deviations: [{ kind, text, design?, app? }], extra }
+ *          or null without a design file
  */
-export const designOverlay = async ({ cawDir, file, viewport, page, launch, secrets = [] }) => {
+export const designComparison = async ({ cawDir, file, viewport, page, capture, launch, secrets = [] }) => {
     const path = designPath(cawDir, file);
     if (path === null) return null;
     const browser = await launch();
     try {
         const rendered = await renderDesign(browser, readFileSync(path, 'utf8'), viewport);
         try {
-            const image = await rendered.screenshot({ scale: 'css' });
-            const { missing, textDiffs, styleDiffs, layoutDiffs } = compareStructure(await structureOf(rendered), await structureOf(page, { secrets }));
-            const rows = [...missing.map((line) => ({ text: t('session.design.missingRow', { line }) })), ...[...textDiffs, ...styleDiffs, ...layoutDiffs].map((text) => ({ text }))];
-            return { src: `data:image/png;base64,${image.toString('base64')}`, width: viewport.width, rows };
+            const design = await rendered.screenshot({ scale: 'css', fullPage: true });
+            const target = await structureOf(rendered);
+            const actual = await structureOf(page, { secrets });
+            const scroll = await page.evaluate(() => ({ x: scrollX, y: scrollY })).catch(() => ({ x: 0, y: 0 }));
+            const { png } = await capture();
+            const { met, extra, deviations } = compareDetailed(target, actual);
+            const visible = (box) => ({ ...box, x: box.x - scroll.x, y: box.y - scroll.y });
+            return {
+                met,
+                design: pngImage(design),
+                app: pngImage(png),
+                deviations: deviations.map((deviation) => (deviation.app === undefined ? deviation : { ...deviation, app: visible(deviation.app) })),
+                extra,
+            };
         } finally {
             await rendered.context().close().catch(() => {});
         }

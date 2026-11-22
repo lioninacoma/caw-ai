@@ -42,10 +42,8 @@ export const STATE_BINDING = 'cawState';
 /** Console tools (caw.ready(), caw.locator(el)): read-only answers from the host. */
 export const READY_BINDING = 'cawReady';
 export const LOCATE_BINDING = 'cawLocate';
-/** The target design (F7): the workbench reports its mode, the host keeps it for reloads. */
+/** The comparison with the target design (F7): the workbench reports ('open', on) for reloads and ('build') for its button. */
 export const DESIGN_BINDING = 'cawDesign';
-/** How the target design shows, in the order F7 goes round them; the first is the default: beside the app, over it, hidden. */
-export const DESIGN_MODES = ['side', 'overlay', 'off'];
 /**
  * The chat runs in a sandboxed iframe without allow-same-origin, so with its own opaque origin. The workbench shares its
  * origin with the application (so top.Ext & co. work). Without the sandbox the application could reach the chat and decide
@@ -64,8 +62,6 @@ const PANEL_MS = 1000;
 const MAX_ROWS = 300;
 // A binding can be exposed only once per page; per page the host remembers who currently handles refresh.
 const benches = new WeakMap();
-/** What the page gets of a design: the rows' texts. */
-const pageDesign = ({ rows = [], ...rest }) => ({ ...rest, rows: rows.map(({ text }) => ({ text: String(text) })) });
 
 const esc = (value) => String(value).replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;');
 /** JSON for a <script>: `<` cannot end it. */
@@ -138,6 +134,28 @@ ${row(t('workbench.set.projectNotes'), `<span class="path"><code id="setProjectP
 <div class="two"><section data-sec="keys" id="set-keys"><h3 class="sgrp-h">${t('workbench.set.keys')}</h3><div class="sgrp pad"><div class="keys">${keyList(ctrl).map(([label, key]) => `<span>${label}</span><kbd>${key}</kbd>`).join('')}</div></div></section>
 <section data-sec="run" id="set-run"><h3 class="sgrp-h">${t('workbench.set.run')} ${ro()}</h3><div class="sgrp pad"><dl class="kv" id="setRun"></dl></div></section></div>
 </div></div></section>`;
+};
+
+/** The views of the comparison page, in the order of its tabs; the first is the default. */
+export const COMPARE_VIEWS = ['side', 'overlay', 'diff'];
+
+/**
+ * The comparison with the target design (F7, open --design): static here, filled from what the host passes
+ * (window.workbench.design). Header with the way back, the rail of the steps with a design, the images, the deviations.
+ */
+const compareView = () => {
+    const cmp = (key) => t(`workbench.page.cmp.${key}`);
+    const tab = (view, index) => `<button type="button" role="tab" id="cmpTab-${view}" data-view="${view}" aria-controls="cmpPanel" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}">${cmp(view)}</button>`;
+    return `<section id="cmp" class="cmp" hidden aria-labelledby="cmpTitle">
+<header class="cmp-top">${logo({ size: 24, label: 'caw' })}<b class="word" aria-hidden="true">caw</b><span class="sl" aria-hidden="true">/</span><span id="cmpTest"></span><span class="sl" aria-hidden="true">/</span><b id="cmpTitle">${cmp('title')}</b><button type="button" class="lnk" id="cmpBack">← ${cmp('back')}<kbd>Esc</kbd></button></header>
+<div class="cmp-body">
+<nav class="cmp-rail" id="cmpRail" aria-label="${esc(cmp('rail'))}"><button type="button" class="ib" id="cmpRailToggle" aria-expanded="false" aria-controls="cmpSteps" aria-label="${esc(cmp('railOpen'))}" title="${esc(cmp('railOpen'))}">${icon('chev-r')}</button><span class="rail-h" aria-hidden="true">${cmp('rail')}</span><ol id="cmpSteps"></ol></nav>
+<main class="cmp-main"><div class="cmp-head"><h1 id="cmpStep" tabindex="-1"></h1><span id="cmpMeta"></span><span id="cmpBadge" class="bdg" role="status"></span></div>
+<div class="cmp-tabs" role="tablist" aria-label="${esc(cmp('views'))}">${COMPARE_VIEWS.map(tab).join('')}</div>
+<div id="cmpPanel" role="tabpanel" aria-labelledby="cmpTab-side" data-view="side"></div></main>
+<aside class="cmp-side" aria-labelledby="cmpDevH"><h2 id="cmpDevH"></h2><p class="hint" id="cmpHint">${cmp('hint')}</p><p id="cmpNone" hidden>${cmp('none')}</p><ol id="cmpCards"></ol><p id="cmpExtra" hidden></p>
+<div class="cmp-actions"><button type="button" class="btn btn-p" id="cmpBuild" hidden>${icon('agent')}<span>${esc(t('run.button.buildDesign'))}</span></button><button type="button" class="btn btn-s" id="cmpBack2">${cmp('back')}</button></div></aside>
+</div></section>`;
 };
 
 /**
@@ -278,14 +296,79 @@ grid-template-areas:"steps browser chat"}
 #app{flex:1;min-height:0;width:100%;border:0;display:block;background:#fff}
 /* A pinned viewport: the frame has exactly the recorded size, scaled down (never up) to fit, centred. */
 #appBox.pinned{background:var(--sunk)}#appBox.pinned #app{flex:none;position:absolute;top:0;transform-origin:0 0}
-/* The target design (F7): beside the app at the same scale, or over it aligned with the frame; never in the way of the pointer. */
-#design{position:absolute;top:0;left:0;transform-origin:0 0;pointer-events:none;max-width:none;z-index:2}#design.blend{mix-blend-mode:difference}
-#appBox.side #design{box-shadow:0 0 0 1px var(--line)}
-.dcap{position:absolute;z-index:3;padding:3px 0;font:600 11px/1 var(--font);letter-spacing:.04em;text-transform:uppercase;color:var(--muted);pointer-events:none}
-#designRows{position:absolute;right:8px;bottom:8px;z-index:3;max-width:min(420px,60%);max-height:40%;overflow:auto;margin:0;padding:6px 0;list-style:none;background:var(--panel);border:1px solid var(--line);border-radius:8px;font-size:12px}
-#designRows li{padding:4px 10px;color:var(--text)}
-/* Capturing a step's screen: the frame at its recorded size, unscaled and on top, without the design. */
-body.capture #appBox.pinned #app{position:fixed!important;left:0!important;top:0!important;transform:none!important;z-index:2147483647}body.capture #design,body.capture #designRows,body.capture .dcap{display:none}
+/* Capturing a step's screen: the frame at its recorded size, unscaled and on top, also over the comparison page. */
+body.capture #appBox.pinned #app{position:fixed!important;left:0!important;top:0!important;transform:none!important;z-index:2147483647}
+/* The comparison with the target design (F7, open --design): a page of its own over the workbench, which stays laid out below
+   it, so the app keeps its size and state. Rail of the steps with a design, the images in the middle, the deviations right. */
+.cmp{position:fixed;inset:0;z-index:30;display:none;flex-direction:column;background:var(--bg);color:var(--text)}
+.cmp-on .cmp{display:flex}.cmp-on.cmp-aside .cmp{display:none}
+.cmp-top{flex:none;display:flex;align-items:center;gap:10px;min-height:48px;padding:0 16px;background:var(--nav);color:var(--nav-text);border-bottom:1px solid var(--nav-line);white-space:nowrap;overflow:hidden}
+.cmp-top .word{font:600 20px/1 var(--font);letter-spacing:-.04em}
+.cmp-top .sl{color:var(--line2);font-size:18px;font-weight:300}
+.cmp-top #cmpTest{color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.cmp-top #cmpTitle{font:600 13px/1 var(--font)}
+.cmp-top .lnk{margin-left:auto;font-size:13px}
+.cmp-body{flex:1;min-height:0;display:flex}
+.cmp-rail{flex:none;width:64px;display:flex;flex-direction:column;gap:2px;padding:10px 8px;background:var(--panel);border-right:1px solid var(--line);overflow:auto}
+.cmp-rail.open{width:248px}
+.cmp-rail .rail-h{display:none;padding:6px 8px 8px;font:600 10.5px/1.2 var(--font);letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+.cmp-rail.open .rail-h{display:block}
+#cmpRailToggle{align-self:center;margin-bottom:6px}.cmp-rail.open #cmpRailToggle{align-self:flex-end}
+#cmpSteps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+#cmpSteps li{display:grid;grid-template-columns:16px auto;gap:6px;align-items:center;justify-content:center;padding:7px 4px;border-radius:var(--r1);font:500 11px/1 var(--font-mono);color:var(--muted)}
+.cmp-rail.open #cmpSteps li{grid-template-columns:16px auto minmax(0,1fr) auto;justify-content:stretch;padding:8px;font:400 13px/1.3 var(--font);color:var(--text)}
+#cmpSteps li[aria-current=step]{background:var(--accent-soft);color:var(--accent-text)}
+#cmpSteps .mk{display:inline-grid;place-items:center}#cmpSteps .mk .i{width:14px;height:14px;stroke-width:2.4}
+#cmpSteps .met .mk{color:var(--pass)}#cmpSteps .deviations .mk{color:var(--fail)}#cmpSteps .pending .mk,#cmpSteps .unknown .mk{color:var(--faint)}
+#cmpSteps .sid{font:500 11px/1 var(--font-mono)}
+.cmp-rail:not(.open) #cmpSteps .nm,.cmp-rail:not(.open) #cmpSteps .stt{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.cmp-rail.open #cmpSteps .nm{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cmp-rail.open #cmpSteps .stt{display:block;font-size:11.5px;white-space:nowrap;color:var(--muted)}
+.cmp-rail.open #cmpSteps .met .stt{color:var(--pass)}.cmp-rail.open #cmpSteps .deviations .stt{color:var(--fail)}
+.cmp-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;padding:18px 22px 16px}
+.cmp-head{flex:none;display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px}
+.cmp-head h1{margin:0;font:600 20px/1.25 var(--font);letter-spacing:-.02em;outline:0}
+#cmpMeta{font:400 12px/1.4 var(--font-mono);color:var(--muted);overflow-wrap:anywhere}
+#cmpBadge{margin-left:auto;align-self:center;height:24px;padding:0 10px;font-size:12px}
+.cmp-tabs{flex:none;display:flex;gap:4px;border-bottom:1px solid var(--line)}
+.cmp-tabs [role=tab]{border:0;background:none;padding:8px 12px;font:500 13px/1 var(--font);color:var(--muted);cursor:pointer;box-shadow:inset 0 -2px 0 transparent}
+.cmp-tabs [role=tab]:hover{color:var(--text)}
+.cmp-tabs [role=tab][aria-selected=true]{color:var(--accent-text);font-weight:600;box-shadow:inset 0 -2px 0 var(--accent)}
+#cmpPanel{flex:1;min-height:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+#cmpPanel[data-view=overlay]{grid-template-columns:minmax(0,1fr)}
+.shot{display:flex;flex-direction:column;gap:6px;min-width:0;min-height:0}
+.shot-h{display:flex;align-items:baseline;gap:8px;font-size:12px;color:var(--muted)}
+.shot-h b{font:600 11px/1 var(--font);letter-spacing:.08em;text-transform:uppercase;color:var(--text)}
+.shot-h .sc{margin-left:auto;font:400 11.5px/1 var(--font-mono);color:var(--faint)}
+.shot-s{flex:1;min-height:0;overflow:auto;border:1px solid var(--line);border-radius:var(--r3);background:var(--sunk)}
+.shot-in{position:relative;margin:0}
+.shot-in img{display:block;height:auto;max-width:none}
+.shot-in img.over{position:absolute;left:0;top:0;opacity:.5;pointer-events:none}
+.shot-in svg{position:absolute;left:0;top:0;pointer-events:none}
+.mk-box{position:absolute;box-sizing:border-box;border:2px solid var(--accent);border-radius:3px;pointer-events:none}
+.mk-box.dashed{border-style:dashed}.mk-box.dim{opacity:.5}
+.mk-num{position:absolute;display:grid;place-items:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:var(--rp);background:var(--accent);color:var(--on-accent);font:700 11px/1 var(--font);pointer-events:none;box-shadow:0 0 0 2px var(--panel)}
+.mk-num.dim{opacity:.6}
+.cmp-side{flex:none;width:340px;display:flex;flex-direction:column;gap:10px;padding:18px 16px 16px;background:var(--panel);border-left:1px solid var(--line);min-height:0}
+.cmp-side h2{margin:0;font:600 14px/1.3 var(--font)}
+.cmp-side .hint{margin:0;font-size:12px;line-height:1.45;color:var(--muted)}
+#cmpCards{list-style:none;margin:0;padding:0 2px;display:flex;flex-direction:column;gap:8px;overflow:auto;min-height:0;flex:0 1 auto}
+.dev{display:flex;flex-direction:column;gap:6px;width:100%;text-align:left;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r3);background:var(--panel);color:var(--text);font:inherit;cursor:pointer}
+.dev:hover{border-color:var(--line2);background:var(--panel2)}
+.dev[aria-pressed=true]{border-color:var(--accent);background:var(--accent-soft)}
+.dev .row{display:flex;align-items:center;gap:8px}
+.dev .num{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 5px;box-sizing:border-box;border-radius:var(--rp);background:var(--panel2);color:var(--muted);font:700 12px/1 var(--font)}
+.dev[aria-pressed=true] .num{background:var(--accent);color:var(--on-accent)}
+.dev .kind{font-weight:600;font-size:13px}
+.dev code{font:400 12px/1.5 var(--font-mono);color:var(--code-text);overflow-wrap:anywhere}
+.dev small{font-size:11.5px;color:var(--muted)}
+#cmpNone{margin:0;padding:12px;border-radius:var(--r3);background:var(--pass-soft);color:var(--pass);font-size:13px;line-height:1.45}
+#cmpExtra{margin:0;font-size:12px;line-height:1.5;color:var(--muted);overflow-wrap:anywhere}
+#cmpExtra code{font:400 11.5px/1.5 var(--font-mono)}
+.cmp-actions{margin-top:auto;display:flex;flex-direction:column;gap:8px;padding-top:6px}
+@media (max-width:999px){.cmp-body{flex-direction:column;overflow:auto}.cmp-rail,.cmp-rail.open{width:auto;flex-direction:row;flex-wrap:wrap;align-items:center;border-right:0;border-bottom:1px solid var(--line)}
+#cmpSteps{flex-direction:row;flex-wrap:wrap}#cmpRailToggle{display:none}.cmp-main{min-height:80vh}.cmp-side{width:auto;border-left:0;border-top:1px solid var(--line)}}
+@media (max-width:699px){#cmpPanel{grid-template-columns:minmax(0,1fr)}.cmp-top{padding:0 12px}.cmp-main{padding:14px 12px}}
 .drawer{display:none;flex:none;border-top:1px solid var(--line);background:var(--panel)}.drawer.open{display:block}
 .tabs{display:flex;align-items:center;gap:16px;height:34px;padding:0 14px;border-bottom:1px solid var(--line)}
 .tabs button[role=tab]{font:400 12px/1 var(--font);color:var(--muted);background:none;border:0;padding:0;height:100%;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
@@ -407,14 +490,14 @@ td.m{width:64px;color:var(--muted)}td.m.w{color:var(--warn)}td.p{width:auto;colo
 <section class="pa-steps win" id="stepsCard" aria-label="${t('workbench.steps')}">${pane('steps', t('workbench.steps'), t('workbench.stepsFold'), t('workbench.stepsUnfold'), 'F4', 'chev-l', 'chev-r', '<span class="cnt" id="tally"></span>')}
 <p id="leftNote" hidden></p><p class="hint" id="stepsHint">${t('workbench.stepsHint')}</p><div id="track"><ol id="steps" aria-label="${t('workbench.steps')}"></ol></div></section>
 <section class="pa-browser win" aria-label="${t('workbench.app')}"><div class="appbar"><span id="url"></span><span id="envBadge" class="bdg" hidden></span><span id="browserState"></span><span id="vp" hidden></span></div>
-<div id="appBox"><iframe id="app" name="${APP_FRAME}" title="${t('workbench.app')}" src="${esc(appUrl)}" allow="clipboard-write"></iframe><img id="design" alt="" hidden><span id="appCap" class="dcap" hidden>${t('workbench.app')}</span><span id="designCap" class="dcap" hidden>${t('workbench.design')}</span><ul id="designRows" hidden aria-label="${t('workbench.design')}"></ul></div>
+<div id="appBox"><iframe id="app" name="${APP_FRAME}" title="${t('workbench.app')}" src="${esc(appUrl)}" allow="clipboard-write"></iframe></div>
 <div class="drawer" id="drawer"><div class="tabs" role="tablist"><button type="button" role="tab" data-tab="requests" aria-selected="false">${t('workbench.requests')}<span class="count" data-count="requests">0</span></button><button type="button" role="tab" data-tab="console" aria-selected="false">${t('workbench.console')}<span class="count" data-count="console">0</span></button><span class="end"><span>F2 · F3 ·</span><button type="button" id="drawerClose" aria-label="${t('workbench.drawerCloseLabel')}">${t('workbench.drawerEsc')}</button></span></div>
 <div class="panel" id="panel"></div></div>
 <div class="afoot"><button type="button" id="footRequests" data-tabkey="requests" data-press="F2" title="${t('workbench.requests')} (F2)"></button><span class="sep">·</span><button type="button" id="footConsole" data-tabkey="console" data-press="F3" title="${t('workbench.console')} (F3)"></button><span class="keys">F2 · F3</span></div></section>
 <section class="pa-chat win" id="chatCard" aria-label="${t('workbench.chatLabel')}">${pane('chat', t('workbench.chat'), t('workbench.chatFold'), t('workbench.chatUnfold'), 'F6', 'chev-r', 'chev-l', `<button class="ib" id="chatHide" type="button" data-press="Ctrl+J" aria-label="${t('workbench.page.hideChat')}" title="${t('workbench.page.hideChat')} (${ctrl} J · Esc)">${icon('x')}</button>`)}<iframe id="chat" name="${CHAT_FRAME}" title="${t('workbench.chatLabel')}" sandbox="${CHAT_SANDBOX}" allow="clipboard-write" srcdoc="${esc(chatPlaceholder(prefs.mode))}"></iframe></section>
 </main>
 ${settingsView(ctrl)}
-</div></div>
+</div>${compareView()}</div>
 <div id="stateDlg" hidden role="dialog" aria-modal="true" aria-label="${t('workbench.stateTitle')}"><div class="dlg"><div class="dlg-h">${icon('play')}<h2>${t('workbench.stateTitle')}</h2><span class="sub">${t('workbench.stateSub')}</span><button type="button" class="lnk lnk-m" id="sclose">${t('workbench.close')}<kbd>Esc</kbd></button></div>
 <div class="scols"><div class="scol"><div class="sec">${t('workbench.page.stateTest')}</div><label class="field sfilter">${icon('search')}<input id="sq" type="search" autocomplete="off" spellcheck="false" placeholder="${t('workbench.page.stateSearch')}" aria-label="${t('workbench.page.stateSearch')}"></label><div class="slist" id="stests" role="listbox" aria-label="${t('workbench.page.stateTest')}"></div></div>
 <div class="scol"><div class="sec" id="sstepsHead">${t('workbench.page.stateSteps')}</div><div class="slist" id="ssteps" role="listbox" aria-label="${t('workbench.page.stateSteps')}"></div></div></div>
@@ -442,7 +525,7 @@ const cell=(text,cls)=>{const td=document.createElement('td');td.textContent=tex
 const still=()=>document.body.classList.contains('still');
 const settingsOn=()=>document.body.classList.contains('settings-on');
 // The marks as icons (static SVG from the host); running is a CSS spinner.
-const ICON=${json({ ok: icon('check'), fail: icon('x'), open: icon('circle'), skip: icon('dash'), chev: icon('chev-r'), file: icon('file'), more: icon('more'), shield: icon('shield'), lock: icon('lock'), agent: icon('agent') })};
+const ICON=${json({ ok: icon('check'), fail: icon('x'), open: icon('circle'), skip: icon('dash'), chev: icon('chev-r'), chevL: icon('chev-l'), file: icon('file'), more: icon('more'), shield: icon('shield'), lock: icon('lock'), agent: icon('agent') })};
 const markInto=(el,kind)=>{if(kind==='run'){const s=document.createElement('span');s.className='spinner';el.replaceChildren(s);}else el.innerHTML=ICON[kind]??ICON.open;};
 const render=()=>{
   const panel=$('panel');panel.replaceChildren();
@@ -650,7 +733,7 @@ const openStates=(on=stateDlg.hidden,pre)=>{if(on&&STATES.length===0)return;
   if(on&&pre!==undefined){const test=ownTest();if(!test)return;sTest=test.id;sStep=pre.step!==null&&test.steps.some((step)=>step.id===pre.step&&step.ok)?pre.step:null;}
   stateDlg.hidden=!on;
   if(on){if(stateFocus===null)stateFocus=returnTarget();closeMenu(false);if(sTest===null&&STATES.length===1)sTest=STATES[0].id;renderStates();$('sq').focus();}else{const back=stateFocus;stateFocus=null;back?.focus?.();}};
-const goState=()=>{const test=STATES.find((entry)=>entry.id===sTest);if(!test)return;openStates(false);
+const goState=()=>{const test=STATES.find((entry)=>entry.id===sTest);if(!test)return;openStates(false);openCompare(false);
   try{const result=window.${STATE_BINDING}?.(test.id,sStep);result?.catch?.(()=>{});}catch{}};
 $('sq').addEventListener('input',renderStates);
 $('sq').addEventListener('keydown',(event)=>{if(event.key==='Enter'&&!$('sgo').disabled){event.preventDefault();goState();}});
@@ -664,7 +747,7 @@ let setFocus=null;
 const returnTarget=()=>{const active=document.activeElement;return active===null||active===document.body||$('menu').contains(active)?$('more'):active;};
 const navMark=(name)=>{for(const b of document.querySelectorAll('.snav [data-sec]'))b.classList.toggle('on',b.dataset.sec===name);};
 const openSettings=(on=!settingsOn(),sec='general')=>{if(on===settingsOn()){if(on)goSection(sec);return;}
-  if(on){setFocus=returnTarget();closeMenu(false);}
+  if(on){if(cmpOn())openCompare(false);setFocus=returnTarget();closeMenu(false);}
   document.body.classList.toggle('settings-on',on);$('settings').hidden=!on;
   if(on){titleNodes=[...$('title').childNodes];$('title').textContent=T['workbench.page.settings'];}else $('title').replaceChildren(...titleNodes);
   if(on){modeMarks();goSection(sec);}else{const back=setFocus;setFocus=null;(back&&back!==document.body?back:$('more')).focus?.();}};
@@ -730,6 +813,8 @@ document.addEventListener('click',(event)=>{const b=event.target.closest?.('[dat
 // The workbench keys. F11 and F12 stay with Chrome; F5 and Ctrl+R mean refresh.
 const isRefreshKey=(event)=>event.key==='F5'||((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='r');
 const press=(key)=>{
+  // Keys about the workbench's panes and views go back to it first.
+  if(cmpOn()&&['F2','F3','F4','F6','F8','Ctrl+,','?','Ctrl+J'].includes(key))openCompare(false);
   if(key==='F1'){openSettings(false);openStates();return true;}
   if(key==='F5'){refresh();return true;}
   if(key==='Ctrl+,'){openSettings(true);return true;}
@@ -737,7 +822,7 @@ const press=(key)=>{
   if(key==='Ctrl+K'){if(menuBox.hidden)openMenu();else closeMenu();return true;}
   if(key==='Ctrl+J')return popChat();
   if(key==='F2'||key==='F3'){openSettings(false);select(key==='F2'?'requests':'console');}else if(key==='F4')toggleFold('steps');else if(key==='F6')toggleFold('chat');
-  else if(key==='F7')cycleDesign();else if(key==='F8')solo();else if(key==='F10')setStill(!still());else if(key==='F9'||key==='Escape')toChat(key);else return false;
+  else if(key==='F7')openCompare();else if(key==='F8')solo();else if(key==='F10')setStill(!still());else if(key==='F9'||key==='Escape')toChat(key);else return false;
   return true;};
 addEventListener('keydown',(event)=>{
   if(isRefreshKey(event)){event.preventDefault();refresh();return;}
@@ -745,6 +830,7 @@ addEventListener('keydown',(event)=>{
   if(event.key==='Escape'){
     if(!menuBox.hidden){event.preventDefault();closeMenu();return;}
     if(!stateDlg.hidden){event.preventDefault();openStates(false);return;}
+    if(cmpOn()&&!cmpAside){event.preventDefault();openCompare(false);return;}
     if(document.body.classList.contains('solo')&&popped()){event.preventDefault();popChat(false);return;}
     if(field)return;
     if(settingsOn()){event.preventDefault();openSettings(false);return;}
@@ -779,45 +865,149 @@ new MutationObserver(follow).observe($('steps'),{subtree:true,childList:true,att
 new ResizeObserver(follow).observe(track);
 // The pinned viewport of the app frame: { width, height } or null (the frame fills its pane). The bar names its size.
 let pinned=null;
-// Side by side the pane holds two of them, frame and design, at one scale with a gap between.
-const SIDE_GAP=16;
-const fitApp=()=>{const box=$('appBox');const app=$('app');const side=pinned!==null&&design?.mode==='side';
-  box.classList.toggle('pinned',pinned!==null);box.classList.toggle('side',side);box.dataset.design=design?.mode??'';$('vp').hidden=pinned===null;
-  if(pinned===null){app.style.width=app.style.height=app.style.transform=app.style.left='';box.removeAttribute('title');placeDesign(1,0);return;}
-  const across=side?2:1;const gap=side?SIDE_GAP:0;
-  const scale=Math.min(1,Math.max(0,box.clientWidth-gap)/(pinned.width*across),box.clientHeight/pinned.height);
+const fitApp=()=>{const box=$('appBox');const app=$('app');
+  box.classList.toggle('pinned',pinned!==null);$('vp').hidden=pinned===null;
+  if(pinned===null){app.style.width=app.style.height=app.style.transform=app.style.left='';box.removeAttribute('title');return;}
+  const scale=Math.min(1,box.clientWidth/pinned.width,box.clientHeight/pinned.height);
   app.style.width=pinned.width+'px';app.style.height=pinned.height+'px';app.style.transform='scale('+scale+')';
-  const left=Math.max(0,Math.round((box.clientWidth-pinned.width*scale*across-gap)/2));
-  app.style.left=left+'px';placeDesign(scale,side?left+Math.round(pinned.width*scale)+gap:left,left);
+  app.style.left=Math.max(0,Math.round((box.clientWidth-pinned.width*scale)/2))+'px';
   $('vp').textContent=pinned.width+' × '+pinned.height;
   box.title=$('vp').title=fill('workbench.page.viewportPinned',{width:pinned.width,height:pinned.height,percent:Math.round(scale*100)});};
 new ResizeObserver(fitApp).observe($('appBox'));
-// The step's target design: { src, opacity, blend, width, rows, mode } or null. Drawn at the recorded width and scaled like
-// the frame. mode 'side' (the default) shows it beside the app, so text that is data (a long run tag) moves nothing;
-// 'overlay' lays it over the app pixel for pixel, half transparent; 'off' hides it. F7 goes round them; the host keeps the
-// mode for reloads.
-const DESIGN_MODES=${json(DESIGN_MODES)};
-let design=null;
-// Side by side each gets its name under it (inside the pane when the two fill its height).
-const placeDesign=(scale,left,appLeft)=>{const img=$('design');const rows=$('designRows');const caps=[$('appCap'),$('designCap')];const item=$('mDesign');item.hidden=design===null;
-  if(design===null){img.hidden=rows.hidden=true;for(const cap of caps)cap.hidden=true;img.removeAttribute('src');rows.replaceChildren();return;}
-  const next=DESIGN_MODES[(DESIGN_MODES.indexOf(design.mode)+1)%DESIGN_MODES.length];item.querySelector('.nm').textContent=T['workbench.page.design.'+next];
-  if(img.getAttribute('src')!==design.src)img.src=design.src;
-  const on=design.mode!=='off';const over=design.mode==='overlay';const side=design.mode==='side'&&pinned!==null;
-  img.hidden=!on;rows.hidden=!on||rows.children.length===0;
-  img.style.opacity=over?String(design.opacity):'1';img.classList.toggle('blend',over&&design.blend==='difference');
-  img.style.width=(design.width??pinned?.width??$('app').clientWidth)+'px';img.style.left=left+'px';img.style.transform='scale('+scale+')';
-  const top=side?Math.max(0,Math.min(Math.round(pinned.height*scale)+6,$('appBox').clientHeight-26)):0;
-  caps.forEach((cap,i)=>{cap.hidden=!side;cap.style.top=top+'px';cap.style.left=((i===0?appLeft:left)??0)+'px';});};
-const designRows=(list)=>{$('designRows').replaceChildren(...list.map((row)=>{const li=document.createElement('li');li.textContent=row.text;li.title=row.text;return li;}));};
-const cycleDesign=()=>{if(design===null)return;design.mode=DESIGN_MODES[(DESIGN_MODES.indexOf(design.mode)+1)%DESIGN_MODES.length];fitApp();window.${DESIGN_BINDING}?.(design.mode);};
+// The comparison with the target design (F7, open --design), a page over the workbench: { step: { id, name }, file, viewport,
+// run, met, design and app: { src, width, height }, deviations: [{ kind, text, design?, app? }] with boxes in CSS px of each
+// image, extra, steps: [{ id, name, status, count? }], buildable } or null. The host opens it on the first comparison and keeps
+// open or closed for reloads; the view (tab) and the rail stay per window. The workbench below stays laid out, so the app
+// keeps its size; it is inert while the page lies over it, and the page steps aside (cmpAside) while the host operates the app.
+const VIEWS=${json(COMPARE_VIEWS)};
+// Side by side at 100 %, or smaller down to this to fit the column; below it the columns scroll, both together.
+const MIN_SCALE=0.75;
+const STATUS_ICON={met:'ok',deviations:'fail',pending:'open',unknown:'skip'};
+let cmp=null,cmpSel=-1,cmpAside=false,cmpFocus=null,shots=[],syncing=false;
+let cmpView=VIEWS[0];try{const view=sessionStorage.getItem('caw-cmp-view');if(VIEWS.includes(view))cmpView=view;}catch{}
+let railOpen=false;try{railOpen=sessionStorage.getItem('caw-cmp-rail')==='open';}catch{}
+const cmpOn=()=>document.body.classList.contains('cmp-on');
+const el=(tag,cls,text)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=String(text);return node;};
+const applyCmp=()=>{const on=cmpOn();document.body.classList.toggle('cmp-aside',cmpAside);$('cmp').hidden=!on||cmpAside;
+  for(const node of document.querySelectorAll('#bench>.top,#bench>.soloBar,#bench>.panes,#bench>#settings'))node.inert=on&&!cmpAside;
+  if(cmp===null)delete document.body.dataset.design;else document.body.dataset.design=on?'open':'closed';
+  $('mDesign').hidden=cmp===null;};
+const openCompare=(on=!cmpOn(),tell=true)=>{if(on&&cmp===null)return false;
+  if(on===cmpOn()){if(on)$('cmpStep').focus({preventScroll:true});return true;}
+  if(on){cmpFocus=returnTarget();closeMenu(false);openSettings(false);}
+  document.body.classList.toggle('cmp-on',on);applyCmp();
+  if(on){renderCmp();$('cmpStep').focus({preventScroll:true});}else{const back=cmpFocus;cmpFocus=null;if(back&&back.isConnected&&back!==document.body)back.focus?.();}
+  if(tell){try{const result=window.${DESIGN_BINDING}?.('open',on);result?.catch?.(()=>{});}catch{}}
+  return true;};
+// The rail: every step with a design and its status; folded to mark and id, unfolded with names.
+const railRender=()=>{const toggle=$('cmpRailToggle');$('cmpRail').classList.toggle('open',railOpen);toggle.setAttribute('aria-expanded',String(railOpen));
+  const label=T['workbench.page.cmp.'+(railOpen?'railClose':'railOpen')];toggle.setAttribute('aria-label',label);toggle.title=label;toggle.innerHTML=railOpen?ICON.chevL:ICON.chev;
+  $('cmpSteps').replaceChildren(...cmp.steps.map((step)=>{const li=el('li',step.status);const status=fill('workbench.page.cmp.status.'+step.status,{count:step.count??0});
+    if(step.id===cmp.step.id)li.setAttribute('aria-current','step');li.title=(step.id+' '+step.name).trim()+' – '+status;
+    const mk=el('span','mk');mk.innerHTML=ICON[STATUS_ICON[step.status]]??ICON.open;mk.setAttribute('aria-hidden','true');
+    li.append(mk,el('span','sid',step.id),el('span','nm',step.name),el('span','stt',status));return li;}));};
+$('cmpRailToggle').addEventListener('click',()=>{railOpen=!railOpen;try{sessionStorage.setItem('caw-cmp-rail',railOpen?'open':'closed');}catch{}if(cmp!==null)railRender();});
+// A box outside the captured part of the app (scrolled away) cannot be marked there.
+const outside=(box,image)=>box.y+box.height<=0||box.x+box.width<=0||box.y>=image.height||box.x>=image.width;
+const cardsRender=()=>{const list=cmp.deviations;$('cmpDevH').textContent=fill('workbench.page.cmp.deviations',{count:list.length});
+  $('cmpNone').hidden=list.length>0;$('cmpHint').hidden=list.length===0;
+  $('cmpCards').replaceChildren(...list.map((deviation,i)=>{const li=el('li');const b=el('button','dev');b.type='button';b.dataset.i=String(i);b.setAttribute('aria-pressed',String(i===cmpSel));
+    const row=el('span','row');row.append(el('span','num',i+1),el('span','kind',T['workbench.page.cmp.kind.'+deviation.kind]??deviation.kind));b.append(row,el('code','',deviation.text));
+    const note=!deviation.design&&!deviation.app?'nowhere':deviation.kind==='missing'?'notInApp':deviation.app&&outside(deviation.app,cmp.app)?'outside':'';
+    if(note)b.append(el('small','',T['workbench.page.cmp.'+note]));
+    b.addEventListener('click',()=>selectDev(i));li.append(b);return li;}));
+  const extra=$('cmpExtra'),lines=cmp.extra.slice(0,8);extra.hidden=lines.length===0;
+  extra.replaceChildren(T['workbench.page.cmp.extra']+' ',...lines.flatMap((line,i)=>[...(i>0?['; ']:[]),el('code','',line.replace(/^- /,'').replace(/:$/,''))]),cmp.extra.length>lines.length?' …':'');};
+const tabsRender=()=>{for(const b of document.querySelectorAll('.cmp-tabs [role=tab]')){const on=b.dataset.view===cmpView;b.setAttribute('aria-selected',String(on));b.tabIndex=on?0:-1;}
+  $('cmpPanel').dataset.view=cmpView;$('cmpPanel').setAttribute('aria-labelledby','cmpTab-'+cmpView);};
+const setView=(view,focus)=>{if(!VIEWS.includes(view))return;cmpView=view;try{sessionStorage.setItem('caw-cmp-view',view);}catch{}tabsRender();panelRender();if(focus)$('cmpTab-'+view).focus();};
+for(const b of document.querySelectorAll('.cmp-tabs [role=tab]'))b.addEventListener('click',()=>setView(b.dataset.view));
+document.querySelector('.cmp-tabs').addEventListener('keydown',(event)=>{const at=VIEWS.indexOf(cmpView);let to=-1;
+  if(event.key==='ArrowRight')to=(at+1)%VIEWS.length;else if(event.key==='ArrowLeft')to=(at+VIEWS.length-1)%VIEWS.length;else if(event.key==='Home')to=0;else if(event.key==='End')to=VIEWS.length-1;
+  if(to<0)return;event.preventDefault();setView(VIEWS[to],true);});
+// The images: app and design side by side (also for Differences only), or the design half transparent over the app.
+const shotOf=(kind)=>{const box=el('section','shot');const head=el('div','shot-h');
+  head.append(el('b','',kind==='overlay'?T['workbench.page.cmp.app']+' · '+T['workbench.page.cmp.design']:T['workbench.page.cmp.'+kind]));
+  if(kind==='overlay')head.append(el('span','',T['workbench.page.cmp.overlayNote']));
+  const sc=el('span','sc');head.append(sc);
+  const scroll=el('div','shot-s');scroll.tabIndex=0;scroll.dataset.kind=kind;scroll.setAttribute('role','group');scroll.setAttribute('aria-label',head.firstChild.textContent);
+  const inner=el('div','shot-in');const pics=kind==='design'?[cmp.design]:kind==='app'?[cmp.app]:[cmp.app,cmp.design];
+  const images=pics.map((pic,i)=>{const img=document.createElement('img');img.src=pic.src;img.alt=T['workbench.page.cmp.'+(pic===cmp.design?'designAlt':'appAlt')];img.width=pic.width;img.height=pic.height;if(i>0)img.className='over';inner.append(img);return img;});
+  scroll.append(inner);box.append(head,scroll);shots.push({kind,scroll,inner,sc,pics,images,scale:1});return box;};
+const panelRender=()=>{const panel=$('cmpPanel');panel.replaceChildren();shots=[];if(cmp===null)return;
+  if(cmpView==='overlay')panel.append(shotOf('overlay'));else panel.append(shotOf('app'),shotOf('design'));
+  placeShots();
+  // Into view: the selected deviation, else the middle of the page (designs are usually centred).
+  if(cmpSel>=0)reveal(cmpSel);else for(const shot of shots)shot.scroll.scrollLeft=Math.max(0,(shot.scroll.scrollWidth-shot.scroll.clientWidth)/2);
+  const pair=shots.filter((shot)=>shot.kind!=='overlay');
+  if(pair.length===2)for(const [a,b] of [[pair[0],pair[1]],[pair[1],pair[0]]])a.scroll.addEventListener('scroll',()=>{if(syncing)return;syncing=true;b.scroll.scrollTop=a.scroll.scrollTop;b.scroll.scrollLeft=a.scroll.scrollLeft;requestAnimationFrame(()=>{syncing=false;});},{passive:true});};
+const SVG='http://www.w3.org/2000/svg';
+const svgRect=(x,y,width,height)=>{const rect=document.createElementNS(SVG,'rect');rect.setAttribute('x',String(x));rect.setAttribute('y',String(y));rect.setAttribute('width',String(Math.max(0,width)));rect.setAttribute('height',String(Math.max(0,height)));return rect;};
+// Differences only: everything but the deviating elements fades to the page's background.
+const shade=(shot,sides,width,height)=>{const s=shot.scale;const svg=document.createElementNS(SVG,'svg');svg.setAttribute('width',String(width*s));svg.setAttribute('height',String(height*s));svg.setAttribute('aria-hidden','true');
+  const mask=document.createElementNS(SVG,'mask');mask.id='cmpMask-'+shot.kind;const all=svgRect(0,0,width*s,height*s);all.setAttribute('fill','white');mask.append(all);
+  for(const deviation of cmp.deviations)for(const side of sides){const box=deviation[side];if(!box)continue;const hole=svgRect(box.x*s-4,box.y*s-4,box.width*s+8,box.height*s+8);hole.setAttribute('fill','black');mask.append(hole);}
+  const defs=document.createElementNS(SVG,'defs');defs.append(mask);const fade=svgRect(0,0,width*s,height*s);fade.style.fill='var(--bg)';fade.style.fillOpacity='.82';fade.setAttribute('mask','url(#'+mask.id+')');
+  svg.append(defs,fade);shot.inner.append(svg);};
+// A marker at an element's box, solid for the app, dashed for the design over it; its number sits above the box (below it at
+// the top edge), so it covers nothing of the element.
+const marker=(shot,box,i,{dashed=false,dim=false,numbered=true}={})=>{const s=shot.scale;const frame=el('span','mk-box'+(dashed?' dashed':'')+(dim?' dim':''));
+  frame.style.left=box.x*s-2+'px';frame.style.top=box.y*s-2+'px';frame.style.width=Math.max(6,box.width*s+4)+'px';frame.style.height=Math.max(6,box.height*s+4)+'px';
+  frame.dataset.i=String(i);frame.setAttribute('aria-hidden','true');shot.inner.append(frame);if(!numbered)return;
+  const num=el('span','mk-num'+(dim?' dim':''),i+1);const above=box.y*s-25;
+  num.style.left=Math.max(2,box.x*s-2)+'px';num.style.top=(above>=2?above:(box.y+box.height)*s+5)+'px';
+  num.dataset.i=String(i);num.setAttribute('aria-hidden','true');shot.inner.append(num);};
+const placeShots=()=>{if(cmp===null)return;
+  for(const shot of shots){const avail=Math.max(0,shot.scroll.clientWidth-2);shot.scale=Math.min(1,Math.max(MIN_SCALE,avail/cmp.viewport.width));const s=shot.scale;
+    const width=Math.max(...shot.pics.map((pic)=>pic.width)),height=Math.max(...shot.pics.map((pic)=>pic.height));
+    shot.inner.style.width=Math.round(width*s)+'px';shot.inner.style.height=Math.round(height*s)+'px';
+    shot.images.forEach((img,i)=>{img.style.width=Math.round(shot.pics[i].width*s)+'px';});
+    for(const node of shot.inner.querySelectorAll('.mk-box,.mk-num,svg'))node.remove();
+    const sides=shot.kind==='overlay'?['app','design']:[shot.kind];
+    if(cmpView==='diff')shade(shot,sides,width,height);
+    cmp.deviations.forEach((deviation,i)=>{if(cmpView!=='diff'&&i!==cmpSel)return;
+      // Over each other the number goes once: on the app's element, else the design's.
+      const numberedSide=sides.find((side)=>deviation[side]);
+      for(const side of sides)if(deviation[side])marker(shot,deviation[side],i,{dashed:shot.kind==='overlay'&&side==='design',dim:cmpView==='diff'&&i!==cmpSel,numbered:side===numberedSide});});
+    shot.sc.textContent=fill('workbench.page.cmp.scale',{percent:Math.round(s*100)});}};
+new ResizeObserver(()=>{if(cmpOn())placeShots();}).observe($('cmpPanel'));
+// A card marks its element in both images and scrolls each to it.
+const selectDev=(i)=>{cmpSel=i;for(const b of document.querySelectorAll('#cmpCards .dev'))b.setAttribute('aria-pressed',String(Number(b.dataset.i)===i));placeShots();reveal(i);};
+const reveal=(i)=>{const deviation=cmp?.deviations[i];if(!deviation)return;syncing=true;
+  for(const shot of shots){const box=(shot.kind==='overlay'?['app','design']:[shot.kind]).map((side)=>deviation[side]).find(Boolean);if(!box)continue;
+    // The element in the middle of its image's view, so what is around it stays in sight.
+    const s=shot.scale;shot.scroll.scrollTo({top:Math.max(0,(box.y+box.height/2)*s-shot.scroll.clientHeight/2),left:Math.max(0,(box.x+box.width/2)*s-shot.scroll.clientWidth/2)});}
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{syncing=false;}));};
+const renderCmp=()=>{if(cmp===null)return;
+  $('cmpTest').textContent=$('title').dataset.test||$('crumbTest').textContent;
+  $('cmpStep').textContent=(cmp.step.id+' '+cmp.step.name).trim();
+  $('cmpMeta').textContent=fill('workbench.page.cmp.meta',{file:cmp.file,width:cmp.viewport.width,height:cmp.viewport.height,run:cmp.run});
+  const badge=$('cmpBadge');badge.className='bdg '+(cmp.met?'pass':'fail');badge.innerHTML=cmp.met?ICON.ok:ICON.fail;badge.append(T['workbench.page.cmp.'+(cmp.met?'met':'notMet')]);
+  $('cmpBuild').hidden=cmp.met||cmp.buildable!==true;
+  railRender();cardsRender();tabsRender();panelRender();};
+for(const id of ['cmpBack','cmpBack2'])$(id).addEventListener('click',()=>openCompare(false));
+// Building goes through the chat, which asks before the agent starts: the page is back at the workbench, the chat in view.
+$('cmpBuild').addEventListener('click',()=>{openCompare(false);try{const result=window.${DESIGN_BINDING}?.('build');result?.catch?.(()=>{});}catch{}});
+const pictureOf=(given)=>({src:/^data:image[/]png;base64,/.test(String(given?.src))?String(given.src):'',width:Math.max(1,Number(given?.width)||1),height:Math.max(1,Number(given?.height)||1)});
+const boxOf=(given)=>given&&typeof given==='object'?{x:Number(given.x)||0,y:Number(given.y)||0,width:Number(given.width)||0,height:Number(given.height)||0}:undefined;
+const compareOf=(given)=>({step:{id:String(given.step?.id??''),name:String(given.step?.name??'')},file:String(given.file??''),
+  viewport:{width:Math.max(1,Number(given.viewport?.width)||1),height:Math.max(1,Number(given.viewport?.height)||1)},run:String(given.run??''),met:given.met===true,
+  design:pictureOf(given.design),app:pictureOf(given.app),buildable:given.buildable===true,
+  deviations:(Array.isArray(given.deviations)?given.deviations:[]).map((d)=>({kind:['missing','text','style','layout'].includes(d?.kind)?d.kind:'missing',text:String(d?.text??''),design:boxOf(d?.design),app:boxOf(d?.app)})),
+  extra:(Array.isArray(given.extra)?given.extra:[]).map(String),
+  steps:(Array.isArray(given.steps)?given.steps:[]).map((s)=>({id:String(s?.id??''),name:String(s?.name??''),status:['met','deviations','pending','unknown'].includes(s?.status)?s.status:'unknown',count:Number(s?.count)||0}))});
 // The badge shows "Settings" while the settings page is open; the run's title waits here.
 let titleNodes=[];
 window.workbench={
   viewport:(size)=>{pinned=size&&size.width>0&&size.height>0?{width:Math.round(size.width),height:Math.round(size.height)}:null;fitApp();},
-  design:(given)=>{design=given?{src:String(given.src),opacity:Math.min(1,Math.max(0.05,Number(given.opacity)||0.5)),blend:given.blend==='difference'?'difference':'normal',width:Number(given.width)>0?Number(given.width):null,mode:DESIGN_MODES.includes(given.mode)?given.mode:DESIGN_MODES[0]}:null;
-    designRows(given?.rows??[]);fitApp();},
-  // While the host captures a step: the frame unscaled, on top, without the overlay; resolves once it is laid out.
+  // The comparison (see above); open true or false opens or closes the page, without it the page stays as it is.
+  design:(given,open)=>{cmp=given!==null&&typeof given==='object'?compareOf(given):null;
+    if(cmp===null){if(cmpOn())openCompare(false,false);applyCmp();return;}
+    if(cmpSel<0||cmpSel>=cmp.deviations.length)cmpSel=cmp.deviations.length>0?0:-1;
+    applyCmp();if(cmpOn())renderCmp();
+    if(open===true)openCompare(true,false);else if(open===false)openCompare(false,false);},
+  designAside:(on)=>{cmpAside=on===true;applyCmp();},
+  // While the host captures a step: the frame unscaled and on top, also over the comparison page; resolves once it is laid out.
   unscaled:(on)=>{document.body.classList.toggle('capture',on===true);return new Promise((resolve)=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(true))));},
   // The first entry is the title: [label, sentence, badge]. The badge shows the mode only ("Claude records"), the breadcrumb
   // already names the test; the sentence is its tooltip. Without a badge it shows the sentence. The rest are the facts, shown
@@ -934,7 +1124,7 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
     // confirms it in the chat, which has an opaque origin and a token the application cannot read (chat.mjs).
     let bench = benches.get(page);
     if (bench === undefined) {
-        const holder = { refresh: null, rebuild: null, html: null, chat: null, app: null, navigations: new WeakMap(), fullscreen: null, chatPop: null, state: null, debug: null, designMode: null };
+        const holder = { refresh: null, rebuild: null, html: null, chat: null, app: null, navigations: new WeakMap(), fullscreen: null, chatPop: null, state: null, debug: null, designOpen: null, designBuild: null };
         bench = holder;
         benches.set(page, holder);
         // The workbench lives at the application's address: the tool answers only the top window's document.
@@ -986,10 +1176,12 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
             if (frame !== page.mainFrame() || holder.chatPop === null) return;
             await holder.chatPop(on === true);
         });
-        // The target design's mode after F7 (beside the app, over it, hidden): the host keeps it for reloads.
-        await page.exposeBinding(DESIGN_BINDING, ({ frame }, mode) => {
-            if (frame !== page.mainFrame() || holder.designMode === null || !DESIGN_MODES.includes(mode)) return;
-            holder.designMode(mode);
+        // The comparison page: open or closed (the host keeps it for reloads), and its "have the agent build it", which the host
+        // only takes as a question in the chat (the page shares its origin with the app).
+        await page.exposeBinding(DESIGN_BINDING, async ({ frame }, action, on) => {
+            if (frame !== page.mainFrame()) return;
+            if (action === 'open' && holder.designOpen !== null) holder.designOpen(on === true);
+            else if (action === 'build' && holder.designBuild !== null) await holder.designBuild();
         });
         // caw.ready() and caw.locator(el) in the console: answers only, from whatever document calls them.
         await page.exposeBinding(READY_BINDING, async () => (holder.debug === null ? null : holder.debug.ready()));
@@ -1013,7 +1205,7 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
     const view = frameView(page, frame, () => bench.app);
     const call = (name, ...args) => page.evaluate(([fn, values]) => window.workbench?.[fn](...values), [name, args]).catch(() => {});
     // The host remembers what it has shown and restores it after a workbench reload.
-    const shown = { facts: null, steps: null, states: new Map(), points: new Map(), url: null, mood: null, left: null, chatState: null, transport: null, solo: false, chatPop: false, catalog: null, viewport: null, settings: null, design: null };
+    const shown = { facts: null, steps: null, states: new Map(), points: new Map(), url: null, mood: null, left: null, chatState: null, transport: null, solo: false, chatPop: false, catalog: null, viewport: null, settings: null, design: null, designOpen: false };
     // The host remembers solo view so it comes back after a workbench reload. The browser window stays untouched.
     bench.fullscreen = async (on) => {
         shown.solo = on;
@@ -1022,9 +1214,12 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
     bench.chatPop = async (on) => {
         shown.chatPop = on;
     };
-    bench.designMode = (mode) => {
-        if (shown.design !== null) shown.design = { ...shown.design, mode };
+    bench.designOpen = (on) => {
+        shown.designOpen = shown.design !== null && on;
     };
+    bench.designBuild = null;
+    /** What the page gets of a comparison: the host's, and whether its build button has someone to answer it. */
+    const pageDesign = (data) => (data === null ? null : { ...data, buildable: bench.designBuild !== null });
     // When an item started running: the host measures the duration so it survives a workbench reload.
     const started = new Map();
     // The step that started last: Claude's actions land there while recording.
@@ -1067,7 +1262,7 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
             if (shown.chatPop) await call('chatPop', true);
             if (shown.catalog !== null) await call('states', shown.catalog);
             if (shown.viewport !== null) await call('viewport', shown.viewport);
-            if (shown.design !== null) await call('design', pageDesign(shown.design));
+            if (shown.design !== null) await call('design', pageDesign(shown.design), shown.designOpen);
             await call('refreshable', bench.refresh !== null);
             // Reloaded by the human (F5, browser button) or by the application itself (top.location, form with target=_top).
             // Only the former disturbs a running test; the latter is the application's behaviour.
@@ -1217,19 +1412,28 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
             return call('viewport', shown.viewport);
         },
         /**
-         * The step's target design with the app frame (F7 goes round its modes): { src (data URL), opacity and blend ('normal'
-         * or 'difference') for the overlay, width (CSS px, the recorded viewport's), rows: [{ text, element? }], mode (one of
-         * DESIGN_MODES) }; null removes it. Without `mode` a design already shown keeps the mode F7 left it in (rows listed
-         * anew), a new one starts side by side. The page gets the rows' texts only; a row's element (a CSS path in the app)
-         * stays with the host.
+         * The comparison with the step's target design, a page over the workbench (F7 opens and closes it, Esc closes it):
+         * { step: { id, name }, file, viewport, run, met, design and app: { src (PNG data URL), width, height }, deviations:
+         * [{ kind: missing | text | style | layout, text, design?, app? }] with boxes in CSS px of each image, extra (lines only
+         * the app has), steps: [{ id, name, status: met | deviations | pending | unknown, count? }] for the rail }; null removes
+         * it. `open` true or false opens or closes the page; without it the page stays as the person left it.
          */
-        design: (given) => {
-            shown.design = given === null || given === undefined ? null : { ...given, mode: given.mode ?? shown.design?.mode ?? DESIGN_MODES[0] };
-            return call('design', shown.design === null ? null : pageDesign(shown.design));
+        design: (given, { open } = {}) => {
+            shown.design = given ?? null;
+            if (shown.design === null) shown.designOpen = false;
+            else if (typeof open === 'boolean') shown.designOpen = open;
+            return call('design', pageDesign(shown.design), ...(typeof open === 'boolean' ? [open] : []));
         },
+        /** Who answers the comparison page's "have the agent build it" (no arguments); null hides the button. */
+        onDesignBuild: (handler) => {
+            bench.designBuild = typeof handler === 'function' ? handler : null;
+            return shown.design === null ? undefined : call('design', pageDesign(shown.design));
+        },
+        /** While the host operates the app (restoring a state), the comparison page steps aside; the app is under it. */
+        designAside: (on) => call('designAside', on === true),
         /**
          * Runs `shoot` while the app frame shows unscaled at its recorded size (a pinned viewport is scaled down to fit the pane):
-         * the capture of a step is then the same as headless. The overlay is hidden meanwhile.
+         * the capture of a step is then the same as headless. It lies over the comparison page meanwhile.
          */
         unscaled: async (shoot) => {
             await call('unscaled', true);

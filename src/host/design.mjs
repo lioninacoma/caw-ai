@@ -431,18 +431,22 @@ export const layoutMeasures = (target, actual) => {
 const pixels = (value) => `${Math.round(value)}px`;
 const where = (place, of) => t(`session.design.where.${place}`, { of });
 
-/** The layout deviations beyond the tolerance as lines. */
-const layoutLines = (measures, tolerance) => measures.flatMap((measure) => {
-    const { type, a, b } = measure;
-    if (type === 'relation') return [t('session.design.moved', { element: b.shown, was: where(measure.target, a.shown), now: where(measure.actual, a.shown) })];
-    if (Math.abs(measure.actual - measure.target) <= tolerance) return [];
-    const was = pixels(measure.target);
-    const now = pixels(measure.actual);
-    if (was === now) return [];
-    if (type === 'size') return [`${b.shown}: ${measure.name} ${was} → ${now}`];
-    if (type === 'gap') return [t('session.design.gap', { from: a.shown, to: b.shown, was, now })];
-    return [t('session.design.indent', { from: a === null ? t('session.design.page') : a.shown, to: b.shown, was, now })];
-});
+/** The layout deviations beyond the tolerance: { text, design, app } with the element each is about, in the design and in the app. */
+const layoutItems = (measures, tolerance, actual) => {
+    const present = new Map(actual.map((element) => [element.key, element]));
+    return measures.flatMap((measure) => {
+        const { type, a, b } = measure;
+        const item = (text) => [{ text, design: b, app: present.get(b.key) }];
+        if (type === 'relation') return item(t('session.design.moved', { element: b.shown, was: where(measure.target, a.shown), now: where(measure.actual, a.shown) }));
+        if (Math.abs(measure.actual - measure.target) <= tolerance) return [];
+        const was = pixels(measure.target);
+        const now = pixels(measure.actual);
+        if (was === now) return [];
+        if (type === 'size') return item(`${b.shown}: ${measure.name} ${was} → ${now}`);
+        if (type === 'gap') return item(t('session.design.gap', { from: a.shown, to: b.shown, was, now }));
+        return item(t('session.design.indent', { from: a === null ? t('session.design.page') : a.shown, to: b.shown, was, now }));
+    });
+};
 
 /**
  * Texts of the design that are not data and not in the app: one in the same place (after the same element) with the same
@@ -465,14 +469,18 @@ const textChanges = (target, actual) => {
     return { changed, missing };
 };
 
-const styleLinesOf = (target, actual) => {
+const styleItemsOf = (target, actual) => {
     const now = new Map(actual.map((element) => [element.key, element]));
     return target.flatMap((element) => {
         const other = now.get(element.key);
         if (other === undefined) return [];
-        return Object.entries(element.style).filter(([name, value]) => other.style[name] !== undefined && other.style[name] !== value).map(([name, value]) => `${element.shown}: ${name} ${value} → ${other.style[name]}`);
+        return Object.entries(element.style).filter(([name, value]) => other.style[name] !== undefined && other.style[name] !== value)
+            .map(([name, value]) => ({ text: `${element.shown}: ${name} ${value} → ${other.style[name]}`, design: element, app: other }));
     });
 };
+
+/** Where an element is on its page, in CSS px of the page (not of the viewport): { x, y, width, height }. */
+const boxOf = (element) => (element === undefined || element === null ? undefined : { x: element.x, y: element.y, width: element.width, height: element.height });
 
 /**
  * The structure of a page as caw compares it: control lines, view lines, the styles per control (the same control twice is
@@ -518,27 +526,31 @@ export const structureOf = async (page, { secrets = [], look = null, texts = [] 
 };
 
 /**
- * Target against actual. Missing lines, differing styles, a layout that differs beyond the tolerance and changed texts mean the
- * design is not met; extra lines are only reported, since a design usually leaves out the app's frame (navigation, header).
- * Data (layoutProbe) is compared only by place and font.
- * @returns { met, missing, extra, styleDiffs, layoutDiffs, textDiffs } with lines as `button "Save": color #ffffff → #000000`,
- *          `gap heading "Note" → textarea "Note": 8px → 32px`, `text heading "Note" → "Notes"`
+ * Target against actual, with every deviation as an item for the comparison page (open --design): its kind (missing, text,
+ * style, layout), its line, and where its element is in the design and in the app (`design`, `app`: boxes in CSS px of the
+ * page). A view line without an element of its own has no box, a missing element none in the app.
+ * @returns compareStructure's result and `deviations`: [{ kind, text, design?, app? }]
  */
-export const compareStructure = (target, actual, { tolerance = LAYOUT_TOLERANCE_PX } = {}) => {
+export const compareDetailed = (target, actual, { tolerance = LAYOUT_TOLERANCE_PX } = {}) => {
     const has = new Set(actual.lines);
     const wanted = new Set(target.lines);
     let missing = target.lines.filter((line) => !has.has(line));
     let extra = actual.lines.filter((line) => !wanted.has(line));
-    const styleDiffs = Object.entries(target.styles).flatMap(([control, style]) => {
-        const now = actual.styles[control];
-        if (now === undefined) return [];
-        return Object.entries(style).filter(([name, value]) => now[name] !== undefined && now[name] !== value).map(([name, value]) => `${control}: ${name} ${value} → ${now[name]}`);
-    });
     const elements = target.elements ?? [];
     const present = actual.elements ?? [];
-    styleDiffs.push(...styleLinesOf(elements, present));
+    const designed = new Map(elements.map((element) => [element.key, element]));
+    const shown = new Map(present.map((element) => [element.key, element]));
+    const styleItems = Object.entries(target.styles).flatMap(([control, style]) => {
+        const now = actual.styles[control];
+        if (now === undefined) return [];
+        return Object.entries(style).filter(([name, value]) => now[name] !== undefined && now[name] !== value)
+            .map(([name, value]) => ({ text: `${control}: ${name} ${value} → ${now[name]}`, design: designed.get(control), app: shown.get(control) }));
+    });
+    styleItems.push(...styleItemsOf(elements, present));
+    const styleDiffs = styleItems.map(({ text }) => text);
     const { changed, missing: gone } = textChanges(elements, present);
-    const textDiffs = changed.map(({ element, now }) => t('session.design.text', { element: element.tag === 'text' ? `"${element.text}"` : element.shown, now: `"${now.text}"` }));
+    const textItems = changed.map(({ element, now }) => ({ text: t('session.design.text', { element: element.tag === 'text' ? `"${element.text}"` : element.shown, now: `"${now.text}"` }), design: element, app: now }));
+    const textDiffs = textItems.map(({ text }) => text);
     // A changed heading or link is told by its text, not again as a missing and an extra view line.
     const quoted = (texts) => (line) => line.startsWith('- ') && texts.some((text) => line.includes(`"${text}"`));
     const wasTold = quoted(changed.map(({ element }) => element.text));
@@ -546,8 +558,32 @@ export const compareStructure = (target, actual, { tolerance = LAYOUT_TOLERANCE_
     missing = missing.filter((line) => !wasTold(line));
     extra = extra.filter((line) => !nowTold(line));
     for (const element of gone) if (!missing.some((line) => line.includes(`"${element.text}"`))) missing.push(element.shown);
-    const layoutDiffs = layoutLines(layoutMeasures(elements, present), tolerance);
-    return { met: missing.length === 0 && styleDiffs.length === 0 && layoutDiffs.length === 0 && textDiffs.length === 0, missing, extra, styleDiffs, layoutDiffs, textDiffs };
+    const layoutFound = layoutItems(layoutMeasures(elements, present), tolerance, present);
+    const layoutDiffs = layoutFound.map(({ text }) => text);
+    // A missing line's element in the design: a control or an element by its key, else a text the line names.
+    const missingElement = (line) => designed.get(line) ?? elements.find((element) => element.shown === line)
+        ?? elements.find((element) => element.kind === 'text' && !element.data && element.text !== '' && line.includes(`"${element.text}"`));
+    const item = (kind) => ({ text, design, app }) => ({ kind, text, ...(design === undefined ? {} : { design: boxOf(design) }), ...(app === undefined ? {} : { app: boxOf(app) }) });
+    const deviations = [
+        ...missing.map((line) => item('missing')({ text: line, design: missingElement(line) })),
+        ...textItems.map(item('text')),
+        ...styleItems.map(item('style')),
+        ...layoutFound.map(item('layout')),
+    ];
+    return { met: missing.length === 0 && styleDiffs.length === 0 && layoutDiffs.length === 0 && textDiffs.length === 0, missing, extra, styleDiffs, layoutDiffs, textDiffs, deviations };
+};
+
+/**
+ * Target against actual. Missing lines, differing styles, a layout that differs beyond the tolerance and changed texts mean the
+ * design is not met; extra lines are only reported, since a design usually leaves out the app's frame (navigation, header).
+ * Data (layoutProbe) is compared only by place and font.
+ * @returns { met, missing, extra, styleDiffs, layoutDiffs, textDiffs } with lines as `button "Save": color #ffffff → #000000`,
+ *          `gap heading "Note" → textarea "Note": 8px → 32px`, `text heading "Note" → "Notes"`
+ */
+export const compareStructure = (target, actual, options) => {
+    const found = compareDetailed(target, actual, options);
+    delete found.deviations;
+    return found;
 };
 
 /**

@@ -845,9 +845,20 @@ export const runFlow = async (options) => {
              * @param restore    reloads and plays the steps up to the state; returns the message
              * @param onRefresh  tells the workbench who refreshes (null: locked)
              * @param onReload   after reloading the whole workbench; returns the unsubscribe function
+             * @param onDesignBuild (handler | null) for open --design: the comparison page's "have the agent build it" calls the
+             *                  handler with { step, file, deviations }
              */
-            develop: async ({ chat, talk, signedIn = false, until: state, entry: atEntry = false, refresh, restore, onRefresh, onReload, toCode, restoreTo, onPickState }) => {
+            develop: async ({ chat, talk, signedIn = false, until: state, entry: atEntry = false, refresh, restore, onRefresh, onReload, toCode, restoreTo, onPickState, onDesignBuild }) => {
                 let talker = null;
+                // A message for the agent: the running conversation gets it, else the agent starts with it.
+                const toAgent = async (message, element) => {
+                    if (talker !== null && !talker.over()) {
+                        talker.send(message, element);
+                        return;
+                    }
+                    const ready = await fixer.open(chat, (text) => { chat.progress(t('run.flow.claudeUnavailable', { message: text })); });
+                    if (ready !== null) talker = talk({ sandbox: ready, spec: current }, message, element);
+                };
                 const at = state === undefined ? t('run.develop.atEnd') : t('run.develop.atState', { state });
                 // open: no steps, so nothing to restore; only refresh and questions.
                 const opened = spec.steps.length === 0;
@@ -914,6 +925,26 @@ export const runFlow = async (options) => {
                     toCode(picked);
                     chat.notice(t('run.develop.picked', { label: picked.label }));
                 });
+                // The comparison page's "have the agent build it": the design card's ask option (design.unmet), confirmed in the chat
+                // like a state picked with F1, since the page shares its origin with the app. One question at a time.
+                let building = false;
+                onDesignBuild?.(async ({ step, file, deviations }) => {
+                    if (building || deviations.length === 0) return;
+                    building = true;
+                    let answer;
+                    try {
+                        answer = await decideOn(chat, {
+                            id: 'design.unmet',
+                            context: { test: spec.id, step, reason: deviations.join('; '), kind: 'design', failures: 0 },
+                            question: t('run.develop.buildDesignAsk', { id: step, file, count: deviations.length }),
+                            options: [BUILD_DESIGN, CLOSE],
+                        });
+                    } finally {
+                        building = false;
+                    }
+                    if (answer !== BUILD_DESIGN.id) return;
+                    await toAgent(t('run.develop.buildDesignTask', { id: step, file, list: deviations.join('; ') }));
+                });
                 try {
                 // With the own Claude Code session as agent it does not wait for the first question in the chat: whoever works in
                 // Claude Code wants to look at the page in that state right away. It gets questions from the chat as usual afterwards.
@@ -931,18 +962,14 @@ export const runFlow = async (options) => {
                             await attempt(RESTORE.label, restore);
                         });
                     } else if (answer.message !== undefined) {
-                        if (talker !== null && !talker.over()) {
-                            talker.send(answer.message, answer.element);
-                            continue;
-                        }
-                        const ready = await fixer.open(chat, (message) => { chat.progress(t('run.flow.claudeUnavailable', { message })); });
-                        if (ready !== null) talker = talk({ sandbox: ready, spec: current }, answer.message, answer.element);
+                        await toAgent(answer.message, answer.element);
                     }
                 }
                 } finally {
                     over = true;
                     onRefresh?.(null);
                     onPickState?.(null);
+                    onDesignBuild?.(null);
                     offReload?.();
                     chat.onPicked?.(null);
                     // Also when the window closes or on error: Claude does not keep running and uses no tokens.

@@ -1,14 +1,15 @@
 // Target designs (design.mjs): the structure comparison as pure functions, what caw_design may write, and rendering a design
 // against a page in real Chrome (skipped without Chrome).
+/* global document, scrollX, scrollY, window -- inside page.evaluate callbacks */
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 
-import { LAYOUT_TOLERANCE_PX, compareStructure, createDesignJudge, designKind, designPath, designProblem, isDesignName, layoutMeasures, listDesigns, maskedView, relation, missingNeeds, normalStyle, renderDesign, structureFrom, structureOf, viewLines, writeDesign } from '../src/host/design.mjs';
+import { LAYOUT_TOLERANCE_PX, compareDetailed, compareStructure, createDesignJudge, designKind, designPath, designProblem, isDesignName, layoutMeasures, listDesigns, maskedView, relation, missingNeeds, normalStyle, renderDesign, structureFrom, structureOf, viewLines, writeDesign } from '../src/host/design.mjs';
 import { frameworkOf } from '../src/host/framework/index.mjs';
-import { captureStep, createLook, learnLook, learnedLooks, maskProbe, styleLines, withAdoptedLooks } from '../src/host/visual.mjs';
+import { captureStep, createLook, designComparison, learnLook, learnedLooks, maskProbe, styleLines, withAdoptedLooks } from '../src/host/visual.mjs';
 import { launchChrome } from './chrome.mjs';
 
 test('View lines (target designs): ARIA lines without links, field contents, long texts and numbers', () => {
@@ -304,6 +305,60 @@ test('rendered: layout, texts and looks of a design; the app with other data mee
             return structureOf(page);
         })()));
         assert.deepEqual(open, ['Text: "Done" → "Open"'], 'without the mark it is a static text');
+    } finally {
+        await context.close();
+    }
+});
+
+test('rendered: every deviation with where its element is in the design and in the app (the comparison page), the app\'s boxes moved by its scroll', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    const viewport = { width: 390, height: 844 };
+    const cawDir = mkdtempSync(join(tmpdir(), 'caw-compare-'));
+    t.after(() => rmSync(cawDir, { recursive: true, force: true }));
+    writeDesign(cawDir, 'design/note.html', Buffer.from(noteScreen()));
+    const rendered = await renderDesign(browser, noteScreen(), viewport);
+    const target = await structureOf(rendered);
+    const boxIn = (page, selector) => page.evaluate((query) => {
+        const rect = document.querySelector(query).getBoundingClientRect();
+        return { x: Math.round(rect.left + scrollX), y: Math.round(rect.top + scrollY), width: Math.round(rect.width), height: Math.round(rect.height) };
+    }, selector);
+    const near = (a, b) => ['x', 'y', 'width', 'height'].every((key) => Math.abs(a[key] - b[key]) <= 1);
+    const saveNote = '#save-note';
+    const designBox = await boxIn(rendered, saveNote);
+    await rendered.context().close();
+    const context = await browser.newContext({ viewport });
+    try {
+        const page = await context.newPage();
+        await page.setContent(noteScreen({ frame: true, noteClass: 'btn' }));
+        const found = compareDetailed(target, await structureOf(page));
+        assert.equal(compareStructure(target, await structureOf(page)).deviations, undefined, 'the judge keeps its result as it was');
+        const style = found.deviations.find(({ text }) => text === 'button "Save note": background-color #5f8f6b → #e5533a');
+        assert.equal(style?.kind, 'style', JSON.stringify(found.deviations));
+        assert.ok(near(style.design, designBox), `${JSON.stringify(style.design)} ${JSON.stringify(designBox)}`);
+        assert.ok(near(style.app, await boxIn(page, saveNote)), 'the same button in the app');
+        await page.setContent(noteScreen({ frame: true, saveNote: 'Save Note' }));
+        const missing = compareDetailed(target, await structureOf(page)).deviations.find(({ text }) => text === 'button "Save note"');
+        assert.equal(missing.kind, 'missing');
+        assert.ok(near(missing.design, designBox), 'a missing element has its place in the design');
+        assert.equal(missing.app, undefined, 'and none in the app');
+        await page.setContent(noteScreen({ frame: true, heading: 'Notes' }));
+        const text = compareDetailed(target, await structureOf(page)).deviations.find(({ kind }) => kind === 'text');
+        assert.ok(text.design !== undefined && text.app !== undefined, JSON.stringify(text));
+        await page.setContent(noteScreen({ frame: true, noteMargin: 'calc(1.2rem + 24px)' }));
+        const layout = compareDetailed(target, await structureOf(page)).deviations.filter(({ kind }) => kind === 'layout');
+        assert.ok(layout.length > 0 && layout.every((item) => item.design !== undefined && item.app !== undefined), JSON.stringify(layout));
+        // The comparison page's data: the design as a whole page, the app as captured, its boxes on the captured part.
+        await page.setContent(noteScreen({ frame: true, noteClass: 'btn' }).replace('</body>', '<div style="height:2000px"></div></body>'));
+        await page.evaluate(() => window.scrollTo(0, 40));
+        const shown = await designComparison({ cawDir, file: 'design/note.html', viewport, page, capture: () => captureStep(page), launch: () => launchChrome() });
+        assert.equal(shown.met, false);
+        assert.deepEqual([shown.app.width, shown.app.height], [390, 844], 'the app at the recorded size');
+        assert.equal(shown.design.width, 390);
+        assert.match(shown.design.src, /^data:image\/png;base64,/);
+        const scrolled = shown.deviations.find((item) => item.text === 'button "Save note": background-color #5f8f6b → #e5533a');
+        const appBox = await boxIn(page, saveNote);
+        assert.ok(near(scrolled.app, { ...appBox, y: appBox.y - 40 }), `${JSON.stringify(scrolled.app)} ${JSON.stringify(appBox)}`);
+        assert.equal(await designComparison({ cawDir, file: 'design/none.html', viewport, page, capture: () => captureStep(page), launch: () => launchChrome() }), null, 'no file, nothing to compare');
     } finally {
         await context.close();
     }
