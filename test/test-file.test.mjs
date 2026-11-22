@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import { assertPlayable, buildReplay, cutReplay, groupSteps, missingRemembered, replayBefore, replayOf, replayToEntry, replayUpToStale, trailingNumbers } from '../src/host/replay.mjs';
 import { brokenChain, draftIds, draftPath, humanFields, loadDraft, loadTest, parsePlan, parseRecordings, parseTest, pendingSteps, recordingHints, recordingPath, redStep, renderPlan, renderTest, setStepDesign, setStepLooks, staleSteps, stepHash, testExists, testPath, writeTest } from '../src/host/test-file.mjs';
 import { composeTest, planView, readPlan, replaceStep } from '../src/host/test-plan.mjs';
+import { learningPath, withLearning } from '../src/host/learning.mjs';
 
 const NEXT = "getByRole('button', { name: 'Next', exact: true })";
 const plain = (id, extra = {}) => ({ id, name: `Step ${id}`, do: `Do ${id}`, expect: `${id} is there`, ...extra });
@@ -370,29 +371,33 @@ steps:
     assert.deepEqual(read.knownMessages, ['Yes No']);
 });
 
-test('two files: when the tool learns, only the recording changes', (t) => {
+test('two files: effects still learning stay in .caw/learning; frozen, only the recording changes', (t) => {
     const root = testRoot(t);
     const whole = spec(recorded('S1'), recorded('S2', [], { after: 'S1' }));
     writeTest(root, whole);
     const description = readFileSync(testPath(root, 't'), 'utf8');
-    const learned = { ...whole, steps: [whole.steps[0], { ...whole.steps[1], recording: { ...whole.steps[1].recording, effects: { runs: 1, actions: [{ action: 1, controls: ['+ x'] }] } } }] };
-    assert.equal(writeTest(root, learned, new Set(['S2'])), 'caw/recordings/t.yaml');
+    const withRuns = (runs) => ({ ...whole, steps: [whole.steps[0], { ...whole.steps[1], recording: { ...whole.steps[1].recording, effects: { runs, actions: [{ action: 1, controls: ['+ x'] }] } } }] });
+    assert.equal(writeTest(root, withRuns(1), new Set(['S2'])), 'keine Änderung');
+    assert.equal(loadTest(root, 't').steps[1].recording.effects, undefined, 'the recording does not get a learning state');
+    assert.equal(withLearning(root, loadTest(root, 't')).steps[1].recording.effects.runs, 1);
+    assert.equal(writeTest(root, withRuns(5), new Set(['S2'])), 'caw/recordings/t.yaml');
     assert.equal(readFileSync(testPath(root, 't'), 'utf8'), description);
-    assert.deepEqual(loadTest(root, 't').steps[1].recording.effects.runs, 1);
-    assert.equal(writeTest(root, learned, new Set(['S2'])), 'keine Änderung');
+    assert.equal(loadTest(root, 't').steps[1].recording.effects.runs, 5);
+    assert.equal(existsSync(learningPath(root, 't')), false, 'frozen, nothing is left to learn');
+    assert.equal(writeTest(root, withRuns(5), new Set(['S2'])), 'keine Änderung');
 });
 
-test('two files: a learned look goes into the recording; written once', (t) => {
+test('two files: a look still learning stays in .caw/learning; frozen or adopted it goes into the recording, once', (t) => {
     const root = testRoot(t);
     const whole = spec(recorded('S1'), recorded('S2', [], { after: 'S1' }));
     writeTest(root, whole);
     const description = readFileSync(testPath(root, 't'), 'utf8');
     const visual = { runs: 1, styles: ['button ×1: color #ffffff'] };
     const learned = { ...whole, steps: [whole.steps[0], { ...whole.steps[1], recording: { ...whole.steps[1].recording, visual } }] };
-    assert.equal(writeTest(root, learned, new Set(['S2'])), 'caw/recordings/t.yaml');
+    assert.equal(writeTest(root, learned, new Set(['S2'])), 'keine Änderung');
     assert.equal(readFileSync(testPath(root, 't'), 'utf8'), description, 'the description stays');
-    assert.deepEqual(loadTest(root, 't').steps[1].recording.visual, visual);
-    assert.equal(writeTest(root, learned, new Set(['S2'])), 'keine Änderung', 'the same look is not written again');
+    assert.equal(loadTest(root, 't').steps[1].recording.visual, undefined);
+    assert.deepEqual(withLearning(root, loadTest(root, 't')).steps[1].recording.visual, visual);
     const adopted = { ...learned, steps: [learned.steps[0], { ...learned.steps[1], recording: { ...learned.steps[1].recording, visual: { runs: 2, styles: visual.styles, adopted: '2026-11-21' } } }] };
     assert.equal(writeTest(root, adopted, new Set(['S2'])), 'caw/recordings/t.yaml');
     assert.deepEqual(loadTest(root, 't').steps[1].recording.visual, { runs: 2, styles: visual.styles, adopted: '2026-11-21' });

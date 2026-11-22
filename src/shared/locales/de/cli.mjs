@@ -357,7 +357,7 @@ Browser:
     'cli.modeCi': 'ohne Chat, weil die Variable CI gesetzt ist',
     'cli.modeChat': 'mit Chat{advice}',
     'cli.modeLearnsNo': 'nein',
-    'cli.modeLearnsYes': 'ja, fehlende Vergleichswerte und Effekte in {file}',
+    'cli.modeLearnsYes': 'ja, fehlende Vergleichswerte in {file}; Effekte und Aussehen lernen in .caw/learning und kommen eingefroren hinein',
     'cli.modeAdvice': ' und Empfehlungen von {agent} (--explain, kostet Token)',
     'cli.changed': 'Geändert: {files}',
     'cli.changedWhat': '{file} ({what})',

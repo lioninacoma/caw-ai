@@ -10,7 +10,7 @@ import { LEARN_RUNS, isEffectCause } from './effects.mjs';
 import { locatorLabel, locatorText } from './locator.mjs';
 import { redStep, staleSteps } from './test-file.mjs';
 import { redOf } from './bugfix.mjs';
-import { withAdoptedLooks, withLooks } from './visual.mjs';
+import { LOOK_LEARN_RUNS, withAdoptedLooks, withLooks } from './visual.mjs';
 import { decide as decideOn } from './decisions.mjs';
 import { samePlanStep } from './test-plan.mjs';
 
@@ -785,14 +785,26 @@ export const runFlow = async (options) => {
             current = withBaselines(current, played.baselines);
             log(t('run.flow.baselinesAdded', { ids: [...played.baselines.keys()].join(', '), file: adopt(current, new Set(played.baselines.keys()), { learned: 'baselines' }) }));
         }
+        // Still learning: kept in .caw/learning, one line with the count. Frozen: written into the recording, once.
         if (played.effects !== undefined) {
             current = withEffects(current, played.effects);
-            log(t('run.flow.effectsLearned', { ids: [...played.effects.keys()].join(', '), file: adopt(current, new Set(played.effects.keys()), { learned: 'effects' }) }));
+            settleLearned(played.effects, (effects) => effects.runs, LEARN_RUNS, 'effects');
         }
         if (played.looks !== undefined) {
             current = withLooks(current, played.looks);
-            log(t('run.flow.looksLearned', { ids: [...played.looks.keys()].join(', '), file: adopt(current, new Set(played.looks.keys()), { learned: 'looks' }) }));
+            settleLearned(played.looks, ({ visual }) => visual.runs, LOOK_LEARN_RUNS, 'looks');
         }
+    };
+    /** Writes what a run learned and says so: the steps still learning with their count, the frozen ones with the file. */
+    const settleLearned = (learnedMap, runsOf, of, kind) => {
+        const learning = [...learnedMap].filter(([, value]) => runsOf(value) < of);
+        const frozen = [...learnedMap.keys()].filter((id) => !learning.some(([other]) => other === id));
+        if (learning.length > 0) {
+            // The recording only changes here when an older one still carried a state that is not frozen: it moves to .caw/learning.
+            adopt(current, new Set(learning.map(([id]) => id)), { learned: kind });
+            log(t(`run.flow.${kind}Learning`, { list: learning.map(([id, value]) => `${id} ${runsOf(value)}/${of}`).join(', ') }));
+        }
+        if (frozen.length > 0) log(t(`run.flow.${kind}Frozen`, { ids: frozen.join(', '), file: adopt(current, new Set(frozen), { learned: kind }) }));
     };
     let target = null;
     let repaired = null;

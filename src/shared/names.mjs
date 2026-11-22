@@ -19,6 +19,11 @@ export const SELECTION_FILE = 'selection.json';
 /** The field paths of learned JSON response forms by their hash, under RUN_DIR: the recording keeps only the hash (effects.mjs). */
 export const FORMS_FILE = 'response-forms.json';
 /**
+ * Effects and looks still being learned, per test as `<test>.json`, under RUN_DIR: the recording only gets them once they are
+ * frozen (learning.mjs).
+ */
+export const LEARNING_DIR = 'learning';
+/**
  * A reproduction's --ref: an id from another tool (a ticket), kept opaque and never resolved by caw. Narrow characters so it
  * is safe in a file, a table cell and a command line.
  */

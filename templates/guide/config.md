@@ -30,7 +30,7 @@ automatically; then edit the file with your own Edit tool.
 | `visual` | `screenshots` (a `step-S<n>.png` per passed step) |
 | `visualIgnore` | CSS selectors whose controls a learned look leaves out of its style lines, e.g. a clock |
 | `maxActions` | The agent's action budget per run (default 100) |
-| `keepRuns` | how many run folders in `.caw/runs` caw keeps (default 30, 0 keeps all); older ones go when a run starts |
+| `keepRuns` | how many run folders in `.caw/runs` caw keeps (default 30, 0 keeps all); older ones go when a run starts; `.caw/learning` is not touched |
 | `lintCommand` | The project's lint command, named in recommendations |
 | `agent` | `{ "mode": "local"\|"docker"\|"session", "model", "maxBudgetUsd" }` |
 | `browser` | `channel`, `executablePath`, `locale`, `timezone`, `viewport` (`{ width, height }`): pin them for replay |

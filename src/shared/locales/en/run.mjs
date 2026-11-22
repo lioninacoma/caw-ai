@@ -266,7 +266,8 @@ export default {
     'run.flow.adviceInReport': ' The recommendations are in the report.',
     'run.flow.effectForgotten': 'Forgot learned effect of {id}: {file}. Please review and commit.',
     'run.flow.baselinesAdded': 'Baselines added for {ids}: {file}. Please review and commit.',
-    'run.flow.effectsLearned': 'Learned per-action effects for {ids}: {file}. Please review and commit.',
+    'run.flow.effectsLearning': 'Learning effects (kept in .caw/learning until frozen): {list}.',
+    'run.flow.effectsFrozen': 'Effects frozen for {ids}: {file}. Please review and commit.',
     'run.flow.rerunning': 'Testing again with the changed app ...',
 
     // Developing in a state
@@ -506,7 +507,8 @@ export default {
     'run.button.adoptLook': 'Adopt new look',
     'run.flow.lookNext': 'What the steps do works; only the look of {ids} differs from the learned one. If the new look is right, adopt it: that takes over the styles of all of them at once.',
     'run.flow.lookAdopted': 'New look of {ids} adopted: {file}. Please review and commit.',
-    'run.flow.looksLearned': 'Learned the look of {ids}: {file}. Please review and commit.',
+    'run.flow.looksLearning': 'Learning the look (kept in .caw/learning until frozen): {list}.',
+    'run.flow.looksFrozen': 'Look frozen for {ids}: {file}. Please review and commit.',
     'run.develop.noDesign': '{id} has no target design (design: in the test file), so there is nothing to show with the app.',
     'run.develop.designFailed': 'Design {file} could not be shown: {message}',
     'run.develop.designShown': 'Design {file} is shown beside the app {size}; F7 lays it over the app, hides it and puts it beside the app again. {count} deviations are listed below it.',

@@ -29,6 +29,7 @@ import { promptTerminal } from './decision-prompt.mjs';
 import { projectPath } from './project-path.mjs';
 import { changedFiles, shortHead } from './git.mjs';
 import { brokenChain, checkTest, draftIds, draftPath, environmentProblems, loadDraft, loadTest, pendingSteps, recordingHints, setStepLooks, staleSteps, testExists, testPath, withDefaults, writeTest } from './test-file.mjs';
+import { withLearning } from './learning.mjs';
 
 const TOOL_DIR = fileURLToPath(new URL('../../', import.meta.url));
 // Only what the container runs. Browser code and devlink stay out.
@@ -632,7 +633,8 @@ export const chooseEnv = (config, specs, { env, command, writes = true, ci = Boo
 const loadChecked = (root, id, given, command, { overlay, start } = {}) => {
     const config = loadConfig(root);
     if (!testExists(root, id)) throw testMissing(root, config, id, given);
-    const spec = withDefaults(loadTest(root, id), config);
+    // A run sees what this machine is still learning (.caw/learning) as part of the recording.
+    const spec = withLearning(root, withDefaults(loadTest(root, id), config));
     const target = chooseEnv(config, [spec], { env: given, command });
     return { config, spec, target, checked: checkTest(spec, target, config, { overlay, start }) };
 };
@@ -1377,11 +1379,11 @@ const runBatch = async (root, options, deps, { tests, target }) => {
     const learns = options.learn === true || (deps.interactive ?? (process.env.CI === undefined || process.env.CI === ''));
     const { effectsLearning } = await import('./replay.mjs');
     const { LEARN_RUNS } = await import('./effects.mjs');
-    /** The test's effects still being learned after its run (the file as the run left it), or undefined when none are. */
+    /** The test's effects still being learned after its run (.caw/learning as the run left it), or undefined when none are. */
     const learningOf = (dir, test, env, learning) => {
         let effects;
         try {
-            effects = effectsLearning(testLoader(dir)(test), env);
+            effects = effectsLearning(withLearning(dir, testLoader(dir)(test)), env);
         } catch {
             return undefined; // a test that does not load is reported as rejected by its own run
         }
@@ -1514,7 +1516,7 @@ const recordTest = async (root, options, deps = {}) => {
         if (position === -1) throw stepUnknown('cli.recordStepUnknown', known, step, { file: `${TEST_DIR}/${test}.yaml` });
         if (position > 0) return recordFrom(root, options, deps);
     }
-    const known = exists ? withDefaults(loadTest(root, test), config) : null;
+    const known = exists ? withLearning(root, withDefaults(loadTest(root, test), config)) : null;
     const target = chooseEnv(config, known === null ? [] : [known], { env: given, command: 'record', writes: !readOnly });
     const spec = known ?? draftTest(root, config, { id: test, target, role, readOnly });
     if (exists && contradicts(spec, { role, readOnly })) throw new CawError('usage', t('cli.recordExists', { test }));
@@ -1655,7 +1657,7 @@ const promoteGreen = async (root, options, deps, { config, test, target, red, re
         if (code !== EXIT.pass) return refused(t('cli.promoteOthersFailed', { test, target }));
     }
     // The draft as the green run left it, learned baselines included, becomes the test; red stays in the fix report only.
-    const written = writeTest(root, asTest(loadDraft(root, test)));
+    const written = writeTest(root, withLearning(root, asTest(loadDraft(root, test))));
     rmSync(draftPath(root, test));
     const git = deps.git ?? gitDefault;
     let changed = null;

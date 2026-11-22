@@ -9,7 +9,9 @@ project folder (on Windows from PowerShell). Report the result including the pat
   `--explain` (only on such environments, not in CI) the agent gives recommendations right away on errors or warnings; that costs
   tokens, so add it only if the person wants it. Outside CI every run writes missing baselines into the recording and says so; in CI only `--learn` does.
   A step's effects (its controls, requests, answers and console) are learned over its first five healthy runs and then frozen:
-  no run changes them any more, only the person's "{{label:run.button.forgetEffect}}". Pending steps (an unrecorded tail) do not
+  no run changes them any more, only the person's "{{label:run.button.forgetEffect}}". While they learn (and a look over its two
+  runs) they live in `.caw/learning/<test>.json` on that machine, not in the recording: only the run that freezes them writes the
+  recording, once, for the person to review and commit. One CI job never freezes them unless `.caw/learning` is cached. Pending steps (an unrecorded tail) do not
   fail a run; `--strict` makes them exit 4.
 - **CI:** `run --all --env <name> --headless` runs every test of that environment without chat. `--report junit=<file>`
   (typed by caw's assessment: `app`, `environment`, `test`, `unclear`), `summary=<file>` and `json=<file>` are repeatable;

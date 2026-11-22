@@ -353,7 +353,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.modeCi': 'no chat, because the variable CI is set',
     'cli.modeChat': 'with chat{advice}',
     'cli.modeLearnsNo': 'no',
-    'cli.modeLearnsYes': 'yes, missing baselines and effects into {file}',
+    'cli.modeLearnsYes': 'yes, missing baselines into {file}; effects and looks learn in .caw/learning and go into it once frozen',
     'cli.modeAdvice': ' and advice from {agent} (--explain, costs tokens)',
     'cli.changed': 'Changed: {files}',
     'cli.changedWhat': '{file} ({what})',

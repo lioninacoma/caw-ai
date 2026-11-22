@@ -21,7 +21,7 @@ caw is not a load test, not a crawler and not a test generator for apps the team
 - `caw/caw.md`: project notes every run agent reads (domain terms, peculiarities). Next to it the person may keep their own
   notes for every project, `caw.md` in caw's settings folder (task field `personalContext`); the project's notes win.
 - `caw/.env`: test users. Never read, written or asked for by you.
-- `.caw/`: runs, logs and reports (not checked in).
+- `.caw/`: runs, logs, reports and what this machine is still learning (`.caw/learning`), not checked in.
 
 ## Where you are
 
