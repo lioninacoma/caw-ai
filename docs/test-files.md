@@ -86,7 +86,7 @@ npx caw record create-ticket@S2 --env local # re-record from S2 to the end, S1 s
 
 ## Pending steps
 
-Steps you write at the end without recording them yet are **pending**: the part of the test still to be built, e.g. while you develop the feature they describe. They are the unrecorded steps after the last recorded one.
+Steps you write at the end without recording them yet are **pending**: the part of the test still to be built, e.g. while you develop the feature they describe. They are the unrecorded steps after the last recorded one. When the first of them has a [target design](#target-design), a run that ends healthy before it judges that design at its entry and names the verdict (`pendingDesign` in `result.json`: `step`, `file`, `verdict` and the deviations); that fails nothing.
 
 ```bash
 npx caw run create-ticket --env local          # S1–S3 play, exit 0, "Pending, not recorded yet: S4, S5"

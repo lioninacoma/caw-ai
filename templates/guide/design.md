@@ -44,3 +44,39 @@ met with "{{label:run.button.openDesign}}". The deviations below it are listed a
 (`caw_start` `run`) or run it yourself when they asked. A failed `design` step names what is missing and which styles differ:
 build exactly that. The test file stays as it is; there is nothing to fix in the step. When the first pending step's `needs`
 are all on the page at the end of a run, caw says it is ready to record: `caw record <test>@S<n> --env <env>`.
+
+**A pending step's design.** A pending step is not judged after its check (it has none yet). Instead, a run that ends healthy
+at the pending tail judges the first pending step's design at that step's entry, the state the run ended in: `result.json`
+and `caw_status` (`result.pendingDesign`: `step`, `file`, `verdict`, `missing`, `textDiffs`, `styleDiffs`, `layoutDiffs`,
+`extra`), the terminal and the chat ("Target design of S4 at its entry: …"). It fails nothing and changes no exit code; once
+the step is recorded, it is judged after its check like any other. The entry is the screen before the step's own actions: a
+design of their result (an opened dialog, a saved message) can only be met there as far as it shows the same screen.
+
+## Write a test for a design
+
+When the person asks you to write a test for a design ("write a test for this design", a Claude Design artifact, a Figma
+export), that request is their consent to link the design to the step that ends on its screen (`personAsked: true`) and to
+build that screen in the application's code. Ask them only for what a gate requires: a `human` decision (topic `session`),
+restarting their dev server, test users.
+
+1. **The design:** fetch it and write it with `caw_design` `put` (above). One test per design.
+2. **The reach:** plan the steps that lead to the screen's entry and already work in the app (topic `tests`; one test,
+   written into `caw/tests/<test>.yaml` as the plan so far, without `design:` and `needs:`). Check it with `caw_validate`,
+   then record it without a window: `caw_start` `{command: "record", test, headless: true}`; you are the agent and follow the
+   plan unchanged (topic `session`, 7.). caw adopts it when nothing the test checks changes. If even the first step needs
+   the new screen, build what it needs first (step 4), then record.
+3. **The design's step:** add the step(s) that do what the design shows at the end of the test (next free number; they stay
+   pending), the last one ending on the designed screen, and link the design to it: `caw_design` `{action: "link", test,
+   step, file, personAsked: true}`. `caw_validate` again.
+4. **Build until met:** change the application's code. If the dev server must restart to serve the change, ask the person
+   to restart it (with `start` in the config, `caw_start` with `start: true` does it). Then `caw_start` `{command: "run",
+   test, headless: true}`, `caw_status` with `wait` until it ends, and read `result.pendingDesign`: build exactly what
+   `missing`, `textDiffs`, `styleDiffs` and `layoutDiffs` name (data never counts, topic above). Repeat until `verdict` is
+   `met`. To look at it together, `caw_start` `{command: "open", test, step, design: true}` shows the design over the app.
+5. **Record the whole test:** `caw_start` `{command: "record", test, headless: true}` (re-recording from a step is refused
+   without a window). The check run after it judges the design after the step's check; not met there, build and record again.
+   A decision that needs the person waits for their consent through `caw_decide`, or they answer in the window.
+6. **Prove it:** `caw_start` `{command: "run", test, headless: true, strict: true}`. Report "green, design met" only when the
+   run passed with nothing pending and the step's `design` in `result.json` (`steps`) has `verdict: "met"` with `missing`,
+   `textDiffs`, `styleDiffs` and `layoutDiffs` all empty; name the run and its report as evidence. Not met: back to 4 (the
+   recording stays, unless the steps changed).

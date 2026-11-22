@@ -81,6 +81,8 @@ caw open <test>@S4 --design --env local
 
 It plays through S4 (a pending S4: up to its entry) and lays the design over the app at the recorded size (a pending step has none of its own: the chat names the step whose size it is), half transparent; **F7** shows and hides it, also across reloads. Below it the deviations are listed: missing controls and texts, changed texts, differing styles and layout. They are listed anew after F5, a reload of the window and **Open again** (or a state picked with F1), so they always belong to the page you see; a design file that is missing is named in the chat with its step.
 
+While the step is still pending, a run that ends healthy before it judges its design at its entry, the state the run ended in: `Target design of S4 at its entry: not met yet (fails nothing): …` in the terminal and the chat, `pendingDesign` in `result.json` and `caw_status`. It fails nothing; once S4 is recorded, it is judged after its check. That is how your session builds a screen without a window: ask it to "write a test for this design", and it follows the recipe of guide topic `design`: it records the steps up to the screen headless, adds the step the design is for (pending) and links the design, changes the app until `pendingDesign` is met (asking you to restart your dev server when needed), records the whole test with `record --headless`, runs `run --strict --headless` and reports green with the design met. It asks you only for what a gate needs: a decision that changes a standard, a restart, test users.
+
 ## Plain-language tests: record once, replay without AI
 
 A test is a plan in plain language. You or the agent walk it once in the browser; caw stores what was done and replays it from then on without AI, locally and in CI.

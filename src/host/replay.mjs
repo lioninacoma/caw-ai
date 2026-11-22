@@ -640,8 +640,15 @@ export const replayOf = (spec) => {
     if (pending.length === 0) return flatten(spec, spec.steps);
     const recorded = spec.steps.slice(0, spec.steps.length - pending.length);
     // What the first pending step needs on the page before it can be recorded: checked when the run ends there.
-    const { needs } = spec.steps[recorded.length];
-    return { ...flatten(spec, recorded, recorded.at(-1).id), pending, ...(needs === undefined ? {} : { needs: { step: pending[0], locators: needs } }) };
+    const { needs, design } = spec.steps[recorded.length];
+    // Its target design, judged at its entry when the run ends there: a preview while it is built (playReplay).
+    const viewport = recordedBrowser(recorded).viewport;
+    return {
+        ...flatten(spec, recorded, recorded.at(-1).id),
+        pending,
+        ...(needs === undefined ? {} : { needs: { step: pending[0], locators: needs } }),
+        ...(design === undefined ? {} : { pendingDesign: { step: pending[0], file: design, ...(viewport === undefined ? {} : { viewport }) } }),
+    };
 };
 
 /**
@@ -1489,6 +1496,15 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         const problem = await externalProblem();
         if (problem !== null) await stop(replay.steps.length, t('session.replay.end'), 'external', problem);
     }
+    // The first pending step's target design, at its entry (the state the run ended in, healthy): a preview while the screen is
+    // built, for the person and the session. It fails nothing; once recorded, the step is judged after its check like any other.
+    let pendingDesign;
+    const healthy = broken === null && [...results.values()].every(({ status, kind }) => status === 'pass' || LOOK_KINDS.has(kind));
+    if (replay.pendingDesign !== undefined && judgeDesign !== undefined && healthy) {
+        const { step, ...design } = replay.pendingDesign;
+        const judged = await judgeDesign({ ...design, step, texts: varying() }, session.page()).catch((error) => ({ file: design.file, verdict: 'error', note: t('session.design.error', { file: design.file, error: firstLine(error) }) }));
+        pendingDesign = { step, ...judged };
+    }
     // Per step the requests of its last attempt, evidence for classifying a failure.
     const requests = new Map([...netMarks].map(([id, { from, end }]) => [id, session.network.since(from, end)]));
     await settleEffect();
@@ -1501,7 +1517,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         if (results.get(id)?.status === 'pass' && deviation.learned) session.warn?.({ type: 'effect', step: id, text: deviationText(deviation) });
     }
     // Secret values stay in `remembered` for the run; in results and abort, i.e. in the report, they are redacted.
-    return { results: new Map([...results].map(([id, result]) => [id, mask(result)])), broken: mask(broken), remembered, requests, effects: observed, deviations, retried, evaluated, designs: new Map([...designs].map(([id, judged]) => [id, mask(judged)])), looks: new Map([...looks].map(([id, record]) => [id, mask(record)])), seenLooks, lookHints };
+    return { results: new Map([...results].map(([id, result]) => [id, mask(result)])), broken: mask(broken), remembered, requests, effects: observed, deviations, retried, evaluated, designs: new Map([...designs].map(([id, judged]) => [id, mask(judged)])), looks: new Map([...looks].map(([id, record]) => [id, mask(record)])), seenLooks, lookHints, ...(pendingDesign === undefined ? {} : { pendingDesign: mask(pendingDesign) }) };
 };
 
 /**

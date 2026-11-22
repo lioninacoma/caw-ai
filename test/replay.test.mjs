@@ -925,6 +925,34 @@ test('the replay carries the designs of recorded steps and the needs of the firs
     const replay = replayOf(spec);
     assert.deepEqual(replay.designs, { S1: { file: 'design/a.html', viewport: { width: 390, height: 844 } } });
     assert.deepEqual(replay.needs, { step: 'S3', locators: ['getByRole("button", { name: "Save" })'] }, 'only the first pending step');
+    assert.equal(replay.pendingDesign, undefined, 'S3 has no design');
+    const designed = replayOf({ ...spec, steps: [spec.steps[0], spec.steps[1], { ...spec.steps[2], design: 'design/s3.html' }, { ...spec.steps[3], design: 'design/s4.html' }] });
+    assert.deepEqual(designed.pendingDesign, { step: 'S3', file: 'design/s3.html', viewport: { width: 390, height: 844 } }, 'the first pending step, at the recorded size');
+});
+
+test('design of the first pending step: judged at its entry when the run ended healthy, with the run tag as data; it fails nothing', async () => {
+    const playPending = async ({ failS2 = false } = {}) => {
+        const given = [];
+        const judgeDesign = async (design) => {
+            given.push(design);
+            return { file: design.file, verdict: 'not-met', missing: [], extra: [], styleDiffs: [], layoutDiffs: ['Abstand a → b: 8px → 32px'], textDiffs: [] };
+        };
+        const handler = async (command) => (command.action === 'check' ? { pass: !(failS2 && command.id === 'S2'), value: true } : 'ok');
+        const clock = fakeClock();
+        const played = await playReplay({
+            replay: { steps: TWO_STEPS, designs: {}, pendingDesign: { step: 'S3', file: 'design/s3.html', viewport: { width: 390, height: 844 } } },
+            handler, session: { ...fakeSession(), warn: () => {} }, base: 'https://portal.example', stepTimeoutMs: 1000, sleep: clock.sleep, now: clock.now, judgeDesign, runTag: 'CAW-2026112212000000',
+        });
+        return { played, given };
+    };
+    const { played, given } = await playPending();
+    assert.deepEqual(given, [{ file: 'design/s3.html', viewport: { width: 390, height: 844 }, step: 'S3', texts: ['CAW-2026112212000000', 'caw-2026112212000000'] }]);
+    assert.equal(played.pendingDesign.step, 'S3');
+    assert.equal(played.pendingDesign.verdict, 'not-met');
+    assert.ok([...played.results.values()].every(({ status }) => status === 'pass'), 'no step fails for it');
+    const failed = await playPending({ failS2: true });
+    assert.deepEqual(failed.given, [], 'a run that did not end healthy does not reach the entry');
+    assert.equal(failed.played.pendingDesign, undefined);
 });
 
 /** Plays two checks that pass; S1 has a design that the judge decides. */

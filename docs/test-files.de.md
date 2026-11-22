@@ -86,7 +86,7 @@ npx caw record create-ticket@S2 --env local # ab S2 bis zum Ende neu aufnehmen, 
 
 ## Offene Schritte
 
-Schritte, die du ans Ende schreibst und noch nicht aufnimmst, sind **offen**: der Teil des Tests, der noch entsteht, etwa während du die Funktion entwickelst, die sie beschreiben. Es sind die nicht aufgenommenen Schritte nach dem letzten aufgenommenen.
+Schritte, die du ans Ende schreibst und noch nicht aufnimmst, sind **offen**: der Teil des Tests, der noch entsteht, etwa während du die Funktion entwickelst, die sie beschreiben. Es sind die nicht aufgenommenen Schritte nach dem letzten aufgenommenen. Hat der erste von ihnen ein [Zielbild](#zielbild), beurteilt ein Lauf, der vor ihm gesund endet, diesen Entwurf an seinem Einstieg und nennt das Urteil (`pendingDesign` in `result.json`: `step`, `file`, `verdict` und die Abweichungen); das lässt nichts scheitern.
 
 ```bash
 npx caw run create-ticket --env local          # S1–S3 laufen, Exit 0, „Offen, noch nicht aufgenommen: S4, S5“
