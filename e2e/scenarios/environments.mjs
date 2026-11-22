@@ -874,9 +874,6 @@ scenario('M4', 'Dates in en-US: {{date+7}} is filled as MM/DD/YYYY in the record
     writeSpaTest(root, 'note-due');
     const due = await go(['note-due', '--env', 'mpaus']);
     verify('the due date in US format passes the server\'s check', due.exit === 0, `${shown(due)} ${failNote('note-due')}`);
-    writeFileSync(join(root, 'caw/recordings/note-due.yaml'), readFileSync(join(root, 'caw/recordings/note-due.yaml'), 'utf8').replace('{{date+7}}', '{{today+7}}'));
-    const old = await callWith({}, () => validate(root));
-    verify('{{today+7}} is refused with its new name {{date+7}}', old.value.exit === 3 && /\{\{today\+7\}\}.*\{\{date\+7\}\}/.test(old.value.message ?? old.output), `${shown(old.value)} ${(old.value.message ?? old.output).split('\n').find((line) => /today/.test(line)) ?? ''}`);
 });
 
 // ---- P9: sign-in through Keycloak (A1–A4, A8)

@@ -232,7 +232,6 @@ const OPTIONS = {
     check: { values: ['--env', '--part', '--role'], flags: ['--apply', '--start', '--json'] },
 };
 const EXAMPLES = { '--env': 'dev', '--part': 'web', '--role': 'tester' };
-const RENAMED = { '--target': '--env', '--app': '--part' };
 
 /**
  * `caw overlay status [--env <env>] [--part <part>] [--json]` and
@@ -245,7 +244,6 @@ export const overlayCommand = async (root, args, { out = (text) => console.log(t
     const options = {};
     for (let index = 0; index < rest.length; index += 1) {
         const arg = rest[index];
-        if (RENAMED[arg] !== undefined) throw new CawError('usage', t('session.args.renamedOption', { flag: arg, now: RENAMED[arg] }));
         if (known.flags.includes(arg)) options[arg.slice(2)] = true;
         else if (known.values.includes(arg)) {
             const value = rest[index + 1];

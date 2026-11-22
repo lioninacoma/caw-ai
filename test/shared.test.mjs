@@ -125,9 +125,10 @@ test('config: top-level keys from before 1.0 are unknown fields like any other; 
     for (const key of ['sites', 'extends', 'insecureTls', 'extraAllowedHosts', 'auth', 'assetUrlPattern', 'apps', 'maxSteps']) {
         assert.equal(issues({ ...simple(), [key]: 1 }), `Unbekanntes Feld: ${key}`, key);
     }
-    assert.match(issues({ ...simple(), environments: { dev: { urls: { a: 'https://a.example' } } } }), /environments\.dev\.urls gibt es nicht mehr/);
-    // The overlay moved into its own block.
-    assert.match(issues({ ...simple(), environments: { local: { url: 'https://app.localhost:8443', overlay: true } } }), /environments\.local\.overlay heißt jetzt overlay\.environments/);
+    // Environment keys from before 1.0 too, and signIn type storageState.
+    assert.match(issues({ ...simple(), environments: { dev: { url: 'https://a.example', urls: { a: 'https://a.example' } } } }), /Umgebung dev: urls gibt es dort nicht/);
+    assert.match(issues({ ...simple(), environments: { local: { url: 'https://app.localhost:8443', overlay: true } } }), /Umgebung local: overlay gibt es dort nicht/);
+    assert.match(issues({ ...simple(), signIn: { type: 'storageState' } }), /signIn\.type muss eins von none, form, basic, session sein/);
     for (const bad of ['shop', '//cdn.example/x', 3, '']) assert.match(issues({ ...simple(), start: bad }), /start muss ein Pfad sein, der mit \/ beginnt/, String(bad));
     for (const good of ['/', '/app#orders', '/shop?tab=2']) assert.equal(issues({ ...simple(), start: good }), '', good);
     const at = (environments) => issues({ ...simple(), environments: { ...simple().environments, ...environments } });
@@ -555,8 +556,8 @@ test('config: a role is an empty object; the test user follows the naming conven
     assert.equal(role({}), '');
     assert.match(role({ passwortEnv: 'X' }), /Rolle kaeufer: passwortEnv ist nicht erlaubt; eine Rolle ist ein leeres Objekt \{\}/);
     assert.match(role('kaeufer'), /Rolle kaeufer muss ein leeres Objekt sein/);
-    // Removed before 1.0: named with what replaced them.
-    for (const key of ['loginEnv', 'passwordEnv', 'totpEnv']) assert.match(role({ [key]: 'X' }), new RegExp(`roles\\.kaeufer\\.${key} gibt es nicht mehr: der Testnutzer folgt der Namenskonvention CAW_<ROLLE>_USER`));
+    // Fields from before 1.0 are not allowed like any other.
+    for (const key of ['loginEnv', 'passwordEnv', 'totpEnv']) assert.equal(role({ [key]: 'X' }), `Rolle kaeufer: ${key} ist nicht erlaubt; eine Rolle ist ein leeres Objekt {}`);
     assert.match(issues({ ...simple(), roles: { gate: {} } }), /Die Rolle "gate" ist reserviert/);
     assert.match(issues({ ...simple(), roles: {} }), /roles muss ein Objekt mit mindestens einer Rolle sein/);
 });

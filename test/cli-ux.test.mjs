@@ -450,11 +450,11 @@ test('help: per command only its block, agent commands under caw agent --help, s
     assert.equal(unknownCommandText('lsit'), 'Unbekannter Befehl: lsit. Meintest du list? Siehe caw --help.');
     assert.equal(unknownCommandText('qqqq'), 'Unbekannter Befehl: qqqq. Siehe caw --help.');
     assert.match(unknownCommandText('theme'), /^Unbekannter Befehl: theme\./);
-    // Moved commands name where they are now, instead of a suggestion.
-    assert.equal(unknownCommandText('explore'), 'caw explore heißt jetzt caw init --explore-only.');
-    assert.equal(unknownCommandText('auth'), 'caw auth heißt jetzt caw role login.');
-    assert.equal(unknownCommandText('click'), 'caw click heißt jetzt caw agent click.');
-    assert.equal(unknownCommandText('mcp-agent'), 'caw mcp-agent heißt jetzt caw agent mcp.');
+    // Commands from before 1.0 are unknown like any other.
+    assert.equal(unknownCommandText('explore'), 'Unbekannter Befehl: explore. Meintest du export? Siehe caw --help.');
+    assert.equal(unknownCommandText('auth'), 'Unbekannter Befehl: auth. Siehe caw --help.');
+    assert.equal(unknownCommandText('click'), 'Unbekannter Befehl: click. Siehe caw --help.');
+    assert.equal(unknownCommandText('mcp-agent'), 'Unbekannter Befehl: mcp-agent. Siehe caw --help.');
     assert.equal(unknownCommandText('clik', { agent: true }), 'Unbekannter Befehl: caw agent clik. Meintest du click? Siehe caw agent --help.');
 });
 
@@ -499,11 +499,11 @@ test('CLI: unknown command with suggestion, help everywhere with -h, exit codes'
     assert.doesNotMatch(help.stdout, /record <test>/);
     assert.match(cli('agent', '--help').stdout, /finish --file/);
     assert.match(cli('agent', 'click', '--help').stdout, /finish --file/);
-    // The old places name the new ones, with exit 3; nothing runs.
-    for (const [args, now] of [[['help', 'agent'], 'caw agent --help'], [['explore', '--url', 'http://localhost:1'], 'caw init --explore-only'], [['auth', 'kunde'], 'caw role login'], [['snapshot'], 'caw agent snapshot']]) {
+    // The places from before 1.0 are unknown commands, with exit 3; nothing runs.
+    for (const [args, name] of [[['help', 'agent'], 'agent'], [['explore', '--url', 'http://localhost:1'], 'explore'], [['auth', 'kunde'], 'auth'], [['snapshot'], 'snapshot']]) {
         const moved = cli(...args);
         assert.equal(moved.status, 3, args.join(' '));
-        assert.match(moved.stderr, new RegExp(`heißt jetzt ${now}\\.`), args.join(' '));
+        assert.match(moved.stderr, new RegExp(`Unbekannter Befehl: ${name}\\.`), args.join(' '));
     }
     const renamed = cli('run', 'x', '--target', 'local');
     assert.equal(renamed.status, 3);

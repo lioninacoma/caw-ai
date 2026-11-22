@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { fillDates, markDates, renamedDates } from '../src/host/dates.mjs';
+import { fillDates, markDates } from '../src/host/dates.mjs';
 
 const recordedOn = new Date(2026, 10, 7, 15, 30);
 
@@ -28,5 +28,4 @@ test('fillDates: placeholders become the replay date, also across month boundari
     assert.equal(fillDates('{{date+7}}', later, 'en-US'), '02/06/2027');
     assert.equal(fillDates('{{date}}', later, 'ko-KR'), '2027-01-30', 'no plain numeric date in the locale: ISO');
     assert.equal(fillDates(markDates('am 07.11.2026', recordedOn, 'de-DE'), recordedOn, 'de-DE'), 'am 07.11.2026', 'round trip on the same day');
-    assert.deepEqual(renamedDates('x {{today+7}} y {{todayIso}}'), [{ old: '{{today+7}}', now: '{{date+7}}' }, { old: '{{todayIso}}', now: '{{isoDate}}' }]);
 });

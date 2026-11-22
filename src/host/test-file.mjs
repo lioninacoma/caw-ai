@@ -15,7 +15,6 @@ import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, DRAFT_DIR, RECORDING_DIR, TEST_DIR } from '../shared/names.mjs';
 import { didYouMean } from '../shared/suggest.mjs';
-import { renamedDates } from './dates.mjs';
 import { EFFECT_LISTS } from './effects.mjs';
 import { frameworkOf } from './framework/index.mjs';
 import { checkLocator } from './locator.mjs';
@@ -211,8 +210,7 @@ const readAction = (raw, report, { framework }) => {
     }
     if (name === 'wait-ready') {
         const options = payload ?? {};
-        if (isObject(options) && options.store !== undefined) report(t('config.test.action.waitReadyStore'));
-        else if (!isObject(options) || Object.keys(options).some((key) => !['for', 'minCount'].includes(key))) report(t('config.test.action.waitReady'));
+        if (!isObject(options) || Object.keys(options).some((key) => !['for', 'minCount'].includes(key))) report(t('config.test.action.waitReady'));
         return { action: name, ...options, ...extras };
     }
     if (payload !== null && !(isObject(payload) && Object.keys(payload).length === 0)) report(t('config.test.action.reload'));
@@ -250,8 +248,6 @@ const readRecording = (raw, at, problems, lineOf, { framework }) => {
         return undefined;
     }
     for (const key of Object.keys(raw)) if (!RECORDING_FIELDS.includes(key)) report([...at, key], t('config.test.recording.unknown', { key, hint: hintFor(key, RECORDING_FIELDS) }));
-    // Date placeholders before 1.0: {{today}} is now {{date}} in the browser's locale, {{todayIso}} is {{isoDate}}.
-    for (const { old, now } of renamedDates(JSON.stringify([raw.actions, raw.check]))) report(at, t('config.removed.renamed', { key: old, now }));
     for (const key of ['hash', 'recordedOn', 'recordedAt', 'locale', 'timezone', 'check']) if (!isText(raw[key])) report([...at, key], t('config.test.recording.missing', { key }));
     if (raw.after !== undefined && !STEP_ID.test(String(raw.after))) report([...at, 'after'], t('config.test.recording.after'));
     if (raw.timeoutMs !== undefined && !(Number.isFinite(raw.timeoutMs) && raw.timeoutMs > 0)) report([...at, 'timeoutMs'], t('config.test.recording.timeout'));

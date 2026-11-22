@@ -86,7 +86,6 @@ export default {
     'session.args.recordStepMeta': '{flag} only applies when recording for the first time; from a step on the test keeps its metadata.',
     'session.args.targetMissing': '--env is missing: {choices}',
     'session.args.envNone': '{command}: no environment fits. Name one with --env.',
-    'session.args.renamedOption': '{flag} is now called {now}.',
     'session.args.durationUnit': '{flag} {value}: add a unit, e.g. {flag} {example} (ms, s, m, h).',
     'session.args.durationForm': '{flag} {value} is not a duration. Write a number with a unit, e.g. {flag} {example} (ms, s, m, h).',
     'session.args.durationRange': '{flag} must be between {min} and {max}.',

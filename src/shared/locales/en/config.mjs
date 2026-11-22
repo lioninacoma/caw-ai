@@ -14,10 +14,6 @@ export default {
     'config.origin.path': '"{value}": origin only, no path and no trailing / ({origin}); the path goes in "start"',
 
     // config.mjs: environments
-    'config.removed.renamed': '{key} was renamed to {now}.',
-    'config.removed.gone': '{key} was removed: {why}',
-    'config.removed.urls': 'one url per environment; a tenant becomes its own environment with "extends".',
-    'config.removed.roleEnv': 'the test user follows the naming convention CAW_<ROLE>_USER, CAW_<ROLE>_PASSWORD and CAW_<ROLE>_TOTP in caw/.env (for one environment with the suffix __<ENV>).',
     'config.start': 'start must be a path beginning with / (not //), e.g. "/" or "/app#orders"',
     'config.source': 'source must be the relative path to the application\'s source, e.g. "." or "frontend", or false when the source is not in this repository',
     'config.allowHosts': '{key} must be a list of host names, e.g. ["login.example.com"]',
@@ -88,7 +84,7 @@ export default {
     'config.framework': 'framework must be one of {names}',
     'config.text': '{key} must be text',
     'config.agent.notObject': 'agent must be an object, e.g. { "sandbox": "docker" }',
-    'config.agent.unknown': 'agent.{key} doesn\'t exist (allowed: sandbox, model, maxBudgetUsd){hint}',
+    'config.agent.unknown': 'agent.{key} doesn\'t exist (allowed: mode, model, maxBudgetUsd){hint}',
     'config.agent.mode': 'agent.mode must be one of {names}',
     'config.agent.model': 'agent.model must be a {agent} model name or alias, e.g. "haiku" or "sonnet"',
     'config.agent.budget': 'agent.maxBudgetUsd must be a number above 0 (US dollars per {agent} run)',
@@ -258,7 +254,6 @@ export default {
     'config.test.action.dialog.value': '{name}: dialog.value is a text, only for a prompt with accept: true',
     'config.test.action.remember': 'remember needs name and code, plus at most secret: true.',
     'config.test.action.waitReady': 'wait-ready only takes for and minCount.',
-    'config.test.action.waitReadyStore': 'wait-ready: store is now called for (a CSS selector; with ExtJS a storeId or ComponentQuery).',
     'config.test.action.reload': 'reload takes no values.',
     'config.test.recording.object': 'recording must be an object.',
     'config.test.recording.unknown': 'Unknown field {key} in recording.{hint}',

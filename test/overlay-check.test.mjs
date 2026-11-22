@@ -187,7 +187,7 @@ test('caw overlay check --json: the result is the only stdout line; unknown argu
     await assert.rejects(overlayCommand(root, ['run']), (error) => error.code === 'usage' && /overlay kennt status und check/.test(error.message));
     await assert.rejects(overlayCommand(root, ['check', '--fast']), (error) => error.code === 'usage' && /--fast/.test(error.message));
     await assert.rejects(overlayCommand(root, ['status', '--apply']), (error) => error.code === 'usage' && /overlay status kennt --apply nicht/.test(error.message));
-    await assert.rejects(overlayCommand(root, ['status', '--app', 'web']), (error) => error.code === 'usage' && /--app heißt jetzt --part/.test(error.message));
+    await assert.rejects(overlayCommand(root, ['status', '--app', 'web']), (error) => error.code === 'usage' && /overlay status kennt --app nicht/.test(error.message));
     const lines = [];
     t.mock.method(console, 'log', (text) => lines.push(text));
     const again = sessions(missedDiagnosis);

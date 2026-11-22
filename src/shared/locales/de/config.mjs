@@ -14,10 +14,6 @@ export default {
     'config.origin.path': '"{value}": nur der Origin, ohne Pfad und ohne / am Ende ({origin}); der Pfad gehört in "start"',
 
     // config.mjs: environments
-    'config.removed.renamed': '{key} heißt jetzt {now}.',
-    'config.removed.gone': '{key} gibt es nicht mehr: {why}',
-    'config.removed.urls': 'eine url je Umgebung; ein Mandant wird eine eigene Umgebung mit "extends".',
-    'config.removed.roleEnv': 'der Testnutzer folgt der Namenskonvention CAW_<ROLLE>_USER, CAW_<ROLLE>_PASSWORD und CAW_<ROLLE>_TOTP in caw/.env (für eine Umgebung mit der Endung __<UMGEBUNG>).',
     'config.start': 'start muss ein Pfad sein, der mit / beginnt (nicht //), etwa "/" oder "/app#orders"',
     'config.source': 'source muss der relative Pfad zum Quellcode der Anwendung sein, etwa "." oder "frontend", oder false, wenn der Code nicht in diesem Repository liegt',
     'config.allowHosts': '{key} muss eine Liste von Hostnamen sein, etwa ["login.example.com"]',
@@ -88,7 +84,7 @@ export default {
     'config.framework': 'framework muss einer von {names} sein',
     'config.text': '{key} muss Text sein',
     'config.agent.notObject': 'agent muss ein Objekt sein, etwa { "sandbox": "docker" }',
-    'config.agent.unknown': 'agent.{key} gibt es nicht (erlaubt: sandbox, model, maxBudgetUsd){hint}',
+    'config.agent.unknown': 'agent.{key} gibt es nicht (erlaubt: mode, model, maxBudgetUsd){hint}',
     'config.agent.mode': 'agent.mode muss einer von {names} sein',
     'config.agent.model': 'agent.model muss ein Modellname oder Alias von {agent} sein, z. B. "haiku" oder "sonnet"',
     'config.agent.budget': 'agent.maxBudgetUsd muss eine Zahl über 0 sein (US-Dollar pro {agentDash}-Lauf)',
@@ -258,7 +254,6 @@ export default {
     'config.test.action.dialog.value': '{name}: dialog.value ist ein Text, nur bei einem prompt mit accept: true',
     'config.test.action.remember': 'remember braucht name und code, dazu höchstens secret: true.',
     'config.test.action.waitReady': 'wait-ready kennt nur for und minCount.',
-    'config.test.action.waitReadyStore': 'wait-ready: store heißt jetzt for (ein CSS-Selektor; bei ExtJS eine storeId oder ComponentQuery).',
     'config.test.action.reload': 'reload hat keine Werte.',
     'config.test.recording.object': 'recording muss ein Objekt sein.',
     'config.test.recording.unknown': 'Unbekanntes Feld {key} in recording.{hint}',

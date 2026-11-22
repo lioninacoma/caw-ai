@@ -204,7 +204,6 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.export.done': 'Exported {test} for {env}: {files}.',
     'cli.export.configKept': '{file} already exists and stays as it is.',
     'cli.export.next': 'Run it with Playwright: npm i -D @playwright/test, then npx playwright test -c {dir} (report: npx playwright show-report {dir}/playwright-report). Test users as for caw (CAW_<ROLE>_USER …), CAW_BASE_URL for another address.',
-    'cli.movedCommand': 'caw {command} is now caw {now}.',
     'cli.overlayCommandInactive': 'caw overlay is an extension and is not active here: it needs an overlay block in caw.config.json. See https://github.com/lioninacoma/caw-ai/blob/main/docs/extensions/overlay.md',
     'cli.overlayFlagInactive': '--overlay is an extension and is not active here: it needs an overlay block in caw.config.json. See https://github.com/lioninacoma/caw-ai/blob/main/docs/extensions/overlay.md',
     'cli.skillCreated': 'Skill written: {file}. Check it in; your {agent} session uses it from its next start (or /reload-plugins).',

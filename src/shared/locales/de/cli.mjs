@@ -208,7 +208,6 @@ Browser:
     'cli.export.done': '{test} für {env} exportiert: {files}.',
     'cli.export.configKept': '{file} gibt es schon, sie bleibt, wie sie ist.',
     'cli.export.next': 'Mit Playwright ausführen: npm i -D @playwright/test, dann npx playwright test -c {dir} (Bericht: npx playwright show-report {dir}/playwright-report). Testnutzer wie bei caw (CAW_<ROLLE>_USER …), CAW_BASE_URL für eine andere Adresse.',
-    'cli.movedCommand': 'caw {command} heißt jetzt caw {now}.',
     'cli.overlayCommandInactive': 'caw overlay ist eine Erweiterung und hier nicht aktiv: Sie braucht einen overlay-Block in caw.config.json. Siehe https://github.com/lioninacoma/caw-ai/blob/main/docs/extensions/overlay.de.md',
     'cli.overlayFlagInactive': '--overlay ist eine Erweiterung und hier nicht aktiv: Sie braucht einen overlay-Block in caw.config.json. Siehe https://github.com/lioninacoma/caw-ai/blob/main/docs/extensions/overlay.de.md',
     'cli.skillCreated': 'Skill geschrieben: {file}. Einchecken; deine {agentDash}-Session nutzt ihn ab dem nächsten Start (oder /reload-plugins).',

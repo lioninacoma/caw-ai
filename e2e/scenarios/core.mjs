@@ -52,11 +52,11 @@ export const scenarios = [
         verify('help hides mcp, agent, attach, explore and auth', !commands.some((name) => ['mcp', 'agent', 'attach', 'explore', 'auth'].includes(name)));
         verify('help names durations with units', /--step-timeout 30s, --agent-timeout 60m/.test(help.out));
 
-        // (3) Moved commands: exit 3 and the new place, nothing runs.
-        for (const [args, now] of [[['explore', '--url', 'http://localhost:18510'], 'caw init --explore-only'], [['auth', 'clerk'], 'caw role login'], [['click', 'e1'], 'caw agent click']]) {
+        // (3) Commands from before 1.0 are unknown commands: exit 3, nothing runs.
+        for (const args of [['explore', '--url', 'http://localhost:18510'], ['auth', 'clerk'], ['click', 'e1']]) {
             const moved = caw(args);
-            const expected = new RegExp(`caw ${args[0]} is now ${now}\\.`);
-            verify(`caw ${args[0]} → exit 3 with the new place`, moved.code === 3 && expected.test(moved.err), `${moved.code} ${moved.err.trim().split('\n')[0]}`);
+            const expected = new RegExp(`Unknown command: ${args[0]}\\.`);
+            verify(`caw ${args[0]} → exit 3, unknown`, moved.code === 3 && expected.test(moved.err), `${moved.code} ${moved.err.trim().split('\n')[0]}`);
         }
 
         // (4) Flag names from before 1.0 are unknown options like any other; durations without unit.

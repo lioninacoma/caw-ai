@@ -42,8 +42,6 @@ const isoOf = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad
 
 /** The placeholders the tool knows; they need no `remember`. */
 export const DATE_NAMES = new Set(['date', 'isoDate']);
-/** The names before 1.0: refused with their new name. */
-export const RENAMED_DATES = { today: 'date', todayIso: 'isoDate' };
 const PLACEHOLDER = /\{\{(date|isoDate)(?:([+-])(\d{1,3}))?\}\}/g;
 const ISO = /(?<![\d-])(\d{4})-(\d{2})-(\d{2})(?![\d])/g;
 
@@ -101,10 +99,6 @@ export const fillDates = (value, now = new Date(), locale = undefined) => {
         return name === 'date' && format !== null ? formatWith(format, day) : isoOf(day);
     }));
 };
-
-/** {{today}} and {{todayIso}} from before 1.0 in a text, as [{ old, now }] for the renamed message. */
-export const renamedDates = (text) => [...String(text).matchAll(/\{\{(today|todayIso)((?:[+-]\d{1,3})?)\}\}/g)]
-    .map(([old, name, shift]) => ({ old, now: `{{${RENAMED_DATES[name]}${shift}}}` }));
 
 /**
  * Now as a local date in another time zone: its year, month, day and time are the wall clock there. The browser runs in the

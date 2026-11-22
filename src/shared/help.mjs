@@ -16,22 +16,6 @@ export const AGENT_COMMANDS = ['task', 'snapshot', 'url', 'click', 'dblclick', '
 const AGENT_PLUMBING = ['sandbox-run', 'firewall-check', 'mcp'];
 const OTHER = ['help', '--help', '-h', '--version', '-v'];
 
-/**
- * Commands that moved before 1.0: the message names where they are now. Claude's commands moved under `caw agent` as a whole.
- * Keys are what was typed at the top level.
- */
-const MOVED = {
-    explore: 'init --explore-only',
-    auth: 'role login',
-    'mcp-agent': 'agent mcp',
-    'sandbox-run': 'agent sandbox-run',
-    'firewall-check': 'agent firewall-check',
-    ...Object.fromEntries(AGENT_COMMANDS.map((name) => [name, `agent ${name}`])),
-};
-
-/** Commands removed before 1.0: the message says what replaces them. */
-const REMOVED = {};
-
 /** A command's block; `here` names the environments Claude may work on, if the config knows them. */
 const block = (command, here) => t(`cli.help.${command}`, { here: here === undefined || here === '' ? '' : t('cli.help.here', { names: here }) });
 
@@ -79,13 +63,12 @@ export const helpText = (command, { here, overlay = false } = {}) => {
 export const hasHelp = (command) => command === 'agent' || HOST_COMMANDS.includes(command);
 
 /**
- * The message for an unknown command: where a moved command is now, otherwise a suggestion if one is close enough.
+ * The message for an unknown command, with a suggestion if one is close enough.
  * @param agent true for `caw agent <command>`: suggestions come from the agent commands
  */
 export const unknownCommandText = (command, { agent = false } = {}) => {
-    if (!agent && MOVED[command] !== undefined) return t('cli.movedCommand', { command, now: MOVED[command] });
-    if (!agent && REMOVED[command] !== undefined) return t(REMOVED[command]);
-    const names = agent ? [...AGENT_COMMANDS, ...AGENT_PLUMBING] : [...HOST_COMMANDS, ...HIDDEN_COMMANDS, ...OTHER.filter((name) => !name.startsWith('-'))];
+    // A name that exists elsewhere (`help agent`: agent has no help topic) is no suggestion for itself.
+    const names = (agent ? [...AGENT_COMMANDS, ...AGENT_PLUMBING] : [...HOST_COMMANDS, ...HIDDEN_COMMANDS, ...OTHER.filter((name) => !name.startsWith('-'))]).filter((name) => name !== command);
     const near = closest(command ?? '', names);
     return t(agent ? 'cli.unknownAgentCommand' : 'cli.unknownCommand', { command, suggestion: near === undefined ? '' : t('cli.didYouMean', { name: near }) });
 };

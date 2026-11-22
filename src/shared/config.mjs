@@ -69,10 +69,6 @@ export const isViewport = (value) => typeof value === 'object' && value !== null
     && Number.isInteger(value.width) && value.width >= 320 && value.width <= 7680
     && Number.isInteger(value.height) && value.height >= 240 && value.height <= 4320;
 
-const ENVIRONMENT_REMOVED = { urls: { why: 'config.removed.urls' }, overlay: { now: 'overlay.environments' } };
-/** The message for a removed key: renamed (now) or gone (why). */
-const removedKey = (path, entry) => (entry.now === undefined ? t('config.removed.gone', { key: path, why: t(entry.why) }) : t('config.removed.renamed', { key: path, now: entry.now }));
-
 /** Where Claude runs: locally with restricted tools (default), isolated in Docker, or the developer's own Claude Code session. */
 export const AGENT_MODES = ['local', 'docker', 'session'];
 const AGENT_KEYS = ['mode', 'model', 'maxBudgetUsd'];
@@ -204,14 +200,11 @@ const checkEnvironments = (config, issues, notes) => {
             continue;
         }
         for (const key of Object.keys(raw).filter((candidate) => !ENVIRONMENT_KEYS.includes(candidate))) {
-            const removed = ENVIRONMENT_REMOVED[key];
             if (key === 'reads') {
                 issues.push(t('config.env.readsTopLevel', { name }));
                 continue;
             }
-            issues.push(removed === undefined
-                ? t('config.env.unknown', { name, key, keys: ENVIRONMENT_KEYS.join(', '), hint: hintFor(key, ENVIRONMENT_KEYS) })
-                : removedKey(`environments.${name}.${key}`, removed));
+            issues.push(t('config.env.unknown', { name, key, keys: ENVIRONMENT_KEYS.join(', '), hint: hintFor(key, ENVIRONMENT_KEYS) }));
         }
         const notBoolean = ENVIRONMENT_FLAGS.find((key) => raw[key] !== undefined && typeof raw[key] !== 'boolean');
         if (notBoolean !== undefined) issues.push(t('config.env.notBoolean', { name, key: notBoolean }));
@@ -282,10 +275,6 @@ const readyValid = (ready) => isObject(ready)
  * @param at where it stands, for the messages
  */
 const checkSignIn = (at, signIn, issues) => {
-    if (signIn.type === 'storageState') {
-        issues.push(t('config.removed.renamed', { key: `${at}.type "storageState"`, now: `${at}.type "session"` }));
-        return;
-    }
     if (!SIGN_IN_TYPES.includes(signIn.type)) {
         issues.push(t('config.signIn.type', { at, types: SIGN_IN_TYPES.join(', ') }));
         return;
@@ -343,7 +332,6 @@ const checkSteps = (at, steps, issues) => {
     if (!steps.some((step) => isObject(step) && step.with !== undefined)) issues.push(t('config.signIn.stepsWith', { at }));
 };
 
-const ROLE_REMOVED = { loginEnv: 'config.removed.roleEnv', passwordEnv: 'config.removed.roleEnv', totpEnv: 'config.removed.roleEnv' };
 /** Roles exactly when some environment signs in; each an empty object, named like an environment, never "gate". */
 const checkRoles = (config, issues) => {
     const types = signInTypes(config).filter((type) => type !== 'none');
@@ -366,9 +354,7 @@ const checkRoles = (config, issues) => {
             issues.push(t('config.role.notObject', { name }));
             continue;
         }
-        for (const key of Object.keys(role)) {
-            issues.push(ROLE_REMOVED[key] === undefined ? t('config.role.unknownField', { name, key }) : removedKey(`roles.${name}.${key}`, { why: ROLE_REMOVED[key] }));
-        }
+        for (const key of Object.keys(role)) issues.push(t('config.role.unknownField', { name, key }));
     }
 };
 
@@ -402,8 +388,7 @@ export const validateConfig = (given) => {
     if (config.agent !== undefined) {
         if (!isObject(config.agent)) issues.push(t('config.agent.notObject'));
         else {
-            if (config.agent.sandbox !== undefined) issues.push(t('config.removed.renamed', { key: 'agent.sandbox', now: 'agent.mode' }));
-            const unknown = Object.keys(config.agent).find((key) => !AGENT_KEYS.includes(key) && key !== 'sandbox');
+            const unknown = Object.keys(config.agent).find((key) => !AGENT_KEYS.includes(key));
             if (unknown !== undefined) issues.push(t('config.agent.unknown', { key: unknown, hint: hintFor(unknown, AGENT_KEYS) }));
             if (config.agent.mode !== undefined && !AGENT_MODES.includes(config.agent.mode)) issues.push(t('config.agent.mode', { names: AGENT_MODES.join(', ') }));
             if (config.agent.model !== undefined && (typeof config.agent.model !== 'string' || !MODEL_NAME.test(config.agent.model))) issues.push(t('config.agent.model'));

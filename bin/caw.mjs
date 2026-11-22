@@ -49,7 +49,6 @@ const helpFor = async (root, command, args) => {
     if (command === undefined || HELP.has(command)) return helpText(undefined, { here: await claudeEnvironments(root), overlay });
     if (command === 'help') {
         const [topic] = args;
-        if (topic === 'agent') throw new CawError('unknown-command', t('cli.movedCommand', { command: 'help agent', now: 'agent --help' }));
         if (topic !== undefined && !HOST_COMMANDS.includes(topic)) throw new CawError('unknown-command', unknownCommandText(topic));
         if (topic === 'overlay' && !overlay) throw overlayInactive('cli.overlayCommandInactive');
         return helpText(topic, { here: await claudeEnvironments(root), overlay });
@@ -112,7 +111,6 @@ const agentCommand = async (root, [command, ...args]) => {
         case 'screenshot': return browser({ action: command, name: args[0] });
         case 'goto': return browser({ action: command, url: args[0] });
         case 'wait-ready': {
-            if (args.some((arg) => arg === '--store' || arg.startsWith('--store='))) throw new CawError('usage', t('session.args.renamedOption', { flag: '--store', now: '--for' }));
             const minCount = option(args, '--min-count');
             const timeout = option(args, '--timeout');
             const { parseDuration } = await import('../src/shared/duration.mjs');

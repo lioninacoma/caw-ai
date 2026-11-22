@@ -85,7 +85,6 @@ test('schema: dialog on the opener action, hover and dragTo with to; wrong shape
     assert.match(problems({ hover: button, dialog: { type: 'alert', accept: true } }), /dialog/);
     assert.match(problems({ dragTo: button }), /dragTo to/);
     assert.equal(dialogProblem({ type: 'prompt', accept: true, value: 'v' }), null);
-    assert.match(problems({ fill: button, value: '{{today+3}}' }), /\{\{today\+3\}\}.*\{\{date\+3\}\}/);
 });
 
 test('swapToken: a short remembered value (OPEN-7) only in typed values, URLs, string literals of code and whole target arguments', () => {

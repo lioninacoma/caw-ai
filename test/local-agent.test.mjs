@@ -173,7 +173,7 @@ test('config: agent.mode, local by default, always Docker in CI', () => {
     assert.equal(issues({ mode: 'docker' }), '');
     assert.equal(issues({ mode: 'session' }), '');
     assert.match(issues({ mode: 'vm' }), /agent\.mode muss einer von local, docker, session/);
-    assert.equal(issues({ sandbox: 'docker' }), 'agent.sandbox heißt jetzt agent.mode.', 'renamed before 1.0, no "unknown field" on top');
+    assert.match(issues({ sandbox: 'docker' }), /^agent\.sandbox gibt es nicht \(erlaubt: mode, model, maxBudgetUsd\)/, 'the name from before 1.0 is unknown like any other');
     assert.match(issues({ image: 'x' }), /agent\.image gibt es nicht/);
     assert.match(issues('docker'), /agent muss ein Objekt sein/);
 });

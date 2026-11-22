@@ -541,7 +541,7 @@ test('two files: locale and timezone of the recording browser round-trip and are
     assert.throws(() => parseRecordings(text.replace(/ {4}timezone: Europe\/Berlin\n/, '')), /recording.timezone fehlt/);
 });
 
-test('recording viewport: stored, read back and checked; wait-ready waits with for (store renamed)', (t) => {
+test('recording viewport: stored, read back and checked; wait-ready waits with for (store is unknown)', (t) => {
     const root = testRoot(t);
     const step = recorded('S1', [{ action: 'wait-ready', for: '#orders li', minCount: 2 }]);
     step.recording.viewport = { width: 1280, height: 800 };
@@ -554,7 +554,7 @@ test('recording viewport: stored, read back and checked; wait-ready waits with f
     assert.deepEqual(loaded.steps[0].recording.actions[0], { action: 'wait-ready', for: '#orders li', minCount: 2 });
     assert.deepEqual(recordingHints(root), [], 'a pinned viewport: no hint');
     assert.throws(() => parseRecordings(text.replace('width: 1280', 'width: 12')), /recording\.viewport muss \{ width, height \}/);
-    assert.throws(() => parseRecordings(text.replace(/for: "?#orders li"?/, 'store: liste')), /store heißt jetzt for/);
+    assert.throws(() => parseRecordings(text.replace(/for: "?#orders li"?/, 'store: liste')), /wait-ready kennt nur for und minCount/);
 });
 
 const HUMAN = '    note: Check only.\n    design: design/order.html\n    needs: [\'getByRole("button", { name: "Save" })\']\n    look: true\n';
