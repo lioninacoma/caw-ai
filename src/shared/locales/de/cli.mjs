@@ -695,7 +695,7 @@ Browser:
     'cli.audit.kind.action-removed': 'Aktion {number} von {step} ({action}) wurde entfernt: der Schritt führt sie nicht mehr aus.',
     'cli.audit.kind.design-removed': '{step} wird nicht mehr an seinem Zieldesign {file} gemessen.',
     'cli.audit.kind.design-changed': '{step} wird an einem anderen Zieldesign gemessen: {was} → {now}.',
-    'cli.audit.kind.design-file-changed': 'Das Zieldesign {file} von {step} wurde geändert oder entfernt: der Schritt wird ab jetzt an etwas anderem gemessen.',
+    'cli.audit.kind.design-file-changed': ({ file, step, structure = 0 }) => `Das Zieldesign ${file} von ${step} wurde geändert oder entfernt: der Schritt wird ab jetzt an etwas anderem gemessen.${structure > 0 ? ` Es hat ${structure} ${structure === 1 ? 'Bereich' : 'Bereiche'} mehr mit data-caw-match="structure": darin werden Aussehen, Abstände und Größen nicht mehr beurteilt.` : ''}`,
     'cli.audit.kind.look-forgotten': 'Der gelernte Look von {step} wurde verworfen, look: true bleibt: bis er neu gelernt ist, scheitert ein anders aussehender Schritt nicht.',
     'cli.summaryWritten': 'Zusammenfassung: {file}',
     'cli.jsonWritten': 'JSON-Bericht: {file}',

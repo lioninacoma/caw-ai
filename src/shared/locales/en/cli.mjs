@@ -690,7 +690,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.audit.kind.action-removed': 'Action {number} of {step} ({action}) was removed: the step no longer does it.',
     'cli.audit.kind.design-removed': '{step} is no longer judged against its target design {file}.',
     'cli.audit.kind.design-changed': '{step} is judged against another target design: {was} → {now}.',
-    'cli.audit.kind.design-file-changed': 'The target design {file} of {step} was changed or removed: the step is judged against something else from now on.',
+    'cli.audit.kind.design-file-changed': ({ file, step, structure = 0 }) => `The target design ${file} of ${step} was changed or removed: the step is judged against something else from now on.${structure > 0 ? ` It has ${structure} more ${structure === 1 ? 'area' : 'areas'} with data-caw-match="structure": inside, looks, gaps and sizes are no longer judged.` : ''}`,
     'cli.audit.kind.look-forgotten': 'The learned look of {step} was dropped while look: true stays: until it is learned again, a step that looks different does not fail.',
     'cli.summaryWritten': 'Summary: {file}',
     'cli.jsonWritten': 'JSON report: {file}',

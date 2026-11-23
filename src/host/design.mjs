@@ -228,7 +228,8 @@ export const normalStyle = (style = {}) => Object.fromEntries(Object.entries(STY
  *   element, nothing inside it is compared;
  * - a value: what a field holds (also an `<output>`), and a text that is the value of a field on the same page;
  * - a text with a digit (numbers, IDs, dates, counters, the run tag) or with one of `texts` (the run tag, remembered values).
- * @returns [{ kind: 'text'|'block'|'media'|'area', order, end?, sub, x, y, width, height, ... }]
+ * An element marked `data-caw-match="structure"` (in a design) adds its range as kind 'structure' (structureFrom).
+ * @returns [{ kind: 'text'|'block'|'media'|'area'|'structure', order, end?, sub, x, y, width, height, ... }]
  */
 export function layoutProbe({ texts = [] } = {}) {
     const all = [...document.body.querySelectorAll('*')];
@@ -271,6 +272,8 @@ export function layoutProbe({ texts = [] } = {}) {
     const out = [];
     const visit = (node, inData) => {
         if (SKIP.has(node.tagName)) return;
+        // A structure area of a design (data-caw-match="structure"): its range, everything in it is compared by structure only.
+        if (node.getAttribute('data-caw-match') === 'structure') out.push({ kind: 'structure', order: order.get(node), end: lastOrder(node) });
         const style = getComputedStyle(node);
         if (style.display === 'contents') {
             for (const child of node.children) visit(child, inData);
@@ -418,7 +421,8 @@ export const layoutMeasures = (target, actual) => {
     for (let index = 0; index < matched.length; index += 1) {
         const b = matched[index];
         const b2 = now.get(b.key);
-        for (const name of b.size) measures.push({ type: 'size', b, name, target: b[name], actual: b2[name] });
+        // In a structure area only the relation counts: no sizes, gaps or indents.
+        if (b.loose !== true) for (const name of b.size) measures.push({ type: 'size', b, name, target: b[name], actual: b2[name] });
         if (index === 0) continue;
         const a = matched[index - 1];
         const a2 = now.get(a.key);
@@ -430,7 +434,9 @@ export const layoutMeasures = (target, actual) => {
             measures.push({ type: 'relation', a, b, target: was.where, actual: is.where });
             continue;
         }
-        if (!skipped) measures.push({ type: 'gap', a, b, target: was.gap, actual: is.gap });
+        // A gap to or from a structure area depends on its padding: not compared; the indent of an element outside it is.
+        if (!skipped && a.loose !== true && b.loose !== true) measures.push({ type: 'gap', a, b, target: was.gap, actual: is.gap });
+        if (b.loose === true) continue;
         if (was.where === 'inside') {
             measures.push({ type: 'indent', a, b, target: was.indent, actual: is.indent });
         } else if (was.where === 'below' || was.where === 'above') {
@@ -487,7 +493,7 @@ const styleItemsOf = (target, actual) => {
     const now = new Map(actual.map((element) => [element.key, element]));
     return target.flatMap((element) => {
         const other = now.get(element.key);
-        if (other === undefined) return [];
+        if (other === undefined || element.loose === true) return [];
         return Object.entries(element.style).filter(([name, value]) => other.style[name] !== undefined && other.style[name] !== value)
             .map(([name, value]) => ({ text: `${element.shown}: ${name} ${value} → ${other.style[name]}`, design: element, app: other }));
     });
@@ -506,6 +512,10 @@ export const structureFrom = ({ controls = [], aria = '', layout, texts = [] }) 
     const count = new Map();
     const styles = {};
     const placed = [];
+    // Structure areas (data-caw-match="structure"): what lies in one is marked loose, compared without styles, gaps and sizes.
+    const areas = (layout ?? []).filter(({ kind }) => kind === 'structure');
+    const loose = (at) => areas.some(({ order, end }) => at >= order && at <= end);
+    const looseControls = [];
     const controlLines = controls.map(({ line, style, at }) => {
         const shown = withoutData(neutral(line));
         const seen = (count.get(shown) ?? 0) + 1;
@@ -513,9 +523,11 @@ export const structureFrom = ({ controls = [], aria = '', layout, texts = [] }) 
         const key = seen === 1 ? shown : `${shown} #${seen}`;
         if (style !== undefined) styles[key] = normalStyle(style);
         if (at !== undefined) placed.push({ shown: key, key, at });
+        if (at !== undefined && loose(at.order)) looseControls.push(key);
         return shown;
     });
-    return { lines: [...new Set([...controlLines, ...maskedView(aria, texts)])], styles, elements: layout === undefined ? [] : layoutElements(placed, layout) };
+    const elements = layout === undefined ? [] : layoutElements(placed, layout.filter(({ kind }) => kind !== 'structure')).map((element) => (loose(element.order) ? { ...element, loose: true } : element));
+    return { lines: [...new Set([...controlLines, ...maskedView(aria, texts)])], styles, elements, ...(areas.length === 0 ? {} : { loose: looseControls }) };
 };
 
 // How long a page may take at most to settle before it is measured or snapshot (a click's ripple, a fade, a label moving), and
@@ -595,9 +607,10 @@ export const compareDetailed = (target, actual, { tolerance = LAYOUT_TOLERANCE_P
     const present = actual.elements ?? [];
     const designed = new Map(elements.map((element) => [element.key, element]));
     const shown = new Map(present.map((element) => [element.key, element]));
+    const loose = new Set(target.loose ?? []);
     const styleItems = Object.entries(target.styles).flatMap(([control, style]) => {
         const now = actual.styles[control];
-        if (now === undefined) return [];
+        if (now === undefined || loose.has(control)) return [];
         return Object.entries(style).filter(([name, value]) => now[name] !== undefined && now[name] !== value)
             .map(([name, value]) => ({ text: `${control}: ${name} ${value} → ${now[name]}`, design: designed.get(control), app: shown.get(control) }));
     });

@@ -238,6 +238,17 @@ test('auditChanges: a target design taken off a step, swapped for another or its
     assert.deepEqual(auditChanges(withDesigns([designed(FORM)], {}), withDesigns([designed(FORM)], { [FORM]: 'bbb' })), [], 'a file that was missing before judged nothing');
 });
 
+test('auditChanges: a linked design that gained data-caw-match="structure" areas says so in its line', () => {
+    const FORM = 'design/form.html';
+    const designed = spec([BASE[0], step('S2', BASE[1].expect, { check: 'rows() === 1', design: FORM })]);
+    const withAreas = (blob, areas) => ({ ...side([designed]), designs: new Map([[FORM, blob]]), designAreas: new Map([[FORM, areas]]) });
+    const loosened = auditChanges(withAreas('aaa', 0), withAreas('bbb', 1));
+    assert.deepEqual(kinds(loosened), ['weakening:design-file-changed']);
+    assert.match(loosened[0].text, /1 Bereich mehr mit data-caw-match="structure": darin werden Aussehen, Abstände und Größen nicht mehr beurteilt/);
+    const other = auditChanges(withAreas('aaa', 1), withAreas('bbb', 1));
+    assert.doesNotMatch(other[0].text, /data-caw-match/, 'another change to the file is named as before');
+});
+
 test('auditChanges: design.fail narrowed, visualIgnore and readyIgnore added weaken every test', () => {
     const findings = audit(spec(BASE), { configAfter: { ...CONFIG, design: { fail: ['target'] }, visualIgnore: ['.chart'], readyIgnore: ['.spinner'] } });
     assert.deepEqual(kinds(findings), ['weakening:config-visual-ignore', 'weakening:config-ready-ignore', 'weakening:config-design-fail']);
