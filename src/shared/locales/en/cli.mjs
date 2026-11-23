@@ -55,6 +55,7 @@ Commands:`,
                                          passing without them
       [--promote]                        A draft from caw/drafts: when it passes and so does run --all on the same
                                          environment, it moves to caw/tests and the run folder gets fix-report.md
+                                         (a design draft: its design met, design-report.md)
       [--start]                          Start the environment with its start command if it doesn't answer, stop it at
                                          the end; with --overlay also the parts' local code servers
       [--reset] | [--no-reset]           The environment's reset runs once before the first writing test; --reset
@@ -739,7 +740,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.listDraftNotRed': 'recorded, not red yet',
     'cli.validateDrafts': '{count} draft(s) in {dir} checked as well.',
     'cli.draftGreen': 'The draft passes now, also {step}: the bug is fixed. Promote it once the other tests pass too: {caw} run {test} --promote --env {target}',
-    'cli.promoteNoDraft': 'There is no draft {test} in {dir}. --promote moves a draft from caw reproduce to caw/tests.',
+    'cli.promoteNoDraft': 'There is no draft {test} in {dir}. --promote moves a draft (from caw reproduce or written for a target design) to caw/tests.',
     'cli.promoteExists': '{file} exists already. Rename the draft or the test; --promote never overwrites a test.',
     'cli.promoteNotRecorded': '{test} is not fully recorded: record it first with {caw} record {test}. Nothing promoted.',
     'cli.promoteNotRed': '{test} was never shown red: without the red run there is no proof the test catches the bug. Record it while the bug is there: {caw} record {test}. Nothing promoted.',

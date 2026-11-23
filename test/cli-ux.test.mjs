@@ -615,7 +615,7 @@ test('run --promote: one draft only; no draft, no recording, never red, a red dr
     assert.throws(() => parseRunArgs('run', ['--all', '--promote']), /--promote nimmt genau einen Entwurf/);
     assert.throws(() => parseRunArgs('run', ['a', '--promote', '--report', 'json=x.json']), /--promote nimmt genau einen Entwurf/);
     assert.equal(parseRunArgs('run', ['a', '--promote']).promote, true);
-    await assert.rejects(run(root, ['anmelden', '--promote', '--env', 'local']), (error) => error.code === 'usage' && /keinen Entwurf anmelden in caw\/drafts/.test(error.message));
+    await assert.rejects(run(root, ['anmelden', '--promote', '--env', 'local']), (error) => error.code === 'usage' && /keinen Entwurf anmelden in caw\/drafts\. --promote übernimmt einen Entwurf \(aus caw reproduce oder für ein Zielbild geschrieben\) nach caw\/tests\./.test(error.message));
     const runOne = async () => assert.fail('nothing runs');
     writeDraft(root, { red: null, steps: [recorded(step('S1', 'Suche')), step('S2', 'Treffer')] });
     assert.equal(await run(root, ['bug-x', '--promote', '--env', 'local'], { runOne }), EXIT.needsRecording);

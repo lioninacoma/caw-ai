@@ -862,3 +862,12 @@ test('a design draft for the session: caw_design links its step, caw_list and ca
     assert.deepEqual([(await call('caw_status')).structuredContent.phase, (await call('caw_status')).structuredContent.next], ['green', { tool: 'caw_start', command: 'record', test: 'note', headless: true }]);
     assert.equal((await draftOf()).phase, 'green');
 });
+
+test('caw_start: promote names both reports, fix-report.md of a bug draft and design-report.md of a design draft', async (t) => {
+    const handler = sessionMcpHandler({ root: project(t), probes: PROBES });
+    const start = (await handler({ jsonrpc: '2.0', id: 1, method: 'tools/list' })).result.tools.find(({ name }) => name === 'caw_start');
+    for (const text of [start.description, start.inputSchema.properties.promote.description]) {
+        assert.match(text, /fix-report\.md|fix report/);
+        assert.match(text, /design-report\.md/);
+    }
+});

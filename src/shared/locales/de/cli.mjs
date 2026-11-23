@@ -55,6 +55,7 @@ Befehle:`,
                                          scheitern, statt dass er ohne sie besteht
       [--promote]                        Ein Entwurf aus caw/drafts: Besteht er und auch run --all auf derselben
                                          Umgebung, wandert er nach caw/tests, und der Laufordner bekommt fix-report.md
+                                         (ein Design-Entwurf: Zielbild erfüllt, design-report.md)
       [--start]                          Die Umgebung mit ihrem start-Befehl starten, wenn sie nicht antwortet, am Ende
                                          stoppen; mit --overlay auch die lokalen Code-Server der Teile
       [--reset] | [--no-reset]           Der reset der Umgebung läuft einmal vor dem ersten schreibenden Test; --reset
@@ -746,7 +747,7 @@ Browser:
     'cli.listDraftNotRed': 'aufgenommen, noch nicht rot',
     'cli.validateDrafts': '{count} Entwurf/Entwürfe in {dir} ebenfalls geprüft.',
     'cli.draftGreen': 'Der Entwurf besteht jetzt, auch {step}: Der Fehler ist behoben. Übernimm ihn, sobald auch die anderen Tests bestehen: {caw} run {test} --promote --env {target}',
-    'cli.promoteNoDraft': 'Es gibt keinen Entwurf {test} in {dir}. --promote übernimmt einen Entwurf aus caw reproduce nach caw/tests.',
+    'cli.promoteNoDraft': 'Es gibt keinen Entwurf {test} in {dir}. --promote übernimmt einen Entwurf (aus caw reproduce oder für ein Zielbild geschrieben) nach caw/tests.',
     'cli.promoteExists': '{file} gibt es schon. Benenne den Entwurf oder den Test um; --promote überschreibt nie einen Test.',
     'cli.promoteNotRecorded': '{test} ist nicht ganz aufgenommen: Nimm ihn erst mit {caw} record {test} auf. Nichts übernommen.',
     'cli.promoteNotRed': '{test} war noch nie rot: Ohne den roten Lauf ist nicht belegt, dass der Test den Fehler fängt. Nimm ihn auf, solange der Fehler da ist: {caw} record {test}. Nichts übernommen.',
