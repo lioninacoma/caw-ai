@@ -129,7 +129,8 @@ export const fixPhase = ({ id, draft, runs = [], promoted = false, fixReport, de
     if (draft === undefined) return promoted ? { phase: 'promoted', next: { done: true, ...(fixReport === undefined ? {} : { fixReport }) } } : undefined;
     if (isDesignDraft(draft)) return designPhase({ id, draft, runs });
     const run = { tool: 'caw_start', command: 'run', test: id };
-    if (draft.red === undefined) return { phase: 'reproduced', next: { tool: 'caw_start', command: 'record', test: id, decision: PHASE_DECISIONS.reproduced } };
+    // With a window the draft is captured in a test right after reproducing; a session records it itself.
+    if (draft.red === undefined) return { phase: 'reproduced', next: { tool: 'caw_start', command: 'record', test: id } };
     // Run ids start with their time: a later id is a later run. Only a run after the red proof shows the fix, and only if it
     // judged the red step and passed it: an open at the red step's entry passes without ever checking it.
     const newest = runs.find(({ runId }) => runId > draft.red.run);

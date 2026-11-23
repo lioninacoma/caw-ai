@@ -500,7 +500,7 @@ export const sessionHint = (mode, runId, { creating = false } = {}) => {
     return `${task} ${asked}`;
 };
 
-export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true, reproduce, withDesign = false, suggestLooks = false, terminal, snapshot, seams = {} }) => {
+export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true, reproduce, withDesign = false, suggestLooks = false, terminal, snapshot, autoDecide = [], seams = {} }) => {
     // Tests only: the browser session, the chat, the playback and the design comparison without Chrome (test/run-seam.test.mjs).
     const { openRunSession: openSession = openRunSession, openChat: openWindowChat = openChat, playReplay: replayWith = playReplay, designComparison: compareWith = designComparison } = seams;
     // Mutable: repairing in the same browser turns the test run into a run that fixes exactly this step.
@@ -749,6 +749,8 @@ ${text}`) ?? 0;
     const desk = createDesk({
         dir: runDir,
         auto: headless,
+        // With a window: what caw takes itself when harmless (a draft recorded in the guided fix: its plan, its red proof).
+        autoIds: autoDecide,
         // Without a window, a person at the terminal (decision-prompt.mjs promptTerminal) answers what needs one.
         ...(headless && terminal !== undefined ? { ask: terminalAsk(terminal) } : {}),
         starter,
@@ -1003,12 +1005,14 @@ ${text}`) ?? 0;
         writeFileSync(join(runDir, 'report.md'), inLanguage(teamLanguage(config), () => renderReport(shown)));
     };
     /**
-     * Presents advice as cards and applies each decision: knowledge, config and code at once, the test only in the result.
+     * Presents advice as cards and applies each decision: knowledge, config and code at once, the test only in the result. With
+     * `applyApp` (the guided fix: the person asked the agent to fix the app) a code change is applied without its card and listed
+     * in the chat; a change to the test still waits for the person.
      * @returns { result, review(items) }; `result` collects { spec, touched, stale, notes, files, outside, restart }, `outside`
      *          the causes beyond the project ({ where, title }) that the human fixes there, `restart` whether an applied code
      *          change takes effect only after the app's server restarts (the agent says so with `restart: true`)
      */
-    const createReviewer = (draft) => {
+    const createReviewer = (draft, { applyApp = false } = {}) => {
         const result = { spec: draft, touched: [], stale: [], notes: false, files: [], outside: [], restart: false };
         const review = async (items, log) => {
             const start = decided.length;
@@ -1023,7 +1027,9 @@ ${text}`) ?? 0;
                     ...(applicable ? { files: [...new Set(item.edits.map(({ file }) => file))] } : {}),
                     ...(item.where === undefined ? {} : { where: item.where }),
                 };
-                const answer = await decide(chat, { id: 'advice.item', via: 'advice', context: about, card: view, options: item.side === 'test' ? [ACCEPT, REJECT] : applicable ? [APPLY, { ...NEXT, primary: false }] : [NEXT] });
+                const atOnce = applyApp && applicable;
+                if (atOnce) chat.notice(t('run.advice.appliedAtOnce', { title: item.title, files: about.files.join(', ') }));
+                const answer = atOnce ? APPLY.id : await decide(chat, { id: 'advice.item', via: 'advice', context: about, card: view, options: item.side === 'test' ? [ACCEPT, REJECT] : applicable ? [APPLY, { ...NEXT, primary: false }] : [NEXT] });
                 if (item.side === 'outside' && answer !== null) result.outside.push({ where: item.where, title: item.title });
                 let decision = 'shown';
                 if (answer === null) decision = 'open';
@@ -1069,7 +1075,7 @@ ${text}`) ?? 0;
     const consult = ({ sandbox: box, spec: draft }, found, { mode, question, element, persist, fix }) => {
         const talking = mode === 'talk' || mode === 'develop';
         const allowed = consultAllowed(mode);
-        const { result, review } = createReviewer(draft);
+        const { result, review } = createReviewer(draft, { applyApp: fix !== undefined });
         const failed = found.failed ?? (mode === 'develop' ? restoreFailed : null);
         // The conversation in short: a later repair starts a new Claude, which must know what was agreed here.
         const log = talking && typeof question === 'string' ? [{ from: 'human', text: question }] : [];

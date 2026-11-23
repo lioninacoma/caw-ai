@@ -65,6 +65,8 @@ const ignoredOf = (answer) => {
  * @param dir       the run folder
  * @param onSettled (entry) a decision was taken: { seq, id, option, by, at }
  * @param auto      a run without a window: it answers autoOption itself and stops at anything else
+ * @param autoIds   with a window: the decisions caw answers itself like a run without one when autoOption allows it (a draft
+ *                  recorded in the guided fix: its unchanged plan, its red proof); every other one waits for the person
  * @param waitMs    without a window: how long a person may still answer a decision it cannot take through the session (an
  *                  attached session, caw_decide with their consent); 0 stops at once
  * @param onStop    (entry) without a window, a decision stayed open: the run names it and writes nothing
@@ -80,7 +82,7 @@ const ignoredOf = (answer) => {
  * @returns { open(decision, inject), settle(decision, answer, by), close() }; `inject({ option, message?, picked?, by })`
  *          answers the decision in the chat and says whether it was still waiting
  */
-export const createDesk = ({ dir, onSettled = () => {}, auto = false, waitMs = 0, onStop = () => {}, onStuck = () => {}, pollMs = 250, trusted = () => [], starter, onIgnored = () => {}, keys = newKeyPair(), ask }) => {
+export const createDesk = ({ dir, onSettled = () => {}, auto = false, autoIds = [], waitMs = 0, onStop = () => {}, onStuck = () => {}, pollMs = 250, trusted = () => [], starter, onIgnored = () => {}, keys = newKeyPair(), ask }) => {
     const file = join(dir, DECISION_FILE);
     const answerFile = join(dir, ANSWER_FILE);
     // Where caw_decide finds the run's key, and whose answers the run takes: the session that started it, or any listening one.
@@ -136,7 +138,11 @@ export const createDesk = ({ dir, onSettled = () => {}, auto = false, waitMs = 0
             show();
             poll ??= setInterval(take, pollMs);
             poll.unref?.();
-            if (!auto) return;
+            if (!auto) {
+                const own = autoIds.includes(held.entry.id) ? autoOption(held.entry) : undefined;
+                if (own !== undefined) setImmediate(() => { if (stack.includes(held)) held.inject({ option: own, by: 'auto' }); });
+                return;
+            }
             const option = autoOption(held.entry);
             // After the chat has the question up, as a click would come.
             if (option !== undefined) setImmediate(() => { if (stack.includes(held)) held.inject({ option, by: 'auto' }); });

@@ -1,5 +1,5 @@
 // Every decision caw waits for has a stable id, a language-neutral context and options with stable ids. Each option has a
-// gate: `free` when answering it changes no standard (close, later, discard, test again, record red, ask the agent), `human`
+// gate: `free` when answering it changes no standard (close, later, discard, test again, ask the agent), `human`
 // when it does (approve a changed or writing plan, adopt a recording that changes what the test checks, accept an effect or a
 // look, use a target, ignore errors, promote, apply app code, fix a step the app is blamed for). The window shows every
 // decision as a card as before; the run folder holds the waiting one (decision-desk.mjs), caw_status shows it, caw_decide
@@ -71,7 +71,6 @@ export const DECISIONS = {
     'advice.rerun': { rerun: FREE, close: FREE },
     'run.result': { close: FREE },
     // The guided bug fix (bugfix.mjs): reproduced, red, fix, green; a design draft takes the same decisions.
-    'reproduced.record': { 'record-red': FREE, later: FREE },
     'red.proof': { adopt: FREE, discard: FREE },
     'red.still': { close: FREE },
     'fix.guide': { 'fix-by-agent': FREE, 'fix-myself': FREE, 'fix-there': FREE, retest: FREE, later: FREE, close: FREE },
@@ -87,7 +86,7 @@ export const DECISIONS = {
  * The decision that leads a draft on from each phase of the guided bug fix (bugfix.mjs fixPhase): the `next` a session reads in
  * caw_status names it as `decision`, so window and session follow one model.
  */
-export const PHASE_DECISIONS = { reproduced: 'reproduced.record', red: 'fix.guide', green: 'fix.green' };
+export const PHASE_DECISIONS = { red: 'fix.guide', green: 'fix.green' };
 
 const gateOf = (id, option, context) => {
     const gate = DECISIONS[id]?.[option];

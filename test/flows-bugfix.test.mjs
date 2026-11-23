@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { offerRecordRed, recordFlow, runFlow } from '../src/host/flows.mjs';
+import { recordFlow, runFlow } from '../src/host/flows.mjs';
 import { resultText } from '../src/host/chat.mjs';
 import { stepHash } from '../src/host/test-file.mjs';
 import { CawError, EXIT } from '../src/shared/errors.mjs';
@@ -36,7 +36,7 @@ const harness = ({ outcomes, answers = [] }) => {
     const wishes = [...answers];
     const pick = (kind, text, options, card) => {
         const ids = options.map(({ id }) => id);
-        questions.push({ text: card?.kind === 'result' ? resultText(card) : text, options: ids, labels: options.map(({ label }) => label), card });
+        questions.push({ text: card?.kind === 'result' ? resultText(card) : text, options: ids, labels: options.map(({ label }) => label), primary: options.filter(({ primary }) => primary === true).map(({ id }) => id), card });
         const wish = wishes.find((candidate) => ids.includes(candidate));
         if (wish !== undefined) wishes.splice(wishes.indexOf(wish), 1);
         return wish ?? ids.at(-1);
@@ -71,19 +71,7 @@ const harness = ({ outcomes, answers = [] }) => {
     };
 };
 
-test('Reproduced with a window: the card offers recording the draft red next, or later with the command', async () => {
-    const chat = { choose: async (kind, text, options) => options[0].id };
-    assert.deepEqual(await offerRecordRed(chat, { file: 'caw/drafts/bug-x.yaml', record: 'caw record bug-x' }), { next: 'record' });
-    const asked = [];
-    const later = { choose: async (kind, text, options, card) => { asked.push({ options: options.map(({ id }) => id), labels: options.map(({ label }) => label), card }); return 'later'; } };
-    assert.deepEqual(await offerRecordRed(later, { file: 'caw/drafts/bug-x.yaml', record: 'caw record bug-x' }), { outcome: 'Später weiter mit caw record bug-x.' });
-    assert.deepEqual(asked[0].options, ['record-red', 'later']);
-    assert.deepEqual(asked[0].labels, ['Rot aufnehmen', 'Später']);
-    assert.equal(asked[0].card.title, 'Nachgestellt: Entwurf caw/drafts/bug-x.yaml');
-    assert.equal(asked[0].card.phase, 'reproduced');
-});
-
-test('Recording a draft guided: after the red proof the card shows step, expectation, check and cause; fixing myself, then testing again runs the draft', async () => {
+test('Recording a draft guided: the bug captured in a test, the card shows step, expectation, check and cause and offers both fixes alike; fixing myself, then testing again runs the draft', async () => {
     const h = harness({ outcomes: [{ ...redRun(), candidate: draft }, redRun()], answers: ['adopt', 'fix-myself', 'retest'] });
     const reruns = [];
     const code = await recordFlow({ sandbox: 's', ...h, head: () => 'abc1234', guide: { env: 'test', cause: 'server.mjs:12 rechnet ohne Preise.', rerun: async () => { reruns.push(true); return EXIT.pass; } } });
@@ -93,17 +81,18 @@ test('Recording a draft guided: after the red proof the card shows step, expecta
     const fix = h.questions[1];
     assert.equal(h.questions[0].card.phase, 'red', 'the red proof card stands in its phase');
     assert.match(h.questions[0].card.muted, /^„Testplan übernehmen“ behält den Entwurf mit diesem Nachweis\./, 'the text names the button it explains');
-    assert.equal(fix.card.title, 'Jetzt den Fehler beheben');
-    assert.equal(fix.card.phase, 'fix');
+    assert.equal(fix.card.title, 'Fehler im Test festgehalten: S2 scheitert, solange der Fehler da ist');
+    assert.equal(fix.card.phase, 'red', 'the bar stands at "Im Test"');
     assert.deepEqual(fix.card.rows, [
         { label: 'Schritt', text: 'S2 Summe' },
         { label: 'Erwartung', text: 'Die Summe zeigt Total: 5.' },
         { label: 'Prüfung', text: "sum==='Total: 5'", code: true },
         { label: 'Ursache', text: 'server.mjs:12 rechnet ohne Preise.' },
     ]);
-    assert.equal(fix.card.muted, 'Änderungen von Claude Code kommen als Karten, du übernimmst jede einzeln: Ohne deinen Klick ändert sich nichts.');
+    assert.equal(fix.card.muted, 'Was Claude Code an der App ändert, übernimmt caw sofort und listet es hier; danach testet caw von selbst erneut.');
     assert.deepEqual(fix.options, ['fix-by-agent', 'fix-myself', 'later']);
     assert.deepEqual(fix.labels, ['Von Claude Code beheben lassen', 'Ich behebe selbst', 'Später']);
+    assert.deepEqual(fix.primary, ['fix-by-agent', 'fix-myself'], 'both fixes side by side, none behind More');
     const waiting = h.questions[2];
     assert.equal(waiting.card.title, 'Behebe den Fehler, dann teste erneut');
     assert.equal(waiting.card.phase, 'fix');
@@ -120,39 +109,47 @@ test('Recording a draft guided: later at the fix card ends the run with the red 
     assert.deepEqual(h.said.at(-1), { outcome: 'Später weiter mit caw run bug-x --env test.' });
 });
 
-test('Fixing by the agent: the advice gets the red step as its task; an applied change offers testing again', async () => {
+test('Fixing by the agent: the advice gets the red step as its task; its applied change is listed and the draft is tested again on its own', async () => {
     const asked = [];
     const advise = async (options) => {
         asked.push(options);
         return advice({ files: ['src/total.js'] });
     };
-    const h = harness({ outcomes: [{ ...redRun(), candidate: draft }, redRun({ advise })], answers: ['adopt', 'fix-by-agent', 'retest'] });
-    const code = await recordFlow({ sandbox: 'box', ...h, guide: { cause: 'Preise fehlen.', rerun: async () => EXIT.pass } });
+    const h = harness({ outcomes: [{ ...redRun(), candidate: draft }, redRun({ advise })], answers: ['adopt', 'fix-by-agent'] });
+    const reruns = [];
+    const code = await recordFlow({ sandbox: 'box', ...h, guide: { cause: 'Preise fehlen.', rerun: async () => { reruns.push(true); return EXIT.pass; } } });
     assert.equal(code, EXIT.pass);
     assert.equal(asked.length, 1);
     assert.equal(asked[0].sandbox, 'box', 'every agent kind: the run\'s sandbox, local, docker or the attached session');
     assert.deepEqual(asked[0].fix, { step: 'S2', name: 'Summe', expect: 'Die Summe zeigt Total: 5.', check: "sum==='Total: 5'", cause: 'Preise fehlen.' });
-    const applied = h.questions[2];
-    assert.equal(applied.card.title, 'Änderung übernommen');
-    assert.match(applied.text, /Geändert: src\/total\.js\. Erneut testen zeigt, ob S2 jetzt besteht\./);
-    assert.deepEqual(applied.options, ['retest', 'later']);
+    assert.equal(h.questions.length, 2, 'no card for the applied change, no click to test again');
+    assert.ok(h.notices.includes('Übernommen: src/total.js. caw testet jetzt erneut.'), h.notices.join('\n'));
+    assert.equal(reruns.length, 1);
+    assert.deepEqual(h.said.at(-1), { next: 'run' });
 });
 
-test('Fixing by the agent: the applied card names F5 and the server restart like any applied app change; caw restarts what it started before testing again', async () => {
-    for (const [restartable, says, restarts] of [['caw', /caw startet ihn vor dem erneuten Test mit seinem start-Befehl neu\./, 1], ['none', /Starte ihn vor dem erneuten Test selbst neu; die Umgebung hat keinen start-Befehl\./, 0]]) {
-        const reload = [];
-        const advise = async () => advice({ files: ['server.mjs'], restart: true });
-        const h = harness({ outcomes: [{ ...redRun(), candidate: draft }, redRun({ advise, reloadable: async (on) => { reload.push(on); } })], answers: ['adopt', 'fix-by-agent', 'retest'] });
-        const order = [];
-        const server = { restartable: () => restartable, restart: async () => { order.push('restart'); } };
-        assert.equal(await recordFlow({ sandbox: 'box', ...h, server, guide: { rerun: async () => { order.push('rerun'); return EXIT.pass; } } }), EXIT.pass);
-        const applied = h.questions[2];
-        assert.equal(applied.card.title, 'Änderung übernommen');
-        assert.match(applied.text, says);
-        assert.match(applied.text, /Um die Änderung vorher anzusehen, lade die App neu \(F5\)\./);
-        assert.deepEqual(reload, [true, false], 'F5 works while the card waits');
-        assert.deepEqual(order, [...(restarts === 1 ? ['restart'] : []), 'rerun']);
-    }
+test('Fixing by the agent: a change to the server caw started is tested again after caw restarts it; one the person must restart waits on its card with F5 and testing again', async () => {
+    const own = harness({ outcomes: [{ ...redRun(), candidate: draft }, redRun({ advise: async () => advice({ files: ['server.mjs'], restart: true }) })], answers: ['adopt', 'fix-by-agent'] });
+    const order = [];
+    const server = { restartable: () => 'caw', restart: async () => { order.push('restart'); } };
+    assert.equal(await recordFlow({ sandbox: 'box', ...own, server, guide: { rerun: async () => { order.push('rerun'); return EXIT.pass; } } }), EXIT.pass);
+    assert.deepEqual(order, ['restart', 'rerun']);
+    assert.equal(own.questions.length, 2);
+    assert.ok(own.notices.includes('Übernommen: server.mjs. caw testet jetzt erneut.'));
+
+    const reload = [];
+    const advise = async () => advice({ files: ['server.mjs'], restart: true });
+    const h = harness({ outcomes: [{ ...redRun(), candidate: draft }, redRun({ advise, reloadable: async (on) => { reload.push(on); } })], answers: ['adopt', 'fix-by-agent', 'retest'] });
+    const runs = [];
+    const none = { restartable: () => 'none', restart: async () => assert.fail('caw did not start it') };
+    assert.equal(await recordFlow({ sandbox: 'box', ...h, server: none, guide: { rerun: async () => { runs.push('rerun'); return EXIT.pass; } } }), EXIT.pass);
+    const applied = h.questions[2];
+    assert.equal(applied.card.title, 'Änderung übernommen');
+    assert.match(applied.text, /Starte ihn vor dem erneuten Test selbst neu; die Umgebung hat keinen start-Befehl\./);
+    assert.match(applied.text, /Um die Änderung vorher anzusehen, lade die App neu \(F5\)\./);
+    assert.deepEqual(applied.options, ['retest', 'later']);
+    assert.deepEqual(reload, [true, false], 'F5 works while the card waits');
+    assert.deepEqual(runs, ['rerun']);
 });
 
 test('Fixing by the agent: a cause outside the project is pointed out, nothing to apply; fixing it there leads to testing again', async () => {
@@ -190,7 +187,7 @@ test('Test run of a red draft guided: still red offers fixing again, testing aga
     assert.equal(code, EXIT.fail);
     assert.equal(h.calls.length, 2, 'testing again is a second run');
     const still = h.questions[0];
-    assert.equal(still.card.title, 'S2 noch rot: der Fehler ist noch da');
+    assert.equal(still.card.title, 'S2 scheitert noch: der Fehler ist noch da');
     assert.deepEqual(still.options, ['fix-by-agent', 'fix-myself', 'retest', 'close']);
     assert.deepEqual(still.labels, ['Von Claude Code erneut beheben lassen', 'Ich behebe selbst', 'Erneut testen', 'Lauf beenden']);
     assert.equal(still.card.phase, 'fix');
@@ -204,10 +201,10 @@ test('Test run of a red draft guided: still red offers fixing again, testing aga
 test('Test run of a draft not yet proven red, guided: the proof is written before testing again', async () => {
     const h = harness({ outcomes: [redRun(), greenRun()], answers: ['fix-myself', 'retest', 'later'] });
     await runFlow({ spec: draft, handover: false, canFix: true, openSandbox: async () => 'box', head: () => 'def5678', ...h, guide: { promote: async () => assert.fail('later') } });
-    assert.equal(h.questions[0].card.title, 'S2 rot wie erwartet: der Test fängt den Fehler');
+    assert.equal(h.questions[0].card.title, 'Fehler im Test festgehalten: S2 scheitert, solange der Fehler da ist');
     assert.deepEqual(h.questions[0].options, ['fix-by-agent', 'fix-myself', 'later']);
     assert.deepEqual(h.adopted[0].spec.red, { step: 'S2', run: 'r-red', head: 'def5678' });
-    assert.equal(h.questions.at(-1).card.title, 'S2 grün: der Fehler ist behoben', 'the second run knows the red proof');
+    assert.equal(h.questions.at(-1).card.title, 'S2 besteht: der Fehler ist behoben', 'the second run knows the red proof');
 });
 
 test('Test run of a red draft guided: green offers adopting; it learns first, then promotes, and the chat names the fix report', async () => {
@@ -221,7 +218,7 @@ test('Test run of a red draft guided: green offers adopting; it learns first, th
         return { ok: true, test: 'bug-x', files: 'caw/tests/bug-x.yaml, caw/recordings/bug-x.yaml', report: '.caw/runs/r-green/fix-report.md', others: 1, target: 'test' };
     };
     assert.equal(await runFlow({ spec: proven, handover: false, canFix: true, fillBaselines: true, openSandbox: async () => assert.fail('no agent'), ...h, guide: { promote } }), EXIT.pass);
-    assert.equal(h.questions[0].card.title, 'S2 grün: der Fehler ist behoben');
+    assert.equal(h.questions[0].card.title, 'S2 besteht: der Fehler ist behoben');
     assert.deepEqual(h.questions[0].options, ['promote', 'later']);
     assert.equal(h.questions[0].card.phase, 'green');
     assert.deepEqual(order, ['learn', 'promote r-green'], 'learned baselines go into the draft before it moves');
@@ -289,8 +286,8 @@ test('Recording a design draft guided: its design not met after the passed check
     assert.equal(proof.card.phase, 'red');
     assert.equal(proof.card.phases, 'design');
     const build = h.questions[1];
-    assert.equal(build.card.title, 'Jetzt das Zielbild umsetzen');
-    assert.equal(build.card.phase, 'build');
+    assert.equal(build.card.title, 'Zielbild im Test festgehalten: S2 erfüllt es noch nicht');
+    assert.equal(build.card.phase, 'red');
     assert.equal(build.card.phases, 'design');
     assert.deepEqual(build.card.rows, [
         { label: 'Schritt', text: 'S2 Summe' },
@@ -303,7 +300,9 @@ test('Recording a design draft guided: its design not met after the passed check
     assert.deepEqual(build.labels, ['Von Claude Code umsetzen lassen', 'Ich setze selbst um', 'Später']);
     // The agent's task: the step, its design and what deviates.
     assert.deepEqual(asked[0].fix, { step: 'S2', name: 'Summe', expect: 'Die Notiz ist zu sehen.', design: 'design/note.html', deviations: ['missing: button "Save note"', 'text: heading "Note" → "Notes"', 'style: button "Save": background-color #5f8f6b → #e5533a'] });
-    assert.match(h.questions[2].text, /Geändert: web\/note\.css\. Erneut testen zeigt, ob S2 sein Zielbild jetzt erfüllt\./);
+    assert.equal(h.questions.length, 2, 'built by the agent: applied and tested again without a click');
+    assert.ok(h.notices.includes('Übernommen: web/note.css. caw testet jetzt erneut.'), h.notices.join('\n'));
+    assert.deepEqual(build.primary, ['fix-by-agent', 'fix-myself']);
 });
 
 test('Recording a design draft headless: the red proof is saved on its own; a design met already says the draft shows nothing missing', async () => {
@@ -336,8 +335,8 @@ test('Test run of a design draft: its design\'s controls missing at the pending 
 
     const h = harness({ outcomes: [entryRun(notReady)], answers: ['later'] });
     await runFlow({ spec: pendingDraft, handover: false, canFix: true, openSandbox: async () => 'box', head: () => 'abc1234', ...h, guide: { env: 'test' } });
-    assert.equal(h.questions[0].card.title, 'S2 erfüllt sein Zielbild noch nicht: der Test fängt, was fehlt');
-    assert.equal(h.questions[0].card.phase, 'build');
+    assert.equal(h.questions[0].card.title, 'Zielbild im Test festgehalten: S2 erfüllt es noch nicht');
+    assert.equal(h.questions[0].card.phase, 'red');
     assert.deepEqual(h.questions[0].card.rows.slice(1), [
         { label: 'Zielbild', text: 'design/note.html', code: true },
         { label: 'Fehlt', text: 'textbox "Note"' },

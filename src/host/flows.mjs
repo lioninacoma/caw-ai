@@ -49,11 +49,12 @@ const openPicked = (step) => (step === undefined ? RESTORE_PICKED : { ...RESTORE
 const CANCEL_RESTORE = button('cancel-restore', 'run.button.cancelRestore');
 // The guided bug fix (bugfix.mjs): reproduced, red, fixed, green, promoted, each in a new window of the same process. Later
 // ends the run at any card; the terminal hints stay as they are.
-const RECORD_RED = button('record-red', 'run.button.recordRed', { primary: true });
 const LATER = button('later', 'run.button.later');
 const FIX_BY_AGENT = button('fix-by-agent', 'run.button.fixByAgent', { primary: true });
 const FIX_AGAIN = button('fix-by-agent', 'run.button.fixAgain', { primary: true });
 const FIX_MYSELF = button('fix-myself', 'run.button.fixMyself');
+// The first card after the bug is captured in a test: fixing by the agent and by oneself side by side, both main actions.
+const BESIDE = { primary: true };
 const FIX_THERE = button('fix-there', 'run.button.fixThere', { primary: true });
 const RETEST = button('retest', 'run.button.rerun', { primary: true });
 const PROMOTE = button('promote', 'run.button.promote', { primary: true });
@@ -391,18 +392,8 @@ const inPhase = (phase, card, design = false) => ({ ...card, phase, ...(design ?
 
 // The texts of the guide card: a bug to fix, or a target design to build.
 const GUIDE = {
-    fix: { phase: 'fix', title: 'run.guide.fixTitle', againMuted: 'run.guide.againMuted', waitTitle: 'run.guide.waitTitle', waitText: 'run.guide.waitText', noAgentText: 'run.guide.noAgentText', appliedText: 'run.guide.appliedText', nothingText: 'run.guide.nothingText', byAgent: FIX_BY_AGENT, again: FIX_AGAIN, myself: FIX_MYSELF },
-    design: { phase: 'build', title: 'run.guide.buildTitle', againMuted: 'run.guide.buildAgainMuted', waitTitle: 'run.guide.buildWaitTitle', waitText: 'run.guide.buildWaitText', noAgentText: 'run.guide.buildNoAgentText', appliedText: 'run.guide.buildAppliedText', nothingText: 'run.guide.buildNothingText', byAgent: BUILD_BY_AGENT, again: BUILD_AGAIN, myself: BUILD_MYSELF },
-};
-
-/**
- * A reproduction with a window found the bug and wrote a draft: the next step is recording it red, in a new window.
- * @param draft { file, record } from the verdict
- * @returns { next: 'record' } or the outcome for the chat
- */
-export const offerRecordRed = async (chat, draft) => {
-    const choice = await decide(chat, 'reproduced.record', { draft: draft.file }, inPhase('reproduced', resultCard('next', t('run.guide.reproducedTitle', { file: draft.file }), t('run.guide.reproducedText'), t('run.guide.laterHint', { command: draft.record }))), [RECORD_RED, LATER]);
-    return choice === RECORD_RED.id ? { next: 'record' } : { outcome: t('run.guide.later', { command: draft.record }) };
+    fix: { phase: 'fix', title: 'run.guide.fixTitle', captured: 'run.guide.capturedTitle', againMuted: 'run.guide.againMuted', waitTitle: 'run.guide.waitTitle', waitText: 'run.guide.waitText', noAgentText: 'run.guide.noAgentText', appliedText: 'run.guide.appliedText', nothingText: 'run.guide.nothingText', byAgent: FIX_BY_AGENT, again: FIX_AGAIN, myself: FIX_MYSELF },
+    design: { phase: 'build', title: 'run.guide.buildTitle', captured: 'run.guide.designCapturedTitle', againMuted: 'run.guide.buildAgainMuted', waitTitle: 'run.guide.buildWaitTitle', waitText: 'run.guide.buildWaitText', noAgentText: 'run.guide.buildNoAgentText', appliedText: 'run.guide.buildAppliedText', nothingText: 'run.guide.buildNothingText', byAgent: BUILD_BY_AGENT, again: BUILD_AGAIN, myself: BUILD_MYSELF },
 };
 
 /** The command that goes on with a draft later, on the run's environment (guide.env) like every other hint. */
@@ -411,13 +402,14 @@ const commandOn = (env, test, extra = '', command = 'run') => `${cawCommand()} $
 const laterCommand = (guide, test, extra = '', command = 'run') => commandOn(guide?.env, test, extra, command);
 
 /**
- * A draft red at its step, the bug still there: the person has the agent advise the fix (code changes come back as cards,
- * applied one by one), fixes it themselves, or stops. A cause outside the project is fixed there. A design draft the same way,
- * worded for building its target design (design).
+ * A draft red at its step, the bug still there: the person has the agent fix it, fixes it themselves, or stops. The agent's
+ * changes to the app are applied at once (the person asked for them; they weaken no check) and listed in the chat, then the
+ * draft is tested again without a click; only a server the person must restart first keeps the card with testing again. A
+ * cause outside the project is fixed there. A design draft the same way, worded for building its target design (design).
  * @param red       redFor: the red step for the card and the agent's task
  * @param later     the command that tests again later (laterCommand)
  * @param again     still red after a fix: fix again, test again or end
- * @param title     the card's head; by default "Now fix the bug"
+ * @param title     the card's head; by default "Bug captured in a test: S3 fails while the bug is there"
  * @param adviseFix () => the advice result ({ spec, touched, notes, files, outside }) or null if no agent could start
  * @param store     (advice result) adopts what changed in the test (rare: the fix is the app's)
  * @param server    the environment's lifecycle server ({ restartable() }): an applied change to the app's server names who
@@ -427,15 +419,18 @@ const laterCommand = (guide, test, extra = '', command = 'run') => commandOn(gui
  */
 const guideFix = async (chat, { red, test, later, again = false, title, adviseFix, store, design = false, server, reloadable }) => {
     const texts = GUIDE[design ? 'design' : 'fix'];
-    const ask = { ...resultCard('next', title ?? t(texts.title), undefined, t(again ? texts.againMuted : 'run.guide.fixMuted')), rows: redRows(red) };
+    const ask = { ...resultCard('next', title ?? t(texts.captured, { id: red.step }), undefined, t(again ? texts.againMuted : 'run.guide.fixMuted')), rows: redRows(red) };
     let card = ask;
-    let options = again ? [texts.again, texts.myself, { ...RETEST, primary: false }, CLOSE] : [texts.byAgent, texts.myself, LATER];
+    // Just captured, the bar stands at "In a test"; still red after a fix, at fixing.
+    let phase = again ? texts.phase : 'red';
+    let options = again ? [texts.again, texts.myself, { ...RETEST, primary: false }, CLOSE] : [texts.byAgent, { ...texts.myself, ...BESIDE }, LATER];
     // An applied change to the app: who restarts its server (null: not needed), and F5 works while its card waits.
     let restart = null;
     let applied = false;
     const waiting = () => {
         card = resultCard('next', t(texts.waitTitle), t(texts.waitText, { id: red.step }), t('run.guide.laterHint', { command: later }));
         options = [RETEST, LATER];
+        phase = texts.phase;
         applied = false;
     };
     for (;;) {
@@ -443,7 +438,7 @@ const guideFix = async (chat, { red, test, later, again = false, title, adviseFi
         if (applied) await reloadable?.(true);
         let choice;
         try {
-            choice = await decideOn(chat, { id: 'fix.guide', context, options, card: inPhase(texts.phase, card, design) });
+            choice = await decideOn(chat, { id: 'fix.guide', context, options, card: inPhase(phase, card, design) });
         } finally {
             if (applied) await reloadable?.(false);
         }
@@ -458,10 +453,16 @@ const guideFix = async (chat, { red, test, later, again = false, title, adviseFi
             const app = appFilesOf(advised.files);
             const outside = advised.outside ?? [];
             applied = app.length > 0;
+            phase = texts.phase;
             if (app.length > 0) {
                 // A change to the server's code takes effect only after a restart, as after any applied app change.
                 restart = advised.restart === true ? server?.restartable?.() ?? 'none' : null;
-                const text = [t(texts.appliedText, { files: app.join(', '), id: red.step }), ...(restart === null ? [] : [t(`run.flow.restart.${restart}`)]), t('run.flow.reloadFirst')].join(' ');
+                // Applied, and nothing the person must do first: tested again at once (caw restarts the server it started).
+                if (restart === null || restart === 'caw') {
+                    chat.notice(t('run.guide.appliedAuto', { files: app.join(', ') }));
+                    return { restart: restart === 'caw' };
+                }
+                const text = [t(texts.appliedText, { files: app.join(', '), id: red.step }), t(`run.flow.restart.${restart}`), t('run.flow.reloadFirst')].join(' ');
                 card = resultCard('next', t('run.guide.appliedTitle'), text);
                 options = [RETEST, LATER];
             } else if (outside.length > 0) {
@@ -1086,7 +1087,7 @@ export const runFlow = async (options) => {
                             const ready = await fixer.open(chat, (message) => { chat.progress(t('run.flow.cannotAdvise', { message })); });
                             return ready === null ? null : concluded.advise({ sandbox: ready, spec: current, fix: red });
                         };
-                        const retest = await guideFix(chat, { red, design, test: current.id, later: laterCommand(guide, current.id), again: known, title, adviseFix, store: (advised) => keep(advised, chat, { offer: false }), server, reloadable });
+                        const retest = await guideFix(chat, { red, design, test: current.id, later: laterCommand(guide, current.id), again: known, ...(known ? { title } : {}), adviseFix, store: (advised) => keep(advised, chat, { offer: false }), server, reloadable });
                         rerun = retest !== false;
                         restartFirst = rerun && retest.restart;
                         return rerun ? windowAfter() : { outcome: t('run.guide.later', { command: laterCommand(guide, current.id) }) };

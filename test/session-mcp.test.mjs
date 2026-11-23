@@ -588,7 +588,7 @@ test('caw_start reproduce: the bug report goes into a file, the session is the a
     writeTest(root, fixDraft());
     const now = (await call('caw_status')).structuredContent;
     assert.equal(now.phase, 'reproduced');
-    assert.deepEqual(now.next, { tool: 'caw_start', command: 'record', test: 'bug-x', decision: 'reproduced.record' });
+    assert.deepEqual(now.next, { tool: 'caw_start', command: 'record', test: 'bug-x' });
 });
 
 /** A draft from caw reproduce, recorded; `red` once its red proof is saved. */
@@ -614,7 +614,7 @@ test('caw_status and caw_reproductions: phase and next of a draft on its way fro
     const row = async () => (await call('caw_reproductions')).structuredContent.reproductions[0];
 
     writeTest(root, fixDraft());
-    assert.deepEqual([(await row()).phase, (await row()).next], ['reproduced', { tool: 'caw_start', command: 'record', test: 'bug-x', decision: 'reproduced.record' }]);
+    assert.deepEqual([(await row()).phase, (await row()).next], ['reproduced', { tool: 'caw_start', command: 'record', test: 'bug-x' }]);
     assert.deepEqual([(await row()).expected, (await row()).cause], ['Total: 5', 'server.mjs:12 rechnet ohne Preise.']);
 
     // Recorded red: the agent fixes the app, then runs the draft again.

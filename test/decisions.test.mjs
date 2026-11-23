@@ -13,7 +13,7 @@ import { ANSWER_FILE, DECISION_FILE, answerRefusal, createDesk, readDecision, wr
 import { fingerprint, forgetSpawnerKey, newKeyPair, signAnswer, spawnerHandover, spawnerKey, verifyAnswer } from '../src/host/decision-proof.mjs';
 import { promptLines, promptTerminal, terminalAsk } from '../src/host/decision-prompt.mjs';
 import { fixPhase } from '../src/host/bugfix.mjs';
-import { offerRecordRed, runFlow } from '../src/host/flows.mjs';
+import { runFlow } from '../src/host/flows.mjs';
 import { sessionMcpHandler } from '../src/host/session-mcp.mjs';
 import { stepHash } from '../src/host/test-file.mjs';
 import { renderReport } from '../src/shared/report.mjs';
@@ -77,7 +77,7 @@ test('Gates: the plan is free to approve only unchanged and read-only; a changed
     for (const [id, gates] of [['effect.accept', 'forget-effect'], ['target.use', 'use-target'], ['look.adopt', 'adopt-look'], ['check.failed', 'ignore-errors'], ['fix.green', 'promote'], ['advice.item', 'apply'], ['advice.item', 'accept'], ['state.restore', 'restore-picked'], ['tokens', 'go']]) {
         assert.equal(decisionOf(id, [option(gates)]).options[0].gate, HUMAN, `${id} ${gates}`);
     }
-    for (const [id, free] of [['red.proof', 'adopt'], ['red.proof', 'discard'], ['fix.guide', 'retest'], ['fix.guide', 'later'], ['reproduced.record', 'record-red'], ['plan.changed', 'rerecord'], ['advice.item', 'next'], ['advice.item', 'discard']]) {
+    for (const [id, free] of [['red.proof', 'adopt'], ['red.proof', 'discard'], ['fix.guide', 'retest'], ['fix.guide', 'later'], ['plan.changed', 'rerecord'], ['advice.item', 'next'], ['advice.item', 'discard']]) {
         assert.equal(decisionOf(id, [option(free)]).options[0].gate, FREE, `${id} ${free}`);
     }
 });
@@ -179,6 +179,25 @@ test('Desk: the plan card approved through the session; a question in between a 
     assert.equal(readDecision(dir).seq, failureSeq);
     answerAs(dir, { seq: failureSeq, id: 'step.failed', option: 'close', by: 'session' });
     assert.deepEqual(await talk, { choice: 'close' });
+    desk.close();
+});
+
+test('Desk with a window: the decisions it is told to take (a draft recorded in the guided fix) are taken by caw when harmless, the rest wait for the person', async (t) => {
+    const dir = tempDir(t);
+    const settled = [];
+    const desk = createDesk({ ...trust, dir, pollMs: 5, autoIds: ['plan.approve', 'red.proof'], onSettled: (entry) => settled.push(entry) });
+    const chat = createChat({ desk });
+    const plan = [{ id: 'approve', label: 'Plan freigeben' }, { id: 'revise', label: 'Änderung erbitten' }];
+    assert.deepEqual(await decide(chat, { id: 'plan.approve', via: 'plan', context: { changed: false, writes: true }, card: { steps: [] }, options: plan }), { approved: true });
+    assert.equal(await decide(chat, { id: 'red.proof', context: { test: 'bug-x', step: 'S3' }, card: { kind: 'result', title: 'S3' }, options: [{ id: 'adopt', label: 'Übernehmen' }, { id: 'discard', label: 'Verwerfen' }] }), 'adopt');
+    assert.deepEqual(settled.map(({ id, option: chosen, by }) => [id, chosen, by]), [['plan.approve', 'approve', 'auto'], ['red.proof', 'adopt', 'auto']]);
+    // A changed plan changes what the test checks: the person's, in the window.
+    const changed = decide(chat, { id: 'plan.approve', via: 'plan', context: { changed: true }, card: { steps: [] }, options: plan });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.equal(readDecision(dir).state, 'waiting');
+    chat.human.toggle();
+    assert.deepEqual(await changed, { approved: true });
+    assert.equal(settled.at(-1).by, 'window');
     desk.close();
 });
 
@@ -403,11 +422,10 @@ test('Answer proof: a run started by the MCP server reads its key once from stdi
 });
 
 test('The bug fix phases and the window\'s cards follow one model: next.decision is the card the window shows then', async () => {
-    assert.equal(fixPhase({ id: 'b', draft: { steps: [] } }).next.decision, 'reproduced.record');
-    const seen = [];
-    const chat = { choose: async (kind, text, options, card, decision) => { seen.push(decision.id); return options.at(-1).id; } };
-    await offerRecordRed(chat, { file: 'caw/drafts/b.yaml', record: 'caw record b' });
-    assert.deepEqual(seen, [PHASE_DECISIONS.reproduced]);
+    // Reproduced, the window captures the bug in a test at once: no card, the session records the draft itself.
+    assert.equal(fixPhase({ id: 'b', draft: { steps: [] } }).next.decision, undefined);
+    assert.equal(PHASE_DECISIONS.reproduced, undefined);
+    assert.equal(DECISIONS['reproduced.record'], undefined);
 
     const step = { id: 'S1', name: 'Summe', do: '', expect: 'Total: 5.' };
     const red = { id: 'b', draft: true, red: { step: 'S1', run: 'r1' }, steps: [{ ...step, recording: { hash: stepHash(step), recordedOn: 'dev', actions: [], check: 'c' } }], expectations: [{ id: 'S1' }] };

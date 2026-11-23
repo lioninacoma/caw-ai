@@ -933,7 +933,7 @@ test('Recording a draft: red at its last step as expected is the proof, saved wi
     const h = harness({ outcomes: [{ ...redRun(), exitCode: EXIT.fail, candidate: draftSpec }, redRun()] });
     assert.equal(await recordFlow({ sandbox: 's', ...h, head: () => 'abc1234', env: 'dev' }), EXIT.pass);
     const [card] = h.questions;
-    assert.equal(card.card.title, 'S2 rot wie erwartet: der Test fängt den Fehler');
+    assert.equal(card.card.title, 'S2 scheitert wie erwartet: der Test fängt den Fehler');
     assert.match(card.card.muted, /dann zeigt caw run bug-x --env dev grün\.$/, 'the command names the environment');
     assert.equal(card.card.tone, 'info');
     assert.deepEqual(card.options, ['adopt', 'discard']);
@@ -981,12 +981,12 @@ test('Test run of a red draft: its red step passes, the run is green; still red 
     const hints = [];
     const logged = [];
     assert.equal(await runFlow({ spec: proven, handover: false, canFix: true, env: 'dev', openSandbox: async () => assert.fail('no Claude'), hint: (failed) => hints.push(failed.id), ...red, log: (text) => logged.push(text) }), EXIT.fail);
-    assert.equal(red.questions[0].card.title, 'S2 noch rot: der Fehler ist noch da');
+    assert.equal(red.questions[0].card.title, 'S2 scheitert noch: der Fehler ist noch da');
     assert.match(red.questions[0].card.muted, /caw run bug-x --env dev noch einmal\.$/);
     assert.deepEqual(red.questions[0].options, ['close']);
     assert.deepEqual(hints, []);
     assert.deepEqual(red.adopted, [], 'the first red proof stays');
-    assert.match(logged.at(-1), /^S2 noch rot: Der Fehler ist noch da\. Behebe ihn in der App, dann noch einmal caw run bug-x --env dev\.$/);
+    assert.match(logged.at(-1), /^S2 scheitert noch: Der Fehler ist noch da\. Behebe ihn in der App, dann noch einmal caw run bug-x --env dev\.$/);
 });
 
 test('Test run of a draft not yet proven red (CI, no chat): red at its step writes the proof', async () => {

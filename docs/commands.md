@@ -341,8 +341,8 @@ operates the page like a person would and ends with a verdict: reproduced, not r
 blocked or notable requests, a hint at the cause). When reproduced, `caw/drafts/<id>.yaml` holds a draft test in caw's format
 made from the agent's steps, with the agent's browser actions and their locators in its `notes`. Nothing goes into `caw/tests`: review
 the draft, record it red with `caw record <id>`, fix the bug, `caw run <id>` shows it green, and `caw run <id> --promote` makes
-it a test ([from the bug to a proven fix](guide.md#from-the-bug-to-a-proven-fix)). With a window outside CI the chat offers
-**Record red** once reproduced and then guides through the fix in the same process; the terminal output stays the same.
+it a test ([from the bug to a proven fix](guide.md#from-the-bug-to-a-proven-fix)). With a window outside CI caw captures the bug in a test
+right after reproducing, without a click, and then guides through the fix in the same process; the terminal output stays the same.
 
 - **Where:** only on environments with `agent`, never on production (`reproduce-not-allowed`). Without `--env` the only such
   environment, or the test's with `--from`.

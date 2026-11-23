@@ -834,7 +834,7 @@ const card=(cls)=>el('div','message card '+cls);
 // The phases of the guided bug fix, or of a design draft (phases: 'design'), as an ordered list over its cards: where the
 // person stands on the way to the adopted test.
 const PHASES={fix:['reproduced','red','fix','green','promoted'],design:['draft','red','build','green','adopted']};
-const phaseBar=(phase,flow)=>{const names=flow==='design'?PHASES.design:PHASES.fix;const at=names.indexOf(phase);const ol=el('ol','message phases');ol.setAttribute('aria-label',T[flow==='design'?'chat.page.phasesDesign':'chat.page.phases']);names.forEach((name,i)=>{const li=el('li',i<at?'done':i>at?'later':'now');const badge=el('span','bdg');if(i<at)badge.append(ic('check'));badge.append(T['chat.page.phase.'+name]);if(i===at)li.setAttribute('aria-current','step');li.append(badge);ol.append(li);});return ol;};
+const phaseBar=(phase,flow)=>{const names=flow==='design'?PHASES.design:PHASES.fix;const at=names.indexOf(phase);const ol=el('ol','message phases');ol.setAttribute('aria-label',T[flow==='design'?'chat.page.phasesDesign':'chat.page.phases']);names.forEach((name,i)=>{const li=el('li',i<at?'done':i>at?'later':'now');const badge=el('span','bdg');if(i<at)badge.append(ic('check'));badge.append(T['chat.page.phase.'+(flow==='design'&&name==='green'?'met':name)]);if(i===at)li.setAttribute('aria-current','step');li.append(badge);ol.append(li);});return ol;};
 // "Starting Claude": a spinner and the time since, until anything else arrives.
 let starting=null;
 const elapsed=(row)=>{const s=Math.max(0,Math.floor((Date.now()-Number(row.dataset.t0))/1000));row.querySelector('small').textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');};

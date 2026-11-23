@@ -1260,7 +1260,7 @@ test('chat: a reproduction ends with its findings, the read-only note and Close 
     assert.equal(await frame.textContent('#nextRepro .quote'), '“Suche findet nichts”');
     assert.deepEqual(await frame.$$eval('#nextRepro dt', (list) => list.map((dt) => dt.textContent)), ['Beobachtet', 'Erwartet', 'Ursache']);
     assert.match(await frame.textContent('#nextRepro .banner.ro'), /Nur lesend/);
-    assert.match(await frame.textContent('#nextCmd'), /Den Entwurf rot aufnehmen: caw record bug-x/);
+    assert.match(await frame.textContent('#nextCmd'), /Den Fehler im Test festhalten: caw record bug-x/);
     assert.equal(await frame.getAttribute('#closeWindow', 'class'), 'btn btn-p');
     assert.equal(await frame.getAttribute('#report', 'class'), 'btn btn-s');
     assert.equal(await frame.locator('#nextMore').count(), 0);
@@ -1768,9 +1768,9 @@ test('chat: a card of the guided bug fix has its phase bar above it, done ticked
     const bar = await frame.$$eval('ol.phases li', (items) => items.map((li) => ({ text: li.textContent, current: li.getAttribute('aria-current'), tick: li.querySelector('svg') !== null })));
     assert.deepEqual(bar, [
         { text: 'Nachgestellt', current: null, tick: true },
-        { text: 'Rot', current: null, tick: true },
+        { text: 'Im Test', current: null, tick: true },
         { text: 'Beheben', current: 'step', tick: false },
-        { text: 'Grün', current: null, tick: false },
+        { text: 'Behoben', current: null, tick: false },
         { text: 'Übernommen', current: null, tick: false },
     ]);
     assert.equal(await frame.getAttribute('ol.phases', 'aria-label'), 'Fehlerbehebung');
@@ -1785,14 +1785,14 @@ test('chat: a card of the guided bug fix has its phase bar above it, done ticked
     return undefined;
 });
 
-test('chat: a card of a design draft has the phases of the target design over it: Entwurf › Rot › Umsetzen › Grün › Übernommen', async (t) => {
+test('chat: a card of a design draft has the phases of the target design over it: Entwurf › Im Test › Umsetzen › Erfüllt › Übernommen', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { chat, frame } = await chatReady(t);
     const card = { kind: 'result', tone: 'next', title: 'Jetzt das Zielbild umsetzen', rows: [{ label: 'Stil', text: 'button "Save note": background-color #5f8f6b → #e5533a' }], phase: 'build', phases: 'design' };
     const chosen = chat.choose('deciding', card.title, [{ id: 'later', label: 'Später', primary: true }], card);
     assert.ok(await until(() => frame.isVisible('ol.phases')));
     const bar = await frame.$$eval('ol.phases li', (items) => items.map((li) => `${li.textContent}${li.getAttribute('aria-current') === 'step' ? ' *' : ''}${li.querySelector('svg') === null ? '' : ' ✓'}`));
-    assert.deepEqual(bar, ['Entwurf ✓', 'Rot ✓', 'Umsetzen *', 'Grün', 'Übernommen']);
+    assert.deepEqual(bar, ['Entwurf ✓', 'Im Test ✓', 'Umsetzen *', 'Erfüllt', 'Übernommen']);
     assert.equal(await frame.getAttribute('ol.phases', 'aria-label'), 'Zielbild');
     chat.closed?.();
     void chosen;

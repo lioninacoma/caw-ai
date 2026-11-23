@@ -16,7 +16,7 @@ const draft = { id: 'bug-x', draft: true, writes: false, notes: '', steps: [step
 const red = { ...draft, red: { step: 'S2', run: '2026-11-20T09-00-00-000Z-bug-x', head: 'abc1234' } };
 
 test('fixPhase: reproduced until the red proof, red until a later run passes, green then, promoted once the draft moved', () => {
-    assert.deepEqual(fixPhase({ id: 'bug-x', draft }), { phase: 'reproduced', next: { tool: 'caw_start', command: 'record', test: 'bug-x', decision: 'reproduced.record' } });
+    assert.deepEqual(fixPhase({ id: 'bug-x', draft }), { phase: 'reproduced', next: { tool: 'caw_start', command: 'record', test: 'bug-x' } });
     const fix = { do: 'fix-app', red: { step: 'S2', name: 'Schritt S2', expect: 'Total: 5.', check: 'checkS2()', cause: 'server.mjs:12' }, then: { tool: 'caw_start', command: 'run', test: 'bug-x' }, decision: 'fix.guide' };
     assert.deepEqual(fixPhase({ id: 'bug-x', draft: red, cause: 'server.mjs:12' }), { phase: 'red', next: fix });
     // The red run itself and older runs do not count; a later red run keeps it red.

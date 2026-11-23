@@ -105,7 +105,7 @@ The same way as a bug fix, for a new screen: ask Claude for a draft of the featu
 4. **Green:** a run after the red one judges the design met after the step's check. A design shows the screen after its step: before the step is recorded it is never green.
 5. **Adopt:** `caw run <id> --promote` (or **Adopt**) needs the design met and every other test on the environment green, moves the test to `caw/tests` and writes `design-report.md` into the green run's folder: red at which step with how many deviations (run, commit), green in which run, the files changed since and how many other tests passed.
 
-With a window the chat leads through it with the phases Draft › Red › Build › Green › Adopted over its cards: after the red proof **Now build the target design** lists what is missing or deviates and offers **Let Claude Code build it** (its changes come as cards you apply one by one), **I build it myself** and **Later**; **S3 has the controls of its target design: record it now** says to record the draft next; **Target design met: S3** offers **Adopt**. Your session reads the same from `caw_status` and `caw_list` (`origin: design`, `phase`: `draft`, `red`, `green`, `adopted`, and `next`).
+With a window the chat leads through it with the phases Draft › In a test › Build › Met › Adopted over its cards: after the red proof (saved by caw, like the draft's own plan) **Target design captured in a test: S3 does not meet it yet** lists what is missing or deviates and offers **Let Claude Code build it** and **I build it myself** side by side, **Later** beside them; the agent's code changes are applied at once and listed in the chat, then the draft is tested again without a click (unless a server you must restart yourself has to serve the change first); **S3 has the controls of its target design: record it now** says to record the draft next; **Target design met: S3** offers **Adopt**. Your session reads the same from `caw_status` and `caw_list` (`origin: design`, `phase`: `draft`, `red`, `green`, `adopted`, and `next`).
 
 ## Plain-language tests: record once, replay without AI
 
@@ -424,18 +424,25 @@ The draft turns the bug into a test that proves the fix: red before, green after
    4 not recorded or never red.
 
 **Guided in the workbench.** With a window the chat leads through these steps in one process, each in a new window, and the
-chat so far goes along; "Later" on any card ends the run there, and the terminal still names the next command. A bar over
-each card shows the phases Reproduced › Red › Fix › Green › Adopted: done ones ticked, the current one highlighted.
+chat so far goes along; two clicks take a reproduced bug to an adopted test: how to fix it, and adopting. "Later" on any card
+ends the run there, and the terminal still names the next command. A bar over each card shows the phases Reproduced › In a
+test › Fix › Fixed › Adopted: done ones ticked, the current one highlighted.
 
-- `caw reproduce` reproduced: the card offers **Record red**, the recording of the draft as with `caw record <id>`.
-- Saved red: the card **Now fix the bug** lists the red step, its expected result, its check and, when known, the cause the
-  reproduction suspected (from the reproduction's run folder, which `keepRuns` keeps while the draft exists; the agent recording it also finds it at the start of the draft's `notes`, which the recorded plan may rewrite). **Let the agent fix it** has the agent advise the fix, with every agent kind
-  (local, Docker, your attached session): its code changes come as cards you apply one by one ("Apply change"), caw's own agent
-  never writes code. If the cause lies outside the project (another repository, a service, the environment), its card says
-  where, there is nothing to apply, and **I fix it there** waits like **I fix it myself** until you **Test again**.
-- Still red: fix again, test again or end the run. Green: **S3 green: the bug is fixed**, and **Adopt** promotes the draft as
-  `--promote` does, while the window waits; the chat names the fix report. If another test is red, the card says so and the
-  draft stays.
+- `caw reproduce` reproduced: caw captures the bug in a test at once, as `caw record <id>` would, without a card: the agent
+  follows the draft's plan, caw approves that plan (it is the draft's own) and saves the red proof of the check run (`red.proof`
+  by `auto` in the decision log). Neither changes what a test checks; a plan the agent changed still waits for you.
+- Captured: the card **Bug captured in a test: S3 fails while the bug is there** lists the red step, its expected result, its
+  check and, when known, the cause the reproduction suspected (from the reproduction's run folder, which `keepRuns` keeps while the draft exists; the agent recording it also finds it at the start of the draft's `notes`, which the recorded plan may rewrite). It offers
+  **Let the agent fix it** and **I fix it myself** side by side. The agent, of every kind (local, Docker, your attached
+  session), fixes the app: caw applies its code changes at once and lists each in the chat (you asked for them; they change no
+  check), then tests the draft again in a new window without a click. Only when the change is in a server you must restart
+  yourself does the card **Change applied** wait for **Test again** (F5 shows the change first). caw's own agent never writes
+  code; a change to the test still comes as a card for you. If the cause lies outside the project (another repository, a
+  service, the environment), its card says where, there is nothing to apply, and **I fix it there** waits like **I fix it
+  myself** until you **Test again**.
+- Still failing: fix again, test again or end the run. Passing: **S3 passes: the bug is fixed**, and **Adopt** promotes the
+  draft as `--promote` does, while the window waits; the chat names the fix report. If another test fails, the card says so
+  and the draft stays.
 - `caw record <id>` and `caw run <id>` with a window join at their step. Headless, `--no-chat` and CI run as before.
 
 From your session the same steps are `caw_start` with `command: "record"`, `"run"` and `"run"` with `promote: true`. Your
@@ -846,7 +853,7 @@ On the right of the workbench, even in a test run without the agent. The history
 - **Pause:** While the agent works, "Pause F9" sits in the status line above the input (also F9 or `/pause`). The agent stops before its next action; the status pill shows it. Then you can write and click in the application until you press "Continue". Your clicks go into the test, so only click once "Paused" is shown.
 - **Main action:** The one thing to do next ("Done", "Approve plan", "Finish demo", "Hand over to Claude Code", "Continue") sits full width above the input; Ctrl+↵ triggers it while the input is empty.
 - **Commands:** `/` at the start of the input opens the commands: `/element`, `/checkpoint`, `/pause`, `/open`, `/requests`, `/console`, `/reload`, `/app`, `/settings`, `/keys`, `/cancel`, each with its key. Arrow keys and Enter pick, Tab completes, Esc closes; a command that is not possible right now is greyed out. `/open`, `/requests`, `/console`, `/app`, `/settings` and `/keys` open that view in the workbench, like their keys.
-- **Cards:** plan, question, advice (with a diff for a code change), failure, decision and the token notice come as cards. Each card has one primary action; one other choice sits beside it, more go behind "More".
+- **Cards:** plan, question, advice (with a diff for a code change), failure, decision and the token notice come as cards. Each card has one primary action; one other choice sits beside it, more go behind "More". The card after a bug or a target design is captured in a test has two, side by side: the agent fixes it, or you do.
 - **Mark element:** During demonstration, plan, pause, question and failure clarification, `/element` picks the component you mean: a ring with a label (role and name, e.g. `button "Add todo" in dialog "New todo"`) shows what a click would pick, and a band at the top of the application says that the click does nothing there and Esc cancels. The click isn't recorded. The element shows as a chip above the input (× removes it) and is attached to your next message; the agent gets its description.
 - **Questions:** The agent asks via `ask-operator`. Your answer or "Done" releases the run.
 - **Step back:** There is no rewind. Tell the agent what was wrong: it goes to the right state and drops the detour with `omit`. What was submitted stays in the application; then only a new run helps.

@@ -105,7 +105,7 @@ Wie bei einer Fehlerbehebung, für einen neuen Bildschirm: Lass Claude einen Ent
 4. **Grün:** Ein Lauf nach dem roten beurteilt das Zielbild nach der Prüfung des Schritts als erfüllt. Ein Zielbild zeigt den Bildschirm nach seinem Schritt: Bevor der Schritt aufgenommen ist, ist es nie grün.
 5. **Übernehmen:** `caw run <id> --promote` (oder **Übernehmen**) braucht das erfüllte Zielbild und alle anderen Tests der Umgebung grün, verschiebt den Test nach `caw/tests` und schreibt `design-report.md` in den Ordner des grünen Laufs: rot bei welchem Schritt mit wie vielen Abweichungen (Lauf, Commit), grün in welchem Lauf, die seitdem geänderten Dateien und wie viele andere Tests bestanden haben.
 
-Mit Fenster führt der Chat hindurch, mit den Phasen Entwurf › Rot › Umsetzen › Grün › Übernommen über seinen Karten: Nach dem roten Nachweis listet **Jetzt das Zielbild umsetzen**, was fehlt oder abweicht, und bietet **Von Claude Code umsetzen lassen** (seine Änderungen kommen als Karten, die du einzeln übernimmst), **Ich setze selbst um** und **Später**; **S3 hat die Bedienelemente seines Zielbilds: jetzt aufnehmen** sagt, dass der Entwurf als Nächstes aufgenommen wird; **Zielbild erfüllt: S3** bietet **Übernehmen**. Deine Session liest dasselbe aus `caw_status` und `caw_list` (`origin: design`, `phase`: `draft`, `red`, `green`, `adopted`, und `next`).
+Mit Fenster führt der Chat hindurch, mit den Phasen Entwurf › Im Test › Umsetzen › Erfüllt › Übernommen über seinen Karten: Nach dem roten Nachweis (von caw gespeichert, wie der eigene Plan des Entwurfs) listet **Zielbild im Test festgehalten: S3 erfüllt es noch nicht**, was fehlt oder abweicht, und bietet **Von Claude Code umsetzen lassen** und **Ich setze selbst um** nebeneinander an, **Später** daneben; die Codeänderungen des Agenten übernimmt caw sofort und listet sie im Chat, dann testet caw den Entwurf ohne Klick erneut (außer ein Server, den du selbst neu starten musst, muss die Änderung erst ausliefern); **S3 hat die Bedienelemente seines Zielbilds: jetzt aufnehmen** sagt, dass der Entwurf als Nächstes aufgenommen wird; **Zielbild erfüllt: S3** bietet **Übernehmen**. Deine Session liest dasselbe aus `caw_status` und `caw_list` (`origin: design`, `phase`: `draft`, `red`, `green`, `adopted`, und `next`).
 
 ## Tests in normaler Sprache: einmal aufnehmen, ohne KI abspielen
 
@@ -428,20 +428,27 @@ Der Entwurf macht aus dem Fehler einen Test, der den Fix belegt: vorher rot, dan
    Exit 0 übernommen, 1 nicht grün, 4 nicht aufgenommen oder nie rot.
 
 **Geführt in der Werkbank.** Mit Fenster führt der Chat in einem Prozess durch diese Schritte, jeden in einem neuen Fenster,
-und der bisherige Chat läuft mit; „Später“ auf jeder Karte beendet den Lauf dort, und das Terminal nennt weiter den nächsten
-Befehl. Eine Leiste über jeder Karte zeigt die Phasen Nachgestellt › Rot › Beheben › Grün › Übernommen: erledigte mit Haken,
-die aktuelle hervorgehoben.
+und der bisherige Chat läuft mit; zwei Klicks bringen einen nachgestellten Fehler zum übernommenen Test: wie er behoben wird,
+und das Übernehmen. „Später“ auf jeder Karte beendet den Lauf dort, und das Terminal nennt weiter den nächsten Befehl. Eine
+Leiste über jeder Karte zeigt die Phasen Nachgestellt › Im Test › Beheben › Behoben › Übernommen: erledigte mit Haken, die
+aktuelle hervorgehoben.
 
-- `caw reproduce` nachgestellt: Die Karte bietet **Rot aufnehmen**, die Aufnahme des Entwurfs wie mit `caw record <id>`.
-- Rot gespeichert: Die Karte **Jetzt den Fehler beheben** listet den roten Schritt, sein erwartetes Ergebnis, seine Prüfung und,
-  wenn bekannt, die Ursache, die das Nachstellen vermutet hat (aus dem Laufordner des Nachstellens, den `keepRuns` behält, solange der Entwurf da ist; der Agent, der ihn aufnimmt, findet sie auch am Anfang der `notes` des Entwurfs, die der aufgenommene Plan umschreiben darf). **Vom Agenten beheben lassen**
-  lässt den Agenten den Fix empfehlen, mit jeder Art Agent (lokal, Docker, deine verbundene Session): Seine Codeänderungen kommen
-  als Karten, die du einzeln übernimmst („Änderung übernehmen“); caws eigener Agent schreibt nie Code. Liegt die Ursache außerhalb
-  des Projekts (ein anderes Repository, ein Dienst, die Umgebung), sagt seine Karte wo, es gibt nichts zu übernehmen, und **Ich
-  behebe es dort** wartet wie **Ich behebe selbst**, bis du **Erneut testen** klickst.
-- Noch rot: erneut beheben lassen, erneut testen oder den Lauf beenden. Grün: **S3 grün: der Fehler ist behoben**, und
-  **Übernehmen** übernimmt den Entwurf wie `--promote`, während das Fenster wartet; der Chat nennt den Fix-Bericht. Ist ein
-  anderer Test rot, sagt die Karte das, und der Entwurf bleibt.
+- `caw reproduce` nachgestellt: caw hält den Fehler sofort in einem Test fest, wie `caw record <id>`, ohne Karte: Der Agent
+  folgt dem Plan des Entwurfs, caw gibt diesen Plan frei (es ist der eigene des Entwurfs) und speichert den roten Nachweis des
+  Prüflaufs (`red.proof` mit `auto` im Entscheidungsprotokoll). Beides ändert nichts an dem, was ein Test prüft; ein Plan, den
+  der Agent geändert hat, wartet weiter auf dich.
+- Festgehalten: Die Karte **Fehler im Test festgehalten: S3 scheitert, solange der Fehler da ist** listet den roten Schritt,
+  sein erwartetes Ergebnis, seine Prüfung und, wenn bekannt, die Ursache, die das Nachstellen vermutet hat (aus dem Laufordner des Nachstellens, den `keepRuns` behält, solange der Entwurf da ist; der Agent, der ihn aufnimmt, findet sie auch am Anfang der `notes` des Entwurfs, die der aufgenommene Plan umschreiben darf). Sie bietet
+  **Vom Agenten beheben lassen** und **Ich behebe selbst** nebeneinander an. Der Agent, jeder Art (lokal, Docker, deine
+  verbundene Session), behebt die App: caw übernimmt seine Codeänderungen sofort und listet jede im Chat (du hast sie verlangt;
+  sie ändern keine Prüfung), dann testet caw den Entwurf ohne Klick in einem neuen Fenster erneut. Nur wenn die Änderung in
+  einem Server steckt, den du selbst neu starten musst, wartet die Karte **Änderung übernommen** auf **Erneut testen** (F5
+  zeigt die Änderung vorher). caws eigener Agent schreibt nie Code; eine Änderung am Test kommt weiter als Karte zu dir. Liegt
+  die Ursache außerhalb des Projekts (ein anderes Repository, ein Dienst, die Umgebung), sagt seine Karte wo, es gibt nichts
+  zu übernehmen, und **Ich behebe es dort** wartet wie **Ich behebe selbst**, bis du **Erneut testen** klickst.
+- Scheitert noch: erneut beheben lassen, erneut testen oder den Lauf beenden. Besteht: **S3 besteht: der Fehler ist behoben**,
+  und **Übernehmen** übernimmt den Entwurf wie `--promote`, während das Fenster wartet; der Chat nennt den Fix-Bericht.
+  Scheitert ein anderer Test, sagt die Karte das, und der Entwurf bleibt.
 - `caw record <id>` und `caw run <id>` mit Fenster steigen an ihrem Schritt ein. Headless, `--no-chat` und CI laufen wie bisher.
 
 Aus deiner Session sind das `caw_start` mit `command: "record"`, `"run"` und `"run"` mit `promote: true`. Deine Session muss
@@ -852,7 +859,7 @@ In der Werkbank rechts, auch in einem Testlauf ohne den Agenten. Der Verlauf wan
 - **Pause:** Solange der Agent arbeitet, steht „Pause F9“ in der Statuszeile über dem Eingabefeld (auch F9 oder `/pause`). Der Agent hält vor der nächsten Aktion an, die Status-Pille zeigt es. Danach kannst du schreiben und in der Anwendung klicken, bis du „Weiter“ drückst. Deine Klicks kommen in den Test, darum erst klicken, wenn „Pausiert“ dasteht.
 - **Hauptaktion:** Das, was als Nächstes zu tun ist („Fertig“, „Plan freigeben“, „Vorführung beenden“, „An Claude Code übergeben“, „Weiter“), steht in voller Breite über dem Eingabefeld; Strg+↵ löst es aus, solange das Feld leer ist.
 - **Befehle:** `/` am Anfang des Eingabefelds öffnet die Befehle: `/element`, `/checkpoint`, `/pause`, `/open`, `/requests`, `/console`, `/reload`, `/app`, `/settings`, `/keys`, `/cancel`, jeder mit seiner Taste. Pfeiltasten und Enter wählen, Tab ergänzt, Esc schließt; ein Befehl, der gerade nicht geht, ist ausgegraut. `/open`, `/requests`, `/console`, `/app`, `/settings` und `/keys` öffnen diese Ansicht in der Werkbank, wie ihre Tasten.
-- **Karten:** Plan, Rückfrage, Empfehlung (bei einer Code-Änderung mit dem Unterschied), Fehler, Entscheidung und der Hinweis auf Token kommen als Karten. Jede Karte hat eine Hauptaktion; eine weitere Wahl steht daneben, mehr liegen hinter „Mehr“.
+- **Karten:** Plan, Rückfrage, Empfehlung (bei einer Code-Änderung mit dem Unterschied), Fehler, Entscheidung und der Hinweis auf Token kommen als Karten. Jede Karte hat eine Hauptaktion; eine weitere Wahl steht daneben, mehr liegen hinter „Mehr“. Die Karte, nachdem ein Fehler oder ein Zielbild im Test festgehalten ist, hat zwei nebeneinander: Der Agent behebt es, oder du.
 - **Element markieren:** In Vorführung, Plan, Pause, Rückfrage und beim Fehler klären wählt `/element` das Bauteil, auf das du dich beziehst: Ein Ring mit Beschriftung (Rolle und Name, etwa `button "Add todo" in dialog "New todo"`) zeigt, was ein Klick wählen würde, und ein Band oben in der Anwendung sagt, dass der Klick dort nichts auslöst und Esc abbricht. Der Klick kommt nicht in die Aufzeichnung. Das Element erscheint als Chip über dem Eingabefeld (× entfernt es) und hängt an deiner nächsten Nachricht; der Agent bekommt seine Beschreibung.
 - **Rückfragen:** Der Agent fragt per `ask-operator`. Deine Antwort oder „Fertig“ gibt den Lauf frei.
 - **Schritt zurück:** Eine Rückspultaste gibt es nicht. Sag dem Agenten, was falsch war: Er geht zum passenden Zustand und streicht den Umweg mit `omit`. Abgeschicktes bleibt in der Anwendung, dann hilft nur ein neuer Lauf.

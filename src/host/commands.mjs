@@ -1542,11 +1542,15 @@ const recordTest = async (root, options, deps = {}) => {
         const previous = exists ? spec : undefined;
         // Without a window, a person at this terminal answers a decision that needs one; in CI or started by a session nobody does.
         const terminal = headless ? deps.terminal ?? promptTerminal({ interactive }) : undefined;
-        const { execute, conversation, undecided } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, previous, conversation: options.conversation, headless, ...(terminal === undefined ? {} : { terminal }) });
+        // A draft in the window is the guided fix: its own plan and its red proof change nothing the test checks, caw takes them
+        // like a run without a window does; the person's clicks are fixing and adopting.
+        const guidedDraft = spec.draft === true && !headless;
+        const { execute, conversation, undecided } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, previous, conversation: options.conversation, headless, ...(guidedDraft ? { autoDecide: ['plan.approve', 'red.proof'] } : {}), ...(terminal === undefined ? {} : { terminal }) });
         if (headless) ui.info(t('cli.recordHeadless', { test, env: target }));
         // Driven from the developer's Claude Code session: it follows an existing test plan without asking the human first.
         // A new test without a plan still starts with the human's demonstration; without a window the agent follows the plan.
-        const demonstration = ((attach !== undefined || (agent === undefined && agentMode(config) === 'session')) && exists) || headless ? undefined : await startRecording(root, config, spec, checked, { exists, conversation });
+        // A draft follows its own plan (from reproduce or the person): nothing to show or describe first.
+        const demonstration = ((attach !== undefined || (agent === undefined && agentMode(config) === 'session')) && exists) || headless || guidedDraft ? undefined : await startRecording(root, config, spec, checked, { exists, conversation });
         const code = await recordFlow({
             sandbox,
             env: target,
@@ -1868,16 +1872,13 @@ export const reproduce = async (root, args, deps = {}) => {
         const result = await execute({
             sandbox,
             headless: options.headless,
-            // With a window the chat shows what the agent does; the person decides only whether the draft is recorded red next.
+            // With a window the chat shows what the agent does; reproduced, the draft is captured in a test right away.
             ...(options.headless ? {} : { conversation }),
             ...(guided ? {
-                conclude: async ({ verdict, chat }) => {
-                    const draft = verdict.reproduce?.draft;
-                    if (draft === undefined) return undefined;
-                    const { offerRecordRed } = await import('./flows.mjs');
-                    const said = await offerRecordRed(chat, draft);
-                    recordNext = said.next === 'record';
-                    return said;
+                conclude: async ({ verdict }) => {
+                    if (verdict.reproduce?.draft === undefined) return undefined;
+                    recordNext = true;
+                    return { next: 'record' };
                 },
             } : {}),
             reproduce: {
@@ -1891,7 +1892,7 @@ export const reproduce = async (root, args, deps = {}) => {
         const outcome = result.verdict?.reproduce;
         if (outcome?.draft !== undefined) ui.info(t('cli.reproduceDraft', outcome.draft));
         if (!recordNext || outcome?.draft === undefined) return result.exitCode;
-        // Recorded red next, as `caw record <draft>` would, with the chat so far.
+        // Captured in a test next, as `caw record <draft>` would, with the chat so far.
         const id = basename(outcome.draft.file, '.yaml');
         return recordTest(root, { ...parseRunArgs('record', [id]), target, conversation, ...(options.agent === undefined ? {} : { agent: options.agent }), ...(options.attach === undefined ? {} : { attach: options.attach }) }, deps);
     });
