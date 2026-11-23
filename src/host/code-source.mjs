@@ -85,8 +85,8 @@ const describeChoice = (config, name, choice, { root, now }) => {
  */
 export const describeCode = (config, spec, checked, { root, now = Date.now() } = {}) => {
     if (checked.source !== 'overlay') {
-        // A dev server on this machine is not a deployed state: it runs whatever is in the editor.
-        const url = checked.url === undefined ? null : new URL(checked.url);
+        // A dev server on this machine is not a deployed state: it runs whatever is in the editor. Production never is one.
+        const url = checked.url === undefined || checked.production === true ? null : new URL(checked.url);
         return url !== null && url.protocol === 'http:' && isLoopback(url.hostname) ? t('cli.code.devServer', { host: url.host }) : t('cli.code.deployed');
     }
     const parts = Object.entries(checked.parts ?? {}).map(([name, choice]) => describeChoice(config, name, choice, { root, now }));

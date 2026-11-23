@@ -31,7 +31,7 @@ Bricht ein Befehl ab, steht im Terminal zuerst der Grund, bei einem ungültigen 
 
 ```
 ✕ create-ticket@s2: Ein Schritt steht als <test>@S<n> hinter dem Test, etwa bestellung@S3.
-  Aufruf: caw record <test> [--env <name>] [--role <rolle>]  oder  caw record <test>@<S4> [--env <name>] [--agent local|docker | --attach [<key>]]
+  Aufruf: caw record <test> [--env <name>] [--role <rolle>] [--headless]  oder  caw record <test>@<S4> [--env <name>] [--agent local|docker | --attach [<key>]]
   (code: usage, exit 3)
 ```
 
@@ -128,7 +128,7 @@ Kein Test wird unbemerkt schwächer. caw selbst hält eine Prüfung fest, solang
 - ein gelerntes Aussehen aus der Aufnahme verworfen, während der Schritt `look: true` behält (nur solange die Aktionen des Schritts gleich bleiben)
 - Config: Einträge in `consoleIgnore`, `foreignCode`, `reads`, `visualIgnore` oder `readyIgnore` ergänzt, `messageSelectors` beobachten weniger, `effects.fail` oder `design.fail` enger, ein geschützter Schlüssel geändert (Befehle und Schalter der Umgebungen, `lintCommand`, `sandboxImage`, `sandboxUser`, `browser.executablePath`, `agent.mode`)
 
-**Geändert** (aufgelistet, keine Abschwächung): ein geändertes erwartetes Ergebnis, mit seiner Prüfung; neue Tests und Schritte; das Ziel einer Aktion getauscht, während Aktionen und gelernte Wirkung des Schritts blieben (ein übernommener Vorschlag für ein umbenanntes Element, siehe [Handbuch](guide.de.md#umbenannte-ziele)); gelernte Effektzeilen, an deren Stelle in derselben Liste einer Aktion neue stehen, wie wenn „Neue Wirkung übernehmen“ sie verworfen und fünf Läufe sie neu gelernt haben (`effects-replaced`, mit alten und neuen Zeilen; ein Entfernen ohne neue Zeilen ist eine Abschwächung). Das erwartete Ergebnis zu ändern ist der Weg, eine Prüfung bewusst zu ändern: Wer den PR prüft, sieht dann beides. **Zur Info:** geänderte Request-Baselines; Meldungen, die nur erstmals aufgenommene Schritte neu bekannt machen (ihre Basis, `known-messages-baseline`: jeder Schritt, der eine davon bekannt gemacht hat, laut `known` in seiner Aufnahme, war vorher ohne Aufnahme committet; jeder Schritt der ersten Aufnahme eines Tests, oder ein offener Schritt, der jetzt aufgenommen wurde). **Außerhalb des Fensters entschieden:** wo `.caw/runs` liegt (dein Rechner, nicht CI), die Antworten seit der Merge-Basis, die etwas geändert haben und von caw selbst in einem Lauf ohne Fenster (`auto`), von deiner Session (`session`) oder von dir in deiner Session (`elicitation`) gegeben wurden: übernommen, angenommen, angewendet, verwendet, befördert. Sie ändern den Exit-Code nie.
+**Geändert** (aufgelistet, keine Abschwächung): ein geändertes erwartetes Ergebnis, mit seiner Prüfung; neue Tests und Schritte; das Ziel einer Aktion getauscht, während Aktionen und gelernte Wirkung des Schritts blieben (ein übernommener Vorschlag für ein umbenanntes Element, siehe [Handbuch](guide.de.md#umbenannte-ziele)); gelernte Effektzeilen, an deren Stelle in derselben Liste einer Aktion neue stehen, wie wenn „Neue Wirkung übernehmen“ sie verworfen und fünf Läufe sie neu gelernt haben (`effects-replaced`, mit alten und neuen Zeilen; ein Entfernen ohne neue Zeilen ist eine Abschwächung). Das erwartete Ergebnis zu ändern ist der Weg, eine Prüfung bewusst zu ändern: Wer den PR prüft, sieht dann beides. **Zur Info:** geänderte Request-Baselines; Meldungen, die nur erstmals aufgenommene Schritte neu bekannt machen (ihre Basis, `known-messages-baseline`: jeder Schritt, der eine davon bekannt gemacht hat, laut `known` in seiner Aufnahme, war vorher ohne Aufnahme committet; jeder Schritt der ersten Aufnahme eines Tests, oder ein offener Schritt, der jetzt aufgenommen wurde). **Außerhalb des Fensters entschieden:** wo `.caw/runs` liegt (dein Rechner, nicht CI), die Antworten seit der Merge-Basis, die etwas geändert haben und von caw selbst in einem Lauf ohne Fenster (`auto`), von deiner Session (`session`), von dir in deiner Session (`elicitation`) oder von dir im Terminal von `record --headless` (`terminal`) gegeben wurden: übernommen, angenommen, angewendet, verwendet, befördert. Sie ändern den Exit-Code nie.
 
 Exit `0` nichts abgeschwächt, `1` abgeschwächt, `3` die Ref ist unbekannt, hat keine gemeinsame Geschichte mit `HEAD` (`git-ref`) oder es gibt kein Git (`git-missing`). `--json` gibt `{ ref, base, weakened, findings, decided }` aus, jeder Befund mit `id`, `kind`, `severity` (`weakening`, `listed`, `info`), `test` (`null` für die Config), `step`, `before`, `after` und `text`; `decided` nennt `run`, `test`, `decision`, `option` und `by`.
 
@@ -163,8 +163,9 @@ npx caw list create-ticket
 Ohne Test: je Test eine Zeile mit Zielen, Stand der Aufnahme (`aufgenommen`, `offen (S4, S5)`, `veraltet (S2, S3)`, `nicht aufgenommen`) und ob er Daten schreibt. Mit Test: je Schritt eine Zeile, etwa `S2  Ticket anlegen  (veraltet)` oder `S4  Export  (offen)`. [Offen](test-files.de.md#offene-schritte) ist das nicht aufgenommene Ende nach dem letzten aufgenommenen Schritt. Ohne Browser und ohne den Agenten.
 
 Entwürfe aus [`reproduce`](#reproduce) in `caw/drafts` folgen in einer eigenen Tabelle, mit `rot bei S3 (Lauf …)`, sobald ein Lauf
-belegt hat, dass sie scheitern, solange der Fehler da ist, sonst `aufgenommen, noch nicht rot`; `list <entwurf>` zeigt seine
-Schritte wie die eines Tests.
+belegt hat, dass sie scheitern, solange der Fehler da ist, sonst `aufgenommen, noch nicht rot`; mit noch offenen Schritten
+folgt der Nachweis ihrem Stand (`offen (S5), rot bei S5 (Lauf …)`). Ein Design-Entwurf beginnt mit `Zielbild:`.
+`list <entwurf>` zeigt seine Schritte wie die eines Tests.
 
 Ohne `caw.config.json` bricht es ab wie jeder andere Befehl (`config-missing`). Einen Testnamen, den es nicht gibt, beantwortet caw mit den bekannten Tests und bei einem Tippfehler mit dem nächstliegenden (`Meintest du create-ticket?`); `record <name>` bietet es nur für einen neuen Test an. Einen unbekannten Schritt mit den Schritten des Tests (`Schritte: S1–S6.`).
 
@@ -382,7 +383,9 @@ Der Bildschirm am Einstieg in S3 als Entwurfsseite, der Ausgangspunkt für einen
   Schriften und Bilder, auf die Stylesheets und Seite verweisen (`<n>-<datei>`), mit relativ umgeschriebenem `url()`. Eine
   Datei wird gespeichert, wenn sie von der Herkunft der App kommt oder die Seite sie schon geladen hat; gelesen wird sie per
   GET aus der Seite selbst, durch die Schutzregeln des Laufs. Ein früherer Snapshot gleichen Namens wird ersetzt, Dateien,
-  die er nicht mehr braucht, fallen weg.
+  die er nicht mehr braucht, fallen weg. Ein Zielbild, das ein Schritt verknüpft (`design:` in einem Test oder Entwurf), ist
+  das, woran dieser Schritt gemessen wird: ein Snapshot darauf wird abgelehnt, bevor etwas läuft, mit den Schritten, außer du
+  sagst `--replace` (oder wählst einen anderen `--name`).
 
 Er liest die App nur und läuft nie auf Produktion: eine Umgebung mit `production` wird abgelehnt (`env-denied`), weil der Snapshot ihre echten Daten ins Repository legte. Das Terminal nennt, was nicht übernommen werden konnte (ein Stylesheet einer anderen
 Herkunft ohne CORS, Frames, Shadow DOM, ein gescrollter Bereich, der im Snapshot oben steht). Offline aus `caw/design`

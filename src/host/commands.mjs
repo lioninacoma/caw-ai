@@ -733,6 +733,9 @@ export const list = (root, args, { out = console.log } = {}) => {
             else if (state === 'stale') text = t('cli.listStale', { ids: staleIds.join(', ') || chain });
             else if (state === 'pending') text = t('cli.listPending', { ids: staleIds.join(', ') });
             if (draft && state === 'recorded') text = draftState(spec);
+            // A draft's red proof also while steps are pending (a design draft's red step), and where a design draft came from.
+            else if (draft && spec.red !== undefined) text = `${text}, ${draftState(spec)}`;
+            if (draft && isDesignDraft(spec)) text = t('cli.listDraftDesign', { state: text });
             return [id, (spec.runsOn ?? spec.environments ?? []).join(', '), text, writesText(spec)];
         } catch (error) {
             // The table stays narrow, the reason goes below it; validate lists all findings.
@@ -1122,6 +1125,7 @@ export const runOne = async (root, options, deps = {}, loaded = undefined) => {
     const chatTarget = spec.runsOn.find((name) => claude.has(name));
     const code = await runFlow({
         spec,
+        env: target,
         entry,
         through,
         handover,
@@ -1163,7 +1167,7 @@ export const runOne = async (root, options, deps = {}, loaded = undefined) => {
     // After the result, so the pending steps are not mistaken for a failure; a batch names them in its table instead.
     if (pending.length > 0 && !quiet) ui.info(t('cli.pendingSteps', { ids: pending.join(', '), count: pending.length, test, step: pending[0], target }));
     // A draft proven red that passes now: the bug is fixed, promoting proves it against all other tests. A design draft once
-    // its design is met at its recorded step (met at a pending step's entry, it is recorded first).
+    // its design is met after the check of its recorded step (a design shows the screen after its step).
     const shown = !quiet && !handover && spec.draft === true && spec.red !== undefined && code === EXIT.pass && existsSync(draftPath(root, test));
     if (shown && !isDesignDraft(spec)) ui.info(t('cli.draftGreen', { test, step: spec.red.step, target }));
     const recorded = spec.steps.find(({ id }) => id === spec.red?.step)?.recording !== undefined;
@@ -1467,6 +1471,8 @@ const recordFrom = async (root, options, deps = {}) => {
         const { execute, conversation } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, conversation: options.conversation });
         return fixFlow({
             draft: spec,
+            env: target,
+            server: lifecycle?.server,
             target: { id: step, reason: t('cli.recordFromReason', { step }), rerecord: true, from: true },
             guide: await fixGuide(root, options, deps, { spec, target, lifecycle, conversation }),
             sandbox,
@@ -1514,7 +1520,7 @@ const recordTest = async (root, options, deps = {}) => {
     // A draft in caw/drafts records like a test; its last step must then fail while the bug is there.
     const exists = testExists(root, test);
     // Without a window there is nobody to demonstrate, describe or steer a re-recording from a step: only a whole test with a plan.
-    if (headless && (step !== undefined || !exists || loadTest(root, test).steps.length === 0)) throw new CawError('usage', t(step === undefined ? 'cli.recordHeadlessPlan' : 'cli.recordHeadlessStep', { test, file: `${TEST_DIR}/${test}.yaml` }));
+    if (headless && (step !== undefined || !exists || loadTest(root, test).steps.length === 0)) throw new CawError('usage', t(step === undefined ? 'cli.recordHeadlessPlan' : 'cli.recordHeadlessStep', { command: `${cawCommand()} record ${test}${given === undefined ? '' : ` --env ${given}`}`, file: `${TEST_DIR}/${test}.yaml` }));
     if (step !== undefined) {
         if (!exists) throw testMissing(root, config, test, given);
         const known = withDefaults(loadTest(root, test), config);
@@ -1545,6 +1551,8 @@ const recordTest = async (root, options, deps = {}) => {
         const demonstration = ((attach !== undefined || (agent === undefined && agentMode(config) === 'session')) && exists) || headless ? undefined : await startRecording(root, config, spec, checked, { exists, conversation });
         const code = await recordFlow({
             sandbox,
+            env: target,
+            server: lifecycle?.server,
             execute: (call) => execute({ ...call, ...(call.replay === undefined && call.repair === undefined ? { demonstration } : {}) }),
             adopt: (draft, only, adoptOptions) => writeTest(root, draft, only, adoptOptions),
             // The steps the human ticked in the check run's card get look: true, after adopting.
@@ -1843,6 +1851,17 @@ export const design = async (root, args, deps = {}) => {
     // A snapshot lands in caw/design, in the repository: never one of production, whose screens hold real data.
     if (effectiveEnvironment(config, target).production) throw new CawError('env-denied', t('cli.designSnapshotProduction', { target }));
     const cawDir = join(root, PROJECT_DIR);
+    // A design a step links is what that step is judged against: replacing it is the person's decision, said with --replace.
+    if (options.replace !== true && existsSync(join(cawDir, ...file.split('/')))) {
+        const linked = [...testIds(root).map((id) => [id, () => loadTest(root, id)]), ...draftIds(root).map((id) => [id, () => loadDraft(root, id)])].flatMap(([id, load]) => {
+            try {
+                return load().steps.filter((step) => step.design === file).map((step) => `${id} ${step.id}`);
+            } catch {
+                return [];
+            }
+        });
+        if (linked.length > 0) throw new CawError('usage', t('cli.designSnapshotReplace', { file: `${PROJECT_DIR}/${file}`, steps: linked.join(', ') }));
+    }
     let written;
     let failure;
     const snapshot = async ({ page, secrets }) => {

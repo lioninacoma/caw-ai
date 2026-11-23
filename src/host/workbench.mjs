@@ -368,7 +368,7 @@ body.capture #appBox.pinned #app{position:fixed!important;left:0!important;top:0
 #cmpExtra code{font:400 11.5px/1.5 var(--font-mono)}
 .cmp-actions{margin-top:auto;display:flex;flex-direction:column;gap:8px;padding-top:6px}
 @media (max-width:999px){.cmp-body{flex-direction:column;overflow:auto}.cmp-rail,.cmp-rail.open{width:auto;flex-direction:row;flex-wrap:wrap;align-items:center;border-right:0;border-bottom:1px solid var(--line)}
-#cmpSteps{flex-direction:row;flex-wrap:wrap}#cmpRailToggle{display:none}.cmp-main{min-height:80vh}.cmp-side{width:auto;border-left:0;border-top:1px solid var(--line)}}
+#cmpSteps{flex-direction:row;flex-wrap:wrap}#cmpRailToggle{display:none}.cmp-rail #cmpSteps li,.cmp-rail.open #cmpSteps li{grid-template-columns:16px auto auto auto;justify-content:start;padding:7px 8px;font:400 13px/1.3 var(--font);color:var(--text)}.cmp-rail:not(.open) #cmpSteps .nm,.cmp-rail:not(.open) #cmpSteps .stt,.cmp-rail.open #cmpSteps .nm,.cmp-rail.open #cmpSteps .stt{position:static;display:block;width:auto;height:auto;overflow:visible;clip-path:none;white-space:nowrap}.cmp-rail #cmpSteps .stt{font-size:11.5px;color:var(--muted)}.cmp-rail #cmpSteps .met .stt{color:var(--pass)}.cmp-rail #cmpSteps .deviations .stt{color:var(--fail)}.cmp-main{min-height:80vh}.cmp-side{width:auto;border-left:0;border-top:1px solid var(--line)}}
 @media (max-width:699px){.cmp-top{padding:0 12px}.cmp-main{padding:14px 12px}}
 .drawer{display:none;flex:none;border-top:1px solid var(--line);background:var(--panel)}.drawer.open{display:block}
 .tabs{display:flex;align-items:center;gap:16px;height:34px;padding:0 14px;border-bottom:1px solid var(--line)}

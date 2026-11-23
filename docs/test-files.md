@@ -119,8 +119,9 @@ to `caw/tests` and `caw/recordings` without `red` ([commands](commands.md#promot
 
 **A design draft** is written for a target design ([guide](guide.md#build-a-draft-test-first)) and carries `origin: design` (only
 in `caw/drafts`, and no other value). Its red step is the last step with `design:`; before one is linked there is nothing to be
-red at. It is recorded like a test: its checks pass. Its `red` says that a run judged that step's design not met with every step
-before it passed, after the step's check or, while the step is pending, at its entry. A new plan keeps that `red` as long as the
+red at. It is recorded like a test: its checks pass. Its `red` says that, with every step before it passed, a run found the
+design's controls (or the step's `needs`) missing at the step's entry while it is pending, or judged its design not met after
+the step's check. A design shows the screen after its step: it is met only after the check. A new plan keeps that `red` as long as the
 red step keeps its design and expected result. `--promote` needs the design met and moves the test without `origin` and `red`;
 the run gets `design-report.md`.
 

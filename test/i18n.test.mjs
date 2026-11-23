@@ -59,5 +59,18 @@ test('{caw}: commands in hints as the person calls caw, npx caw when npm started
     assert.match(t('cli.untilHint', { test: 'a', target: 'local', step: 'S2' }), /: npx caw open a@S2 --env local$/);
     assert.match(t('cli.pendingSteps', { ids: 'S5', count: 1, test: 'a', step: 'S5', target: 'local' }), /Nimm ihn auf: npx caw record a@S5 --env local$/);
     assert.match(t('run.error.todo', { keys: 'signIn.path' }), /; npx caw doctor zeigt/);
-    assert.match(t('cli.recordHeadlessPlan', { file: 'caw/tests/a.yaml', test: 'a' }), /: npx caw record a\.$/);
+    assert.match(t('cli.recordHeadlessPlan', { file: 'caw/tests/a.yaml', command: 'npx caw record a --env local' }), /: npx caw record a --env local\.$/);
+});
+
+test('one term per thing: Zielbild for a target design in German (Entwurf is a draft in caw/drafts), App beside it, one phase name for adopting', async () => {
+    const de = Object.assign({}, ...await Promise.all(['run', 'session', 'workbench', 'config'].map(async (name) => (await import(`../src/shared/locales/de/${name}.mjs`)).default)));
+    const { default: enChat } = await import('../src/shared/locales/en/chat.mjs');
+    assert.equal(de['run.button.openDesign'], 'Mit Zielbild öffnen');
+    assert.equal(de['workbench.page.cmp.app'], 'App', 'beside "Zielbild" on the comparison page, as its other texts say App');
+    assert.match(de['run.button.buildAgain'], /\{agent\}/, 'like every other button that starts the agent');
+    for (const key of ['run.develop.designFailed', 'run.develop.designShown', 'run.develop.buildDesignAsk', 'run.develop.designMissing', 'run.develop.designUpdated', 'run.newWindow.open', 'run.flow.designNext', 'run.mcp.designUnlinked', 'session.design.noFile', 'session.design.error', 'config.report.warning.design']) {
+        assert.doesNotMatch(de[key], /Entwurf/, key);
+        assert.match(de[key], /Zielbild/, key);
+    }
+    assert.equal(enChat['chat.page.phase.promoted'], enChat['chat.page.phase.adopted'], 'the button says Adopt in both flows');
 });

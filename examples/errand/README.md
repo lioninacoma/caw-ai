@@ -39,7 +39,7 @@ Things to try next:
 - `open first-errand@S3 --env local` replays S1 and S2 and hands you the window right before the todo is ticked off. F1 opens any test at any step again, in a fresh session.
 - In that window, type `/element` in the chat, pick the "+" button and ask Claude why "Add todo" starts disabled.
 - Paste a bug into the chat: searching for "home" finds nothing although todos are tagged #home. Claude reproduces it and proposes the fix in `server.mjs`.
-- Let Claude reproduce that bug on its own, without a chat: `node ../../bin/caw.mjs reproduce "Searching for home finds nothing although todos are tagged #home." --env local`. The run folder gets a report with the verdict and a draft test plan.
+- Let Claude reproduce that bug on its own, without a chat: `node ../../bin/caw.mjs reproduce "Searching for home finds nothing although todos are tagged #home." --env local`. The run folder gets a report with the verdict; a reproduced bug becomes a draft test plan in `caw/drafts`.
 - Rename the "Add todo" button in `server.mjs`, restart, and `run` again. The step fails; ask Claude in the chat why.
 - Develop against a target design: `caw/design/todo-detail.html` is the screen S4 ends on. Add `design: design/todo-detail.html` to S4 in `caw/tests/first-errand.yaml` and `run`: caw compares the page with the design after S4's check. Change the Save button's color in `server.mjs`, restart, and the step fails with kind `design`, naming the style that differs.
 - Record the whole test yourself with Claude in the chat: `node ../../bin/caw.mjs record first-errand --env local`. That replaces the shipped recording.

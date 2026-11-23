@@ -83,7 +83,7 @@ test('caw design: only snapshot, always with a step, a plain name; nothing is lo
     const { design } = await import('../src/host/commands.mjs');
     const root = tempCaw(t);
     for (const [args, pattern] of [
-        [['shot', 'order@S2'], /design kennt snapshot/],
+        [['shot', 'order@S2'], /design kennt snapshot: caw design snapshot <test>@<S4> \[--env <name>\] \[--name <name>\] \[--replace\] \[--json\]\./],
         [[], /design kennt snapshot/],
         [['snapshot', 'order'], /braucht einen Schritt: caw design snapshot order@S2/],
         [['snapshot', 'order@S2', '--name', 'assets/x'], /kein Name für eine Entwurfsseite/],
@@ -113,6 +113,32 @@ test('caw design snapshot refuses production: its screens hold real data and wou
         '',
     ].join('\n'));
     await assert.rejects(design(root, ['snapshot', 'order@S2', '--env', 'live']), (error) => error.code === 'env-denied' && /live ist Produktion: ein Snapshot/.test(error.message));
+});
+
+test('caw design snapshot onto a design a step links needs --replace: the CLI is the person, it says so before anything runs', async (t) => {
+    const { design } = await import('../src/host/commands.mjs');
+    const root = tempCaw(t);
+    mkdirSync(join(root, 'caw/tests'), { recursive: true });
+    mkdirSync(join(root, 'caw/design'), { recursive: true });
+    writeFileSync(join(root, 'caw/design/order-S2.html'), '<!doctype html><title>x</title><main></main>');
+    writeFileSync(join(root, 'caw.config.json'), JSON.stringify({ environments: { test: { url: 'http://127.0.0.1:9' } } }));
+    writeFileSync(join(root, 'caw/tests/order.yaml'), [
+        'writes: false',
+        'environments: [test]',
+        'steps:',
+        '  - id: S1',
+        '    name: Start',
+        '    do: Open the shop.',
+        '    expect: The shop is shown.',
+        '    design: design/order-S2.html',
+        '  - id: S2',
+        '    name: Order',
+        '    do: Open the order form.',
+        '    expect: The order form is shown.',
+        '',
+    ].join('\n'));
+    await assert.rejects(design(root, ['snapshot', 'order@S2', '--env', 'test']), (error) => error.code === 'usage' && /caw\/design\/order-S2\.html ist das Zielbild von order S1: .*--replace.*--name/.test(error.message));
+    assert.equal(readFileSync(join(root, 'caw/design/order-S2.html'), 'utf8'), '<!doctype html><title>x</title><main></main>', 'unchanged');
 });
 
 test('snapshot: static page without scripts, fields frozen (no password, no hidden value), the app\'s stylesheets, font and images as files', async (t) => {

@@ -126,7 +126,7 @@ export default {
     'chat.page.phase.red': 'Red',
     'chat.page.phase.fix': 'Fix',
     'chat.page.phase.green': 'Green',
-    'chat.page.phase.promoted': 'Promoted',
+    'chat.page.phase.promoted': 'Adopted',
     'chat.page.phasesDesign': 'Target design',
     'chat.page.phase.draft': 'Draft',
     'chat.page.phase.build': 'Build',

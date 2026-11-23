@@ -77,7 +77,7 @@ export const DECISIONS = {
     'fix.guide': { 'fix-by-agent': FREE, 'fix-myself': FREE, 'fix-there': FREE, retest: FREE, later: FREE, close: FREE },
     'fix.green': { promote: HUMAN, later: FREE },
     'fix.refused': { close: FREE },
-    // A design draft met at its pending step's entry: the card only says to record it next.
+    // A design draft whose pending step has its design's controls at its entry: the card only says to record it next.
     'design.record': { close: FREE },
     // Developing: a state picked with F1 may come from the app or the agent; only the person confirms it.
     'state.restore': { 'restore-picked': HUMAN, 'cancel-restore': FREE },

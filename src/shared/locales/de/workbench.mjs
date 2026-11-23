@@ -192,7 +192,7 @@ export default {
     'workbench.page.cmp.side': 'Nebeneinander',
     'workbench.page.cmp.overlay': 'Überlagert',
     'workbench.page.cmp.diff': 'Nur Unterschiede',
-    'workbench.page.cmp.app': 'Anwendung',
+    'workbench.page.cmp.app': 'App',
     'workbench.page.cmp.design': 'Zielbild',
     'workbench.page.cmp.appAlt': 'Die App, wie sie im Fenster ist, in der aufgenommenen Größe',
     'workbench.page.cmp.designAlt': 'Das Zielbild, gerendert in der aufgenommenen Größe',

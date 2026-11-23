@@ -121,8 +121,9 @@ git). Nur Entwürfe dürfen `red` tragen; in `caw/tests` lehnt `validate` es ab.
 **Ein Zielbild-Entwurf** ist für ein Zielbild geschrieben ([Leitfaden](guide.de.md#einen-entwurf-testgetrieben-umsetzen)) und trägt
 `origin: design` (nur in `caw/drafts`, und keinen anderen Wert). Sein roter Schritt ist der letzte Schritt mit `design:`; solange
 keiner verknüpft ist, gibt es nichts, woran er rot sein könnte. Er wird wie ein Test aufgenommen: Seine Prüfungen bestehen. Sein
-`red` sagt, dass ein Lauf das Zielbild dieses Schritts als nicht erfüllt beurteilt hat, während alle Schritte davor bestanden,
-nach der Prüfung des Schritts oder, solange der Schritt offen ist, an seinem Einstieg. Ein neuer Plan behält dieses `red`, solange
+`red` sagt, dass ein Lauf, während alle Schritte davor bestanden, am Einstieg des noch offenen Schritts Bedienelemente des
+Zielbilds (oder die `needs` des Schritts) vermisst hat, oder das Zielbild nach der Prüfung des Schritts als nicht erfüllt
+beurteilt hat. Ein Zielbild zeigt den Bildschirm nach seinem Schritt: erfüllt ist es erst nach der Prüfung. Ein neuer Plan behält dieses `red`, solange
 der rote Schritt sein Zielbild und sein erwartetes Ergebnis behält. `--promote` braucht das erfüllte Zielbild und übernimmt den
 Test ohne `origin` und `red`; der Lauf bekommt `design-report.md`.
 
@@ -148,7 +149,7 @@ Ein Element des Entwurfs mit `data-caw-match="structure"` wird mit allem darin n
 - **verglichen:** Vorhandensein (Bedienelemente, Ansichtszeilen, Texte, wie oben), feste Texte, Reihenfolge und die Lage jedes Elements zu seinem Nachbarn (unter, über, rechts von, links von, in);
 - **nicht verglichen:** Aussehen (Schriften, Farben, Hintergründe, Innenabstände, Rundungen, Rahmen und Schatten von Blöcken), Abstände, Einzüge und Maße, auch der Abstand vom Element davor in den Bereich hinein und aus ihm heraus.
 
-Außerhalb des Bereichs bleibt alles genau. Nimm ihn für einen Teil, der aussehen darf, wie das Framework der App ihn zeichnet; ein Entwurf aus einem Snapshot braucht keinen. Die Abweichungszeilen sind dieselben wie ohne. Gemessen an ExtJS: Ein Entwurf mit eigenem CSS weicht an 65 Stellen von der App ab (38 Stil, 23 Layout, 4 fehlen), mit dem ganzen Bildschirm als Strukturbereich an 5 (die 4 fehlenden sind Buttons und Checkbox der App ohne zugänglichen Namen, die ein einfacher Entwurf benennt; die fünfte eine Beschriftung, die in einem leeren Feld steht); vertauschte Buttons, ein geänderter Titel und ein fehlender Button werden weiter erkannt. Ein Bereich, der einem Entwurf hinzugefügt wird, den ein Schritt nennt, ändert diesen Entwurf: `caw audit` meldet das als Abschwächung (`design-file-changed`) und nennt, wie viele Bereiche dazukamen.
+Außerhalb des Bereichs bleibt alles genau. Nimm ihn für einen Teil, der aussehen darf, wie das Framework der App ihn zeichnet; ein Entwurf aus einem Snapshot braucht keinen. Die Abweichungszeilen sind dieselben wie ohne. Gemessen an ExtJS: Ein Entwurf mit eigenem CSS weicht an 65 Stellen von der App ab (38 Stil, 23 Layout, 4 fehlen), mit dem ganzen Bildschirm als Strukturbereich an 5 (die 4 fehlenden sind Buttons und Checkbox der App ohne zugänglichen Namen, die ein einfacher Entwurf benennt; die fünfte eine Beschriftung, die in einem leeren Feld steht); vertauschte Buttons, ein geänderter Titel und ein fehlender Button werden weiter erkannt. Ein Bereich, der einem Zielbild hinzugefügt wird, das ein Schritt nennt, ändert dieses Zielbild: `caw audit` meldet das als Abschwächung (`design-file-changed`) und nennt, wie viele Bereiche dazukamen.
 
 #### Was Daten sind
 

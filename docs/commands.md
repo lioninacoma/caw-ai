@@ -31,7 +31,7 @@ When a command stops, the terminal shows the reason first, then for an invalid c
 
 ```
 ✕ create-ticket@s2: a step goes after the test as <test>@S<n>, e.g. order@S3.
-  Usage: caw record <test> [--env <name>] [--role <role>]  or  caw record <test>@<S4> [--env <name>] [--agent local|docker | --attach [<key>]]
+  Usage: caw record <test> [--env <name>] [--role <role>] [--headless]  or  caw record <test>@<S4> [--env <name>] [--agent local|docker | --attach [<key>]]
   (code: usage, exit 3)
 ```
 
@@ -128,7 +128,7 @@ No test gets weaker unnoticed. caw itself keeps a check as long as its expected 
 - a learned look dropped from the recording while the step keeps `look: true` (only while the step's actions stay the same)
 - config: `consoleIgnore`, `foreignCode`, `reads`, `visualIgnore` or `readyIgnore` entries added, `messageSelectors` watching less, `effects.fail` or `design.fail` narrowed, a guarded key changed (environment commands and flags, `lintCommand`, `sandboxImage`, `sandboxUser`, `browser.executablePath`, `agent.mode`)
 
-**Changed** (listed, not a weakening): a changed expected result, with its check; new tests and steps; an action's target swapped while the step's actions and learned effects stayed (an adopted proposal for a renamed element, see [Guide](guide.md#renamed-targets)); learned effect lines replaced by new ones in the same list of an action, as when "Accept new effect" forgot them and five runs learned them anew (`effects-replaced`, with the old and new lines; a removal without new lines is a weakening). Changing the expected result is the way to change a check on purpose: the reviewer then sees both. **For information:** changed request baselines; messages newly known only from steps recorded for the first time (their baseline, `known-messages-baseline`: each step that made one known, by `known` in its recording, was committed before without a recording; every step of a test's first recording, or a pending step recorded now). **Decided outside the window:** where `.caw/runs` is kept (your machine, not CI), the answers since the merge base that changed something and were taken by caw itself in a run without a window (`auto`), by your session (`session`) or by you in your session (`elicitation`): adopted, accepted, applied, used, promoted. They never change the exit code.
+**Changed** (listed, not a weakening): a changed expected result, with its check; new tests and steps; an action's target swapped while the step's actions and learned effects stayed (an adopted proposal for a renamed element, see [Guide](guide.md#renamed-targets)); learned effect lines replaced by new ones in the same list of an action, as when "Accept new effect" forgot them and five runs learned them anew (`effects-replaced`, with the old and new lines; a removal without new lines is a weakening). Changing the expected result is the way to change a check on purpose: the reviewer then sees both. **For information:** changed request baselines; messages newly known only from steps recorded for the first time (their baseline, `known-messages-baseline`: each step that made one known, by `known` in its recording, was committed before without a recording; every step of a test's first recording, or a pending step recorded now). **Decided outside the window:** where `.caw/runs` is kept (your machine, not CI), the answers since the merge base that changed something and were taken by caw itself in a run without a window (`auto`), by your session (`session`), by you in your session (`elicitation`) or by you at the terminal of `record --headless` (`terminal`): adopted, accepted, applied, used, promoted. They never change the exit code.
 
 Exit `0` nothing weakened, `1` weakened, `3` the ref is unknown, has no common history with `HEAD` (`git-ref`), or there is no Git (`git-missing`). `--json` prints `{ ref, base, weakened, findings, decided }`, each finding with `id`, `kind`, `severity` (`weakening`, `listed`, `info`), `test` (`null` for the config), `step`, `before`, `after` and `text`; `decided` lists `run`, `test`, `decision`, `option` and `by`.
 
@@ -163,7 +163,8 @@ npx caw list create-ticket
 Without a test: one row per test with its targets, its recording status (`recorded`, `pending (S4, S5)`, `stale (S2, S3)`, `not recorded`) and whether it writes data. With a test: one line per step, e.g. `S2  Create a ticket  (stale)` or `S4  Export  (pending)`. [Pending](test-files.md#pending-steps) is the unrecorded tail after the last recorded step. No browser, no agent.
 
 Drafts from [`reproduce`](#reproduce) in `caw/drafts` follow in a table of their own, with `red at S3 (run …)` once a run proved
-they fail while the bug is there, else `recorded, not red yet`; `list <draft>` shows its steps like a test's.
+they fail while the bug is there, else `recorded, not red yet`; with steps still pending the proof follows their state
+(`pending (S5), red at S5 (run …)`). A design draft starts with `target design:`. `list <draft>` shows its steps like a test's.
 
 Without `caw.config.json` it stops like every other command (`config-missing`). A test name that doesn't exist names the known tests and, for a typo, the closest one (`Did you mean create-ticket?`); `record <name>` is offered only for a new test. An unknown step names the test's steps (`Steps: S1–S6.`).
 
@@ -376,7 +377,9 @@ The screen at the entry of S3 as a design page, the starting point for a draft i
   inserted are kept, `@import` resolved in place; inline `<style>` stays in the page), and the fonts and images the
   stylesheets and the page reference (`<n>-<file>`), with `url()` rewritten relative. A file is stored when it comes from the
   app's origin or the page loaded it already; it is read with GET from the page itself, through the run's guards. An earlier
-  snapshot of the same name is replaced, files it no longer needs go.
+  snapshot of the same name is replaced, files it no longer needs go. A design a step links (`design:` in a test or draft) is
+  what that step is judged against: a snapshot onto it is refused before anything runs, naming the steps, unless you say
+  `--replace` (or choose another `--name`).
 
 It only reads the app, and never runs on production: an environment with `production` is refused (`env-denied`), since the snapshot would put its real data into the repository. The terminal names what could not be kept (a stylesheet of another origin without
 CORS, frames, shadow DOM, a scrolled area that shows from the top in the snapshot). Rendered offline from `caw/design` it looks

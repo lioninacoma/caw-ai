@@ -437,7 +437,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             + 'overlay (true, "build", "dev", a dev server URL or parts like "orders,admin:dev": local code on a deployed environment, only if the human wants it), headless (run; record of a test with a plan, without step: '
             + 'caw takes only what changes nothing the test checks, anything else stops the run, writes nothing and caw_status names it as openDecision; '
             + 'while it waits for a decision that needs the person, answer it with caw_decide), '
-            + 'learn (run: write missing baselines into the recording; only when the human asks), promote (run of a draft from caw/drafts: green and run --all green, then it moves to caw/tests with a fix report; only when the human asks), start (run the environment\'s configured start command if it does not '
+            + 'learn (run: write missing baselines into the recording; only when the human asks), promote (run of a draft from caw/drafts: green and run --all green, then it moves to caw/tests with a fix report, fix-report.md, or of a design draft design-report.md; only when the human asks), start (run the environment\'s configured start command if it does not '
             + 'answer and stop it afterwards; not with overlay), reset (run the environment\'s configured reset first). '
             + 'Or args as on the command line, not both. You are the agent, so no extra tokens and no token question; record follows an existing '
             + 'test plan (caw/tests/<test>.yaml) without asking the human to demonstrate; a new test without a plan starts with their demonstration. '
@@ -463,7 +463,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                 learn: { type: 'boolean', description: 'run: learn missing baselines and effects (--learn); only when the human asks' },
                 strict: { type: 'boolean', description: 'run: fail with exit 4 while the test has pending steps (--strict)' },
                 design: { type: 'boolean', description: 'open with test and step: play through the step (a pending one: up to its entry) and open the comparison with its target design, deviations marked in both images (--design)' },
-                promote: { type: 'boolean', description: 'run of a draft in caw/drafts (--promote): it must pass and so must run --all on the same env; then it moves to caw/tests and the run folder gets fix-report.md. Only when the human asks' },
+                promote: { type: 'boolean', description: 'run of a draft in caw/drafts (--promote): it must pass and so must run --all on the same env; then it moves to caw/tests and the run folder gets fix-report.md (a design draft: its design met, design-report.md). Only when the human asks' },
                 start: { type: 'boolean', description: 'Start the environment with its configured start command if it does not answer, stop it at the end (--start)' },
                 reset: { type: 'boolean', description: 'Run the environment\'s configured reset before the first test (--reset)' },
                 args: { type: 'array', items: { type: 'string' }, description: 'Raw command line instead of the typed fields' },
@@ -821,7 +821,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             const askBeforeReplacing = async (file) => {
                 if (input.personAsked === true || design.designPath(cawDir, file) === null) return;
                 const linked = (await stepLinks()).filter((link) => link.design === file);
-                if (linked.length > 0) throw new Error(t('run.mcp.designReplaceAsk', { file: `${PROJECT_DIR}/${file}`, steps: linked.map(({ test, step }) => `${test} ${step}`).join(', ') }));
+                if (linked.length > 0) throw new Error(t('run.mcp.designReplaceAsk', { action: input.action, file: `${PROJECT_DIR}/${file}`, steps: linked.map(({ test, step }) => `${test} ${step}`).join(', ') }));
             };
             if (input.action === 'put') {
                 if (typeof input.content !== 'string') throw new Error(t('run.mcp.designContent'));
@@ -851,7 +851,8 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                 const file = typeof name === 'string' ? snapshotName(name) : null;
                 if (file === null) throw new Error(t('run.mcp.designName'));
                 await askBeforeReplacing(file);
-                const args = ['design', 'snapshot', `${input.test}@${input.step}`, '--name', file.slice('design/'.length, -'.html'.length), '--json', ...(input.env === undefined ? [] : ['--env', input.env])];
+                // Asked above: the person's consent (personAsked) is the CLI's --replace.
+                const args = ['design', 'snapshot', `${input.test}@${input.step}`, '--name', file.slice('design/'.length, -'.html'.length), '--json', '--replace', ...(input.env === undefined ? [] : ['--env', input.env])];
                 const { code, out = '', err = '', timedOut } = await execCli(args, { timeoutMs: SNAPSHOT_TIMEOUT_MS });
                 if (timedOut) return answer(t('run.mcp.designSnapshotTimeout', { minutes: SNAPSHOT_TIMEOUT_MS / 60_000 }), { ok: false, state: 'timeout' }, true);
                 const line = out.split(/\r?\n/).map((text) => text.trim()).filter((text) => text.startsWith('{')).at(-1);

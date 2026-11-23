@@ -499,6 +499,26 @@ test('the judge: met, missing file; its own browser closes', async (t) => {
     }
 });
 
+test('the judge at a pending step\'s entry: only the design\'s controls count, ready or still missing, never met', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    const caw = tempCaw(t);
+    // The screen after saving: the saved note and a bold button. At the entry only the field and the button must be there.
+    writeDesign(caw, 'design/note.html', Buffer.from('<!doctype html><body><main><h1>Note</h1><label>Note <input></label><button style="font-weight:700">Save note</button><p>Bring sunflower seeds</p></main></body>'));
+    const judge = createDesignJudge({ cawDir: caw, launch: launchChrome, read: (path) => readFileSync(path, 'utf8') });
+    const context = await browser.newContext();
+    try {
+        const page = await context.newPage();
+        await page.setContent('<!doctype html><body><main><h2>Todo</h2><label>Note <input></label><button>Save note</button><p>No note yet.</p></main></body>');
+        assert.deepEqual(await judge.judge({ file: 'design/note.html', entry: true }, page), { file: 'design/note.html', verdict: 'ready', missing: [] });
+        await page.setContent('<!doctype html><body><main><h2>Todo</h2><label>Note <input></label></main></body>');
+        assert.deepEqual(await judge.judge({ file: 'design/note.html', entry: true }, page), { file: 'design/note.html', verdict: 'not-ready', missing: ['button "Save note"'] });
+        assert.equal((await judge.judge({ file: 'design/note.html' }, page)).verdict, 'not-met', 'after the check the whole design counts');
+    } finally {
+        await judge.close();
+        await context.close();
+    }
+});
+
 test('needs: the locators missing on the page', async (t) => {
     if (needsChrome()) return t.skip('no Chrome');
     const context = await browser.newContext();

@@ -249,7 +249,7 @@ test('record --headless: only a whole test with a plan, also in CI; nobody shows
     const root = project(t);
     assert.equal(parseRunArgs('record', ['bestellen', '--headless']).headless, true);
     // Without a window nobody is needed: in CI it is not refused for that, but a new test has no plan to follow.
-    await assert.rejects(record(root, ['neu-test', '--env', 'local', '--headless'], { interactive: false }), (error) => error.code === 'usage' && /record --headless braucht einen Test mit Plan: caw\/tests\/neu-test\.yaml hat keinen/.test(error.message));
+    await assert.rejects(record(root, ['neu-test', '--env', 'local', '--headless'], { interactive: false }), (error) => error.code === 'usage' && /record --headless braucht einen Test mit Plan: caw\/tests\/neu-test\.yaml hat keinen\..*nimm ihn mit Fenster auf: caw record neu-test --env local\.$/.test(error.message));
     await assert.rejects(record(root, ['bestellen@S2', '--env', 'local', '--headless'], { interactive: false }), (error) => error.code === 'usage' && /nicht ab einem Schritt/.test(error.message));
 });
 
@@ -576,6 +576,17 @@ const writeDraft = (root, { red = { step: 'S2', run: '2026-11-20T09-00-00-000Z-b
     id: 'bug-x', role: 'tester', environments: ['local'], writes: false, notes: '', draft: true, steps, ...(red === null ? {} : { red }),
 });
 
+test('drafts: list names a design draft\'s origin and its red proof also while its red step is pending', async (t) => {
+    const root = project(t);
+    writeTest(root, {
+        id: 'note', role: 'tester', environments: ['local'], writes: false, notes: '', draft: true, origin: 'design',
+        steps: [recorded(step('S1', 'Suche')), { ...step('S2', 'Notiz'), design: 'design/note.html' }], red: { step: 'S2', run: '2026-11-23T09-00-00-000Z-note', head: 'abc1234' },
+    });
+    const lines = [];
+    list(root, [], { out: (text) => lines.push(text) });
+    assert.ok(lines.some((line) => /^note\s+local\s+Zielbild: offen \(S2\), rot bei S2 \(Lauf 2026-11-23T09-00-00-000Z-note\)\s+liest nur$/.test(line)), lines.join('\n'));
+});
+
 test('drafts: list, caw_list and caw_validate show them apart; run --all leaves them out', async (t) => {
     const root = project(t);
     writeDraft(root);
@@ -604,7 +615,7 @@ test('run --promote: one draft only; no draft, no recording, never red, a red dr
     assert.throws(() => parseRunArgs('run', ['--all', '--promote']), /--promote nimmt genau einen Entwurf/);
     assert.throws(() => parseRunArgs('run', ['a', '--promote', '--report', 'json=x.json']), /--promote nimmt genau einen Entwurf/);
     assert.equal(parseRunArgs('run', ['a', '--promote']).promote, true);
-    await assert.rejects(run(root, ['anmelden', '--promote', '--env', 'local']), (error) => error.code === 'usage' && /keinen Entwurf anmelden in caw\/drafts/.test(error.message));
+    await assert.rejects(run(root, ['anmelden', '--promote', '--env', 'local']), (error) => error.code === 'usage' && /keinen Entwurf anmelden in caw\/drafts\. --promote übernimmt einen Entwurf \(aus caw reproduce oder für ein Zielbild geschrieben\) nach caw\/tests\./.test(error.message));
     const runOne = async () => assert.fail('nothing runs');
     writeDraft(root, { red: null, steps: [recorded(step('S1', 'Suche')), step('S2', 'Treffer')] });
     assert.equal(await run(root, ['bug-x', '--promote', '--env', 'local'], { runOne }), EXIT.needsRecording);

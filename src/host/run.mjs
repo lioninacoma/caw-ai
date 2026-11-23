@@ -26,6 +26,7 @@ import { renderReport, renderReproduceReport } from '../shared/report.mjs';
 import { readReproduction, draftId, draftTestPlan, draftHint, coverageIn } from './reproduce.mjs';
 import { createHeadlessChat, openChat, parseClaudeLog, tailLines } from './chat.mjs';
 import { decide } from './decisions.mjs';
+import { designOf } from './bugfix.mjs';
 import { createDesk } from './decision-desk.mjs';
 import { terminalAsk } from './decision-prompt.mjs';
 import { isPublicKey, spawnerKey } from './decision-proof.mjs';
@@ -40,7 +41,7 @@ import { recordLocator } from './record-locator.mjs';
 import { adviceView, applyEdits, applyToFiles, applyToSpec, adviceReader, changesFiles, configValue } from './advice.mjs';
 import { diagnose } from './diagnose.mjs';
 import { keptForms } from './effects.mjs';
-import { DEFAULT_DESIGN_FAIL, createDesignJudge, designText, missingNeeds } from './design.mjs';
+import { DEFAULT_DESIGN_FAIL, createDesignJudge, missingNeeds } from './design.mjs';
 import { frameworkOf } from './framework/index.mjs';
 import { demonstrate, feedLabel, itemLabel, recordableSteps } from './demonstrate.mjs';
 import { CLAUDE_TIMEOUT_MIN, claudeFailureReason, parseEnvFile } from './linux.mjs';
@@ -1356,7 +1357,7 @@ ${text}`) ?? 0;
         const runs = runsWithResult(root, chosen.spec.id);
         const judged = (id) => {
             for (const { result } of runs) {
-                const found = (result.results ?? []).find((entry) => entry.id === id)?.design ?? (result.pendingDesign?.step === id ? result.pendingDesign : undefined);
+                const found = designOf(result, id);
                 if (found?.verdict === 'met' || found?.verdict === 'not-met') return found;
             }
             return undefined;
@@ -2119,15 +2120,21 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
         }
         // caw design snapshot: the screen in the state the run reached, read before anything else touches the page.
         if (snapshot !== undefined && healthy) await snapshot({ page: session.page(), secrets: session.secrets?.() ?? [] });
-        // Its target design at its entry (playReplay): how far the screen is built, before it can be recorded. Fails nothing.
+        // Its target design at its entry (playReplay): are its controls there yet (with needs: are they), how far the screen is
+        // built before it can be recorded. A design shows the screen after its step: it is judged once the step is recorded.
         if (ended.pendingDesign !== undefined) {
-            const { step, file, verdict: judged, missing = [], extra = [], styleDiffs = [], layoutDiffs = [], textDiffs = [], note: why } = ended.pendingDesign;
-            reportBase.pendingDesign = { step, file, verdict: judged, ...(judged === 'met' || judged === 'not-met' ? { missing, extra, styleDiffs, layoutDiffs, textDiffs } : { note: why }) };
-            const text = judged === 'met' ? t('run.pendingDesign.met', { step, file })
-                : judged === 'not-met' ? t('run.pendingDesign.notMet', { step, details: designText(ended.pendingDesign) })
-                    : why;
-            ui.info(text);
-            chat?.notice(text);
+            const { step, file, note: why } = ended.pendingDesign;
+            const byNeeds = reportBase.needs?.step === step ? reportBase.needs : undefined;
+            const entryVerdict = byNeeds === undefined ? ended.pendingDesign.verdict : byNeeds.ready ? 'ready' : 'not-ready';
+            const missing = byNeeds === undefined ? ended.pendingDesign.missing ?? [] : byNeeds.missing;
+            const seen = entryVerdict === 'ready' || entryVerdict === 'not-ready';
+            reportBase.pendingDesign = { step, file, ...(entryVerdict === undefined ? {} : { verdict: entryVerdict }), ...(seen ? { missing } : why === undefined ? {} : { note: why }) };
+            // The needs said it already, in their own line.
+            const text = byNeeds !== undefined ? undefined : entryVerdict === 'ready' ? t('run.pendingDesign.ready', { step }) : entryVerdict === 'not-ready' ? t('run.pendingDesign.notReady', { step, list: missing.join('; ') }) : why;
+            if (text !== undefined) {
+                ui.info(text);
+                chat?.notice(text);
+            }
         }
         // Per step what it did: status, time, requests and effects. Redacted with the verdict in writeResult.
         reportBase.steps = [

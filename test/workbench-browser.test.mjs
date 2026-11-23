@@ -1640,7 +1640,7 @@ test('workbench: in a narrow window side by side would fall below 75 %, so app a
     // 1440 wide: a column beside the other would show the 1280 wide app below 75 %, so the images stand one above the other.
     const narrow = await layout();
     const [app, design] = narrow.shots;
-    assert.deepEqual([app.label, design.label], ['Anwendung', 'Zielbild'], 'labelled');
+    assert.deepEqual([app.label, design.label], ['App', 'Zielbild'], 'labelled');
     assert.ok(design.top >= app.bottom, `the design below the app: ${JSON.stringify(narrow)}`);
     assert.ok(app.width === narrow.panel && design.width === narrow.panel, 'each in the full width');
     const scale = app.image / 1280;
@@ -1679,6 +1679,23 @@ test('F8 with the focus in the app switches App only, both ways', async (t) => {
     await app.locator('body').click();
     await page.keyboard.press('F8');
     assert.ok(await until(async () => !(await solo())), 'and back');
+    return undefined;
+});
+
+test('workbench: below 1000 px the comparison page\'s rail lies across the top with every step\'s name and status, folded or not (there is no toggle there)', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench } = await open(t);
+    const page = bench.page;
+    await page.setViewportSize({ width: 900, height: 800 });
+    const pixel = { src: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', width: 1, height: 1 };
+    await bench.design({ step: { id: 'S2', name: 'Speichern' }, file: 'design/s2.html', viewport: { width: 1, height: 1 }, run: 'r', met: true, design: pixel, app: pixel, deviations: [], extra: [],
+        steps: [{ id: 'S2', name: 'Speichern', status: 'met', count: 0 }, { id: 'S3', name: 'Exportieren', status: 'pending' }] }, { open: true });
+    assert.ok(await until(() => page.evaluate(() => !document.getElementById('cmp').hidden)), 'open');
+    const shown = () => page.evaluate(() => ({
+        toggle: getComputedStyle(document.getElementById('cmpRailToggle')).display,
+        texts: [...document.querySelectorAll('#cmpSteps li')].map((li) => [...li.querySelectorAll('.nm, .stt')].map((node) => (node.getBoundingClientRect().width > 4 ? node.textContent : '')).join(' · ')),
+    }));
+    assert.deepEqual(await shown(), { toggle: 'none', texts: ['Speichern · erfüllt', 'Exportieren · ausstehend'] });
     return undefined;
 });
 

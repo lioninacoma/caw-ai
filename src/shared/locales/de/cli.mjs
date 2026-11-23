@@ -55,6 +55,7 @@ Befehle:`,
                                          scheitern, statt dass er ohne sie besteht
       [--promote]                        Ein Entwurf aus caw/drafts: Besteht er und auch run --all auf derselben
                                          Umgebung, wandert er nach caw/tests, und der Laufordner bekommt fix-report.md
+                                         (ein Design-Entwurf: Zielbild erfüllt, design-report.md)
       [--start]                          Die Umgebung mit ihrem start-Befehl starten, wenn sie nicht antwortet, am Ende
                                          stoppen; mit --overlay auch die lokalen Code-Server der Teile
       [--reset] | [--no-reset]           Der reset der Umgebung läuft einmal vor dem ersten schreibenden Test; --reset
@@ -103,6 +104,7 @@ Befehle:`,
       [--env <name>] [--name <name>]     Entwurfsseite caw/design/<name>.html (Standard <test>-S4) mit den eigenen
                                          Stylesheets, Schriften und Bildern der App unter caw/design/assets/<name>/.
                                          Ausgangspunkt für einen Entwurf im Stil der App; liest die App nur
+      [--replace]                        Ein Zielbild ersetzen, das ein Schritt verknüpft (sonst verweigert)
       [--json]                           Das Ergebnis als eine JSON-Zeile
       [--start] [--step-timeout <dauer>]  wie bei run
       [--overlay[=<teile>]]              wie bei run`,
@@ -199,8 +201,9 @@ Browser:
     'cli.synopsis.record': 'caw record <test> [--env <name>] [--role <rolle>] [--headless]  oder  caw record <test>@<S4> [--env <name>] [--agent local|docker | --attach [<key>]]',
     'cli.synopsis.open': 'caw open [--env <name>] [--role <rolle>]  oder  caw open <test>[@<S4>] [--design] [--env <name>] [--agent local|docker | --attach [<key>]]',
     'cli.synopsis.overlay': 'caw overlay status|check [--env <name>] [--part <teil>] [--apply] [--start] [--json]',
-    'cli.designAction': 'design kennt snapshot: caw design snapshot <test>@<S4> [--env <name>] [--name <name>]. Nicht: „{action}“.',
+    'cli.designAction': 'design kennt snapshot: caw design snapshot <test>@<S4> [--env <name>] [--name <name>] [--replace] [--json]. Nicht: „{action}“.',
     'cli.designSnapshotProduction': '{target} ist Produktion: ein Snapshot legte ihre echten Daten nach caw/design. Nimm ihn auf einer Entwicklungs- oder Testumgebung.',
+    'cli.designSnapshotReplace': '{file} ist das Zielbild von {steps}: ein Snapshot darauf ändert, woran sie gemessen werden. Ersetze es mit --replace, oder nimm den Snapshot unter anderem Namen mit --name <name>.',
     'cli.designSnapshotStep': 'design snapshot braucht einen Schritt: caw design snapshot {test}@S2 nimmt den Bildschirm am Einstieg in S2.',
     'cli.designSnapshotName': '„{name}“ ist kein Name für eine Entwurfsseite: einfache Teile (Buchstaben, Ziffern, - _ .), z. B. --name bestellformular, nicht unter assets/.',
     'cli.designSnapshotWritten': ({ file, count, assets }) => `Snapshot geschrieben: ${file}, ${count > 0 ? `${count} Dateien in ${assets}` : 'ohne externe Stylesheets oder Dateien'}. Entwurf davon ausgehend: Markup und Klassen behalten, nur Neues ergänzen.`,
@@ -412,7 +415,7 @@ Browser:
         : `Offen, noch nicht aufgenommen: ${ids}. Sie liefen nicht. Nimm sie auf: {caw} record ${test}@${step} --env ${target}`),
     'cli.recordExists': 'Den Test {test} gibt es schon, seine Metadaten bleiben. --role und --read-only müssen zur Datei passen oder entfallen.',
     'cli.recordHeadless': '{test} auf {env} ohne Fenster aufnehmen: {agent} folgt dem Testplan; caw nimmt nur, was nichts an den Prüfungen ändert (den unveränderten Plan, die Übernahme desselben Plans, den roten Nachweis eines Entwurfs). Alles andere hält den Lauf an, schreibt nichts und endet mit Exit 5.',
-    'cli.recordHeadlessPlan': 'record --headless braucht einen Test mit Plan: {file} hat keinen. Ohne Fenster zeigt und beschreibt niemand einen neuen Test; nimm ihn mit Fenster auf: {caw} record {test}.',
+    'cli.recordHeadlessPlan': 'record --headless braucht einen Test mit Plan: {file} hat keinen. Ohne Fenster zeigt und beschreibt niemand einen neuen Test; nimm ihn mit Fenster auf: {command}.',
     'cli.recordHeadlessStep': 'record --headless nimmt den ganzen Test auf, nicht ab einem Schritt: Niemand würde die Neuaufnahme lenken. Lass @<schritt> weg oder nimm mit Fenster auf.',
     'cli.recordHeadlessOpen': 'Über {id} entscheidet ein Mensch (Optionen: {options}); nichts wurde geschrieben. Siehe {report}, dann mit Fenster aufnehmen:',
     'cli.recordStepUnknown': '{test} hat keinen Schritt {step}.{suggestion} {steps} Einen neuen Schritt trägst du zuerst in {file} ein.',
@@ -658,7 +661,7 @@ Browser:
     'cli.audit.section.listed': 'Geändert',
     'cli.audit.section.info': 'Zur Info',
     'cli.audit.decided': 'Außerhalb des Fensters entschieden',
-    'cli.audit.decided.intro': 'Antworten in den Läufen dieses Rechners seit der Merge-Basis, die etwas geändert haben, gegeben von caw selbst (auto: ein Lauf ohne Fenster), von der Session oder vom Menschen in der Session (elicitation). Zur Information; sie ändern oben nichts.',
+    'cli.audit.decided.intro': 'Antworten in den Läufen dieses Rechners seit der Merge-Basis, die etwas geändert haben, gegeben von caw selbst (auto: ein Lauf ohne Fenster), von der Session, vom Menschen in der Session (elicitation) oder vom Menschen im Terminal (terminal). Zur Information; sie ändern oben nichts.',
     'cli.audit.decided.item': '{decision}: {option} ({by}), Lauf {run}',
     'cli.audit.decided.known': '; Basis erstmals aufgenommener Schritte, ab jetzt bekannt: {list}',
     'cli.audit.before': 'vorher',
@@ -740,10 +743,11 @@ Browser:
     'cli.audit.kind.locator-changed': 'Aktion {number} von {step} nutzt ein anderes Element, ihre Prüfung blieb: {was} → {now}.',
     'cli.listDrafts': 'Entwürfe in {dir} (nicht in run --all, bis sie übernommen sind):',
     'cli.listDraftRed': 'rot bei {step} (Lauf {run})',
+    'cli.listDraftDesign': 'Zielbild: {state}',
     'cli.listDraftNotRed': 'aufgenommen, noch nicht rot',
     'cli.validateDrafts': '{count} Entwurf/Entwürfe in {dir} ebenfalls geprüft.',
     'cli.draftGreen': 'Der Entwurf besteht jetzt, auch {step}: Der Fehler ist behoben. Übernimm ihn, sobald auch die anderen Tests bestehen: {caw} run {test} --promote --env {target}',
-    'cli.promoteNoDraft': 'Es gibt keinen Entwurf {test} in {dir}. --promote übernimmt einen Entwurf aus caw reproduce nach caw/tests.',
+    'cli.promoteNoDraft': 'Es gibt keinen Entwurf {test} in {dir}. --promote übernimmt einen Entwurf (aus caw reproduce oder für ein Zielbild geschrieben) nach caw/tests.',
     'cli.promoteExists': '{file} gibt es schon. Benenne den Entwurf oder den Test um; --promote überschreibt nie einen Test.',
     'cli.promoteNotRecorded': '{test} ist nicht ganz aufgenommen: Nimm ihn erst mit {caw} record {test} auf. Nichts übernommen.',
     'cli.promoteNotRed': '{test} war noch nie rot: Ohne den roten Lauf ist nicht belegt, dass der Test den Fehler fängt. Nimm ihn auf, solange der Fehler da ist: {caw} record {test}. Nichts übernommen.',

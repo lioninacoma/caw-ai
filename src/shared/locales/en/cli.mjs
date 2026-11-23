@@ -55,6 +55,7 @@ Commands:`,
                                          passing without them
       [--promote]                        A draft from caw/drafts: when it passes and so does run --all on the same
                                          environment, it moves to caw/tests and the run folder gets fix-report.md
+                                         (a design draft: its design met, design-report.md)
       [--start]                          Start the environment with its start command if it doesn't answer, stop it at
                                          the end; with --overlay also the parts' local code servers
       [--reset] | [--no-reset]           The environment's reset runs once before the first writing test; --reset
@@ -101,6 +102,7 @@ Commands:`,
       [--env <name>] [--name <name>]     design page caw/design/<name>.html (default <test>-S4) with the app's own
                                          stylesheets, fonts and images under caw/design/assets/<name>/. The starting
                                          point for a draft in the app's style; only reads the app
+      [--replace]                        Replace a design a step links (otherwise refused)
       [--json]                           The result as one JSON line
       [--start] [--step-timeout <duration>]  as for run
       [--overlay[=<parts>]]              as for run`,
@@ -195,8 +197,9 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.synopsis.record': 'caw record <test> [--env <name>] [--role <role>] [--headless]  or  caw record <test>@<S4> [--env <name>] [--agent local|docker | --attach [<key>]]',
     'cli.synopsis.open': 'caw open [--env <name>] [--role <role>]  or  caw open <test>[@<S4>] [--design] [--env <name>] [--agent local|docker | --attach [<key>]]',
     'cli.synopsis.overlay': 'caw overlay status|check [--env <name>] [--part <part>] [--apply] [--start] [--json]',
-    'cli.designAction': 'design knows snapshot: caw design snapshot <test>@<S4> [--env <name>] [--name <name>]. Not: "{action}".',
+    'cli.designAction': 'design knows snapshot: caw design snapshot <test>@<S4> [--env <name>] [--name <name>] [--replace] [--json]. Not: "{action}".',
     'cli.designSnapshotProduction': '{target} is production: a snapshot would put its real data into caw/design. Take it on a development or test environment.',
+    'cli.designSnapshotReplace': '{file} is the target design of {steps}: a snapshot onto it changes what they are judged against. Replace it with --replace, or take the snapshot under another name with --name <name>.',
     'cli.designSnapshotStep': 'design snapshot needs a step: caw design snapshot {test}@S2 takes the screen at the entry of S2.',
     'cli.designSnapshotName': '"{name}" is no name for a design page: plain segments (letters, digits, - _ .), e.g. --name order-form, not under assets/.',
     'cli.designSnapshotWritten': ({ file, count, assets }) => `Snapshot written: ${file}, ${count > 0 ? `${count} files in ${assets}` : 'without external stylesheets or files'}. Draft from it: keep its markup and classes, add only what is new.`,
@@ -408,7 +411,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
         : `Pending, not recorded yet: ${ids}. They did not run. Record them: {caw} record ${test}@${step} --env ${target}`),
     'cli.recordExists': 'Test {test} already exists, its metadata stays. --role and --read-only must match the file or be left out.',
     'cli.recordHeadless': 'Recording {test} on {env} without a window: {agent} follows the test plan; caw takes only what changes nothing the test checks (the unchanged plan, adopting the same plan, a draft\'s red proof). Anything else stops the run, writes nothing and exits 5.',
-    'cli.recordHeadlessPlan': 'record --headless needs a test with a plan: {file} has none. Without a window nobody shows or describes a new test; record it with a window: {caw} record {test}.',
+    'cli.recordHeadlessPlan': 'record --headless needs a test with a plan: {file} has none. Without a window nobody shows or describes a new test; record it with a window: {command}.',
     'cli.recordHeadlessStep': 'record --headless records the whole test, not from a step: nobody would steer the re-recording. Leave out @<step>, or record with a window.',
     'cli.recordHeadlessOpen': 'A person decides {id} (options: {options}); nothing was written. See {report}, then record with a window:',
     'cli.recordStepUnknown': '{test} has no step {step}.{suggestion} {steps} Add a new step to {file} first.',
@@ -653,7 +656,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.audit.section.listed': 'Changed',
     'cli.audit.section.info': 'For information',
     'cli.audit.decided': 'Decided outside the window',
-    'cli.audit.decided.intro': 'Answers in this machine\'s runs since the merge base that changed something, taken by caw itself (auto: a run without a window), by the session or by the person in the session (elicitation). For information; they change nothing above.',
+    'cli.audit.decided.intro': 'Answers in this machine\'s runs since the merge base that changed something, taken by caw itself (auto: a run without a window), by the session, by the person in the session (elicitation) or by the person at the terminal (terminal). For information; they change nothing above.',
     'cli.audit.decided.item': '{decision}: {option} ({by}), run {run}',
     'cli.audit.decided.known': '; baseline of steps recorded for the first time, known from now on: {list}',
     'cli.audit.before': 'before',
@@ -733,10 +736,11 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.audit.kind.locator-changed': 'Action {number} of {step} uses another element, its check stayed: {was} → {now}.',
     'cli.listDrafts': 'Drafts in {dir} (not in run --all until promoted):',
     'cli.listDraftRed': 'red at {step} (run {run})',
+    'cli.listDraftDesign': 'target design: {state}',
     'cli.listDraftNotRed': 'recorded, not red yet',
     'cli.validateDrafts': '{count} draft(s) in {dir} checked as well.',
     'cli.draftGreen': 'The draft passes now, also {step}: the bug is fixed. Promote it once the other tests pass too: {caw} run {test} --promote --env {target}',
-    'cli.promoteNoDraft': 'There is no draft {test} in {dir}. --promote moves a draft from caw reproduce to caw/tests.',
+    'cli.promoteNoDraft': 'There is no draft {test} in {dir}. --promote moves a draft (from caw reproduce or written for a target design) to caw/tests.',
     'cli.promoteExists': '{file} exists already. Rename the draft or the test; --promote never overwrites a test.',
     'cli.promoteNotRecorded': '{test} is not fully recorded: record it first with {caw} record {test}. Nothing promoted.',
     'cli.promoteNotRed': '{test} was never shown red: without the red run there is no proof the test catches the bug. Record it while the bug is there: {caw} record {test}. Nothing promoted.',

@@ -2,7 +2,7 @@
 // scripted playback. What the flows decide must reach the run and its files the same way the workbench does it.
 
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -72,6 +72,7 @@ const harness = ({ fail, answers = [], headless = false, session = fakeSession, 
                 if (options === undefined || options === null || !['deciding', 'discussing'].includes(state)) return;
                 const ids = options.map(({ id }) => id);
                 decisions.at(-1).options = ids;
+                decisions.at(-1).labels = options.map(({ label }) => label);
                 const wish = wishes.find((candidate) => ids.includes(candidate));
                 if (wish !== undefined) wishes.splice(wishes.indexOf(wish), 1);
                 // The click comes after the question is up, like in the window.
@@ -260,6 +261,22 @@ test('Seam: open --design compares anew after F5, a reload of the window and res
     assert.equal(h.notices.filter((text) => /neu aufgelistet/.test(text)).length, 3);
 });
 
+test('Seam: the comparison page\'s rail shows another step as the newest run judged its design after its check (steps[].design)', async () => {
+    const bench = benchSession();
+    const developing = (ids, chat) => { setImmediate(() => chat.human.choose('end')); };
+    const h = harness({ session: bench.make, seams: { designComparison: async ({ viewport }) => comparison(viewport, []) }, extra: { withDesign: true }, developing });
+    const spec = testOf();
+    spec.steps[0] = { ...spec.steps[0], design: 'design/list.html' };
+    spec.steps[1] = { ...spec.steps[1], design: 'design/form.html' };
+    const earlier = join(h.root, '.caw', 'runs', `2026-01-01T00-00-00-000Z-${spec.id}`);
+    mkdirSync(earlier, { recursive: true });
+    writeFileSync(join(earlier, 'result.json'), JSON.stringify({ status: 'fail', results: [{ id: 'S1', status: 'fail' }], steps: [{ id: 'S1', status: 'fail', kind: 'design', design: { file: 'design/list.html', verdict: 'not-met', missing: ['button "Neu"'], textDiffs: [], styleDiffs: ['a', 'b'], layoutDiffs: [] } }] }));
+    const code = await runFlow({ spec, through: 'S2', handover: true, canFix: true, execute: h.execute, adopt: h.adopt, log: () => {}, openSandbox: async () => null });
+    assert.equal(code, EXIT.pass);
+    const [, first] = bench.calls.find(([name]) => name === 'design');
+    assert.deepEqual(first.steps, [{ id: 'S1', name: spec.steps[0].name, status: 'deviations', count: 3 }, { id: 'S2', name: spec.steps[1].name, status: 'met', count: 0 }]);
+});
+
 test('Seam: the comparison page\'s "have the agent build it" asks in the chat as the design card does (design.unmet, ask); only then the agent starts', async () => {
     for (const [answer, starts] of [['ask', 1], ['close', 0]]) {
         const bench = benchSession();
@@ -278,31 +295,49 @@ test('Seam: the comparison page\'s "have the agent build it" asks in the chat as
         const code = await runFlow({ spec, through: 'S2', handover: true, canFix: true, execute: h.execute, adopt: h.adopt, log: () => {}, openSandbox: async () => { opened += 1; return null; } });
         assert.equal(code, EXIT.pass);
         await asked;
-        const question = h.decisions.find(({ text }) => /umsetzen lassen, bis er Entwurf design\/form\.html erfüllt/.test(text ?? ''));
+        const question = h.decisions.find(({ text }) => /umsetzen lassen, bis er Zielbild design\/form\.html erfüllt/.test(text ?? ''));
         assert.ok(question !== undefined, h.decisions.map(({ text }) => text).join('\n'));
         assert.deepEqual(question.options, ['ask', 'close'], 'the design card\'s options');
+        assert.equal(question.labels[1], 'Nicht jetzt', 'declining only closes the question, the window stays: no "End run"');
         assert.equal(opened, starts, `${answer}: the agent ${starts === 1 ? 'starts' : 'does not start'}`);
     }
 });
 
-test('Seam: the target design of the first pending step, judged at its entry, is named and written to result.json; the run still passes', async () => {
-    const judged = { step: 'S3', file: 'design/s3.html', verdict: 'not-met', missing: ['button "Speichern"'], extra: [], styleDiffs: [], layoutDiffs: ['Abstand heading "Notiz" → textarea "Notiz": 8px → 32px'], textDiffs: [] };
-    let given;
-    const withPending = async (args) => {
-        given = args.replay.pendingDesign;
-        return { ...await playback()(args), pendingDesign: judged };
-    };
-    const h = harness({ seams: { playReplay: withPending } });
+test('Seam: at the first pending step\'s entry its target design\'s controls are looked for (still missing, or there: record it), written to result.json; the run still passes', async () => {
+    for (const [judged, line] of [
+        [{ step: 'S3', file: 'design/s3.html', verdict: 'not-ready', missing: ['button "Speichern"', 'textbox "Notiz"'] }, /^Zielbild von S3 am Einstieg: noch fehlend: button "Speichern"; textbox "Notiz" \(lässt nichts scheitern\)\.$/],
+        [{ step: 'S3', file: 'design/s3.html', verdict: 'ready', missing: [] }, /^Zielbild von S3: Seine Bedienelemente sind am Einstieg da\. Beurteilt wird es nach der Prüfung von S3, sobald S3 aufgenommen ist\.$/],
+    ]) {
+        let given;
+        const withPending = async (args) => {
+            given = args.replay.pendingDesign;
+            return { ...await playback()(args), pendingDesign: judged };
+        };
+        const h = harness({ seams: { playReplay: withPending } });
+        const spec = testOf();
+        const pending = { id: 'S3', name: 'Schritt S3', do: 'tun', expect: 'S3 da', design: 'design/s3.html' };
+        spec.steps.push(pending);
+        spec.expectations.push({ id: 'S3', text: pending.expect });
+        const code = await runFlow({ spec, canFix: true, execute: h.execute, adopt: h.adopt, log: () => {}, openSandbox: async () => null });
+        assert.equal(code, EXIT.pass, 'a preview fails nothing');
+        assert.deepEqual(given, { step: 'S3', file: 'design/s3.html' }, 'the replay carries the pending step\'s design');
+        assert.deepEqual(h.result().pendingDesign, { step: 'S3', file: 'design/s3.html', verdict: judged.verdict, missing: judged.missing });
+        assert.ok(h.notices.some((text) => line.test(text)), h.notices.join('\n'));
+    }
+});
+
+test('Seam: a pending step with needs: they, not the design\'s controls, say at its entry whether it is ready', async () => {
+    // A page without the needed button.
+    const frame = { getByRole: () => ({ elementHandles: async () => [] }) };
+    const session = () => ({ ...fakeSession(), framework: { targets: () => true }, page: () => ({ mainFrame: () => frame }) });
+    const withPending = async (args) => ({ ...await playback()(args), pendingDesign: { step: 'S3', file: 'design/s3.html' } });
+    const h = harness({ session, seams: { playReplay: withPending } });
     const spec = testOf();
-    const pending = { id: 'S3', name: 'Schritt S3', do: 'tun', expect: 'S3 da', design: 'design/s3.html' };
+    const pending = { id: 'S3', name: 'Schritt S3', do: 'tun', expect: 'S3 da', design: 'design/s3.html', needs: ["getByRole('button', { name: 'Speichern' })"] };
     spec.steps.push(pending);
     spec.expectations.push({ id: 'S3', text: pending.expect });
-    const code = await runFlow({ spec, canFix: true, execute: h.execute, adopt: h.adopt, log: () => {}, openSandbox: async () => null });
-    assert.equal(code, EXIT.pass, 'a preview fails nothing');
-    assert.deepEqual(given, { step: 'S3', file: 'design/s3.html' }, 'the replay carries the pending step\'s design');
-    const { step, file, verdict, missing, layoutDiffs } = h.result().pendingDesign;
-    assert.deepEqual({ step, file, verdict, missing, layoutDiffs }, { step: 'S3', file: 'design/s3.html', verdict: 'not-met', missing: ['button "Speichern"'], layoutDiffs: judged.layoutDiffs });
-    assert.ok(h.notices.some((text) => /^Zielbild von S3 an seinem Einstieg: noch nicht erfüllt \(lässt nichts scheitern\): design\/s3\.html Fehlt: button "Speichern"\. Layout weicht ab: Abstand/.test(text)), h.notices.join('\n'));
+    assert.equal(await runFlow({ spec, canFix: true, execute: h.execute, adopt: h.adopt, log: () => {}, openSandbox: async () => null }), EXIT.pass);
+    assert.deepEqual(h.result().pendingDesign, { step: 'S3', file: 'design/s3.html', verdict: 'not-ready', missing: ["getByRole('button', { name: 'Speichern' })"] });
 });
 
 test('Seam: the first pending step ready to record is named with the record command for the run\'s environment', async () => {

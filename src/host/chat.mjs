@@ -372,6 +372,10 @@ export const createChat = ({ show: shown = () => {}, status = () => {}, onAbort 
         notice: (text) => {
             if (!ended) show('notice', text);
         },
+        /** A result card that waits for nothing (the guided fix's last phase). */
+        result: (card) => {
+            if (!ended) show('result', resultText(card), card);
+        },
         /** Claude is starting: the chat shows it with the time since, until anything else arrives. */
         starting: (text) => {
             if (!ended) show('starting', text);

@@ -470,7 +470,7 @@ const layoutItems = (measures, tolerance, actual) => {
 
 /**
  * Texts of the design that are not data and not in the app: one in the same place (after the same element) with the same
- * kind is a changed text, `heading "Note" → "Notes"`; others are missing.
+ * kind is a changed text, `text: heading "Note" → "Notes"`; others are missing.
  */
 const textChanges = (target, actual) => {
     const keys = new Set(actual.map(({ key }) => key));
@@ -506,7 +506,7 @@ const boxOf = (element) => (element === undefined || element === null ? undefine
  * The structure of a page as caw compares it: control lines, view lines, the styles per control (the same control twice is
  * told apart by its number: `button "Delete" #2`) and, from layoutProbe, the elements with their place and look.
  * @param probe { controls: [{ line, style?, at? }], aria, layout? } as read from the page
- * @returns { lines, styles: { <control>: { <css name>: value } }, elements }
+ * @returns { lines, controls, styles: { <control>: { <css name>: value } }, elements }: controls, the control lines alone
  */
 export const structureFrom = ({ controls = [], aria = '', layout, texts = [] }) => {
     const count = new Map();
@@ -527,7 +527,7 @@ export const structureFrom = ({ controls = [], aria = '', layout, texts = [] }) 
         return shown;
     });
     const elements = layout === undefined ? [] : layoutElements(placed, layout.filter(({ kind }) => kind !== 'structure')).map((element) => (loose(element.order) ? { ...element, loose: true } : element));
-    return { lines: [...new Set([...controlLines, ...maskedView(aria, texts)])], styles, elements, ...(areas.length === 0 ? {} : { loose: looseControls }) };
+    return { lines: [...new Set([...controlLines, ...maskedView(aria, texts)])], controls: [...new Set(controlLines)], styles, elements, ...(areas.length === 0 ? {} : { loose: looseControls }) };
 };
 
 // How long a page may take at most to settle before it is measured or snapshot (a click's ripple, a fade, a label moving), and
@@ -642,11 +642,20 @@ export const compareDetailed = (target, actual, { tolerance = LAYOUT_TOLERANCE_P
 };
 
 /**
+ * The design's controls the page does not have yet (control lines, as structureFrom reads them): at a pending step's entry
+ * only they count, since the design shows the screen after the step.
+ */
+export const missingControls = (target, actual) => {
+    const has = new Set(actual.lines);
+    return (target.controls ?? []).filter((line) => !has.has(line));
+};
+
+/**
  * Target against actual. Missing lines, differing styles, a layout that differs beyond the tolerance and changed texts mean the
  * design is not met; extra lines are only reported, since a design usually leaves out the app's frame (navigation, header).
  * Data (layoutProbe) is compared only by place and font.
  * @returns { met, missing, extra, styleDiffs, layoutDiffs, textDiffs } with lines as `button "Save": color #ffffff → #000000`,
- *          `gap heading "Note" → textarea "Note": 8px → 32px`, `text heading "Note" → "Notes"`
+ *          `gap heading "Note" → textarea "Note": 8px → 32px`, `text: heading "Note" → "Notes"`
  */
 export const compareStructure = (target, actual, options) => {
     const found = compareDetailed(target, actual, options);
@@ -731,12 +740,14 @@ export const designText = ({ file, missing = [], extra = [], styleDiffs = [], la
  * @param read    (path) => file text, for tests
  * @returns { judge(design, page), close() }; judge returns { file, verdict, missing?, extra?, styleDiffs?, layoutDiffs?,
  *          textDiffs?, note? } with verdict met, not-met, missing (no such file under caw/design). `design.texts`: values that
- *          are data in this run (the run tag, remembered values), the same on both sides
+ *          are data in this run (the run tag, remembered values), the same on both sides. `design.entry`: at a pending step's
+ *          entry only the design's controls count, { file, verdict: ready | not-ready, missing } (a design shows the screen
+ *          after its step: it is never met before the step)
  */
 export const createDesignJudge = ({ cawDir, launch, read, secrets = () => [] }) => {
     let browser = null;
     return {
-        judge: async ({ file, viewport, texts = [] }, page) => {
+        judge: async ({ file, viewport, texts = [], entry = false }, page) => {
             const path = designPath(cawDir, file);
             if (path === null) return { file, verdict: 'missing', note: t('session.design.noFile', { file }) };
             browser ??= await launch();
@@ -747,6 +758,10 @@ export const createDesignJudge = ({ cawDir, launch, read, secrets = () => [] }) 
                 // A click's ripple or a moving label is not the screen: measured once it settled (ExtJS Material, settleProbe).
                 await settle(page);
                 const actual = await structureOf(page, { secrets: secrets(), texts });
+                if (entry) {
+                    const missing = missingControls(target, actual);
+                    return { file, verdict: missing.length === 0 ? 'ready' : 'not-ready', missing };
+                }
                 const { met, ...found } = compareStructure(target, actual);
                 return { file, verdict: met ? 'met' : 'not-met', ...found };
             } finally {
