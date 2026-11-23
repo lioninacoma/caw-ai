@@ -397,7 +397,9 @@ export const offerRecordRed = async (chat, draft) => {
 };
 
 /** The command that goes on with a draft later, on the run's environment (guide.env) like every other hint. */
-const laterCommand = (guide, test, extra = '', command = 'run') => `${cawCommand()} ${command} ${test}${extra}${guide?.env === undefined ? '' : ` --env ${guide.env}`}`;
+/** A caw command on the run's environment, as every hint names it: `caw run <test> --env <env>`. */
+const commandOn = (env, test, extra = '', command = 'run') => `${cawCommand()} ${command} ${test}${extra}${env === undefined ? '' : ` --env ${env}`}`;
+const laterCommand = (guide, test, extra = '', command = 'run') => commandOn(guide?.env, test, extra, command);
 
 /**
  * A draft red at its step, the bug still there: the person has the agent advise the fix (code changes come back as cards,
@@ -409,20 +411,33 @@ const laterCommand = (guide, test, extra = '', command = 'run') => `${cawCommand
  * @param title     the card's head; by default "Now fix the bug"
  * @param adviseFix () => the advice result ({ spec, touched, notes, files, outside }) or null if no agent could start
  * @param store     (advice result) adopts what changed in the test (rare: the fix is the app's)
- * @returns true to test again in a new window, false to end the run
+ * @param server    the environment's lifecycle server ({ restartable() }): an applied change to the app's server names who
+ *                  restarts it, as after any applied app change
+ * @param reloadable (on) the workbench's F5 while the card of an applied change waits: the person may look at it first
+ * @returns false to end the run, else { restart }: test again in a new window, caw restarting the server it started first
  */
-const guideFix = async (chat, { red, test, later, again = false, title, adviseFix, store, design = false }) => {
+const guideFix = async (chat, { red, test, later, again = false, title, adviseFix, store, design = false, server, reloadable }) => {
     const texts = GUIDE[design ? 'design' : 'fix'];
     const ask = { ...resultCard('next', title ?? t(texts.title), undefined, t(again ? texts.againMuted : 'run.guide.fixMuted')), rows: redRows(red) };
     let card = ask;
     let options = again ? [texts.again, { ...RETEST, primary: false }, CLOSE] : [texts.byAgent, texts.myself, LATER];
+    // An applied change to the app: who restarts its server (null: not needed), and F5 works while its card waits.
+    let restart = null;
+    let applied = false;
     const waiting = () => {
         card = resultCard('next', t(texts.waitTitle), t(texts.waitText, { id: red.step }), t('run.guide.laterHint', { command: later }));
         options = [RETEST, LATER];
+        applied = false;
     };
     for (;;) {
         const context = { test, red: redContext(red), ...(design ? { origin: 'design' } : {}), ...(again ? { again: true } : {}) };
-        const choice = await decideOn(chat, { id: 'fix.guide', context, options, card: inPhase(texts.phase, card, design) });
+        if (applied) await reloadable?.(true);
+        let choice;
+        try {
+            choice = await decideOn(chat, { id: 'fix.guide', context, options, card: inPhase(texts.phase, card, design) });
+        } finally {
+            if (applied) await reloadable?.(false);
+        }
         if (choice === FIX_BY_AGENT.id) {
             const advised = await adviseFix();
             if (advised === null) {
@@ -433,8 +448,12 @@ const guideFix = async (chat, { red, test, later, again = false, title, adviseFi
             store(advised);
             const app = appFilesOf(advised.files);
             const outside = advised.outside ?? [];
+            applied = app.length > 0;
             if (app.length > 0) {
-                card = resultCard('next', t('run.guide.appliedTitle'), t(texts.appliedText, { files: app.join(', '), id: red.step }));
+                // A change to the server's code takes effect only after a restart, as after any applied app change.
+                restart = advised.restart === true ? server?.restartable?.() ?? 'none' : null;
+                const text = [t(texts.appliedText, { files: app.join(', '), id: red.step }), ...(restart === null ? [] : [t(`run.flow.restart.${restart}`)]), t('run.flow.reloadFirst')].join(' ');
+                card = resultCard('next', t('run.guide.appliedTitle'), text);
                 options = [RETEST, LATER];
             } else if (outside.length > 0) {
                 // Nothing to apply here: where it lies, and the person fixes it there; testing again shows the fix all the same.
@@ -448,9 +467,10 @@ const guideFix = async (chat, { red, test, later, again = false, title, adviseFi
         }
         if (choice === FIX_MYSELF.id || choice === FIX_THERE.id) {
             waiting();
+            restart = null;
             continue;
         }
-        return choice === RETEST.id;
+        return choice === RETEST.id ? { restart: restart === 'caw' } : false;
     }
 };
 
@@ -573,7 +593,7 @@ const changeNote = (changes) => {
  * @param previous     the test file as it was before: adopting a recording of the same plan that changes nothing it checks is
  *                     harmless (decisions.mjs harmlessAdopt), which a run without a window may do on its own
  */
-export const fixFlow = async ({ draft, target = null, changes: done = [], whole = false, expectChange = [], fresh = [], baseline = [], discardCode, seenFailures = [], sandbox, openSandbox, execute, adopt, markLooks, log, head = () => undefined, advising: advisingFirst = true, guide, previous }) => {
+export const fixFlow = async ({ draft, target = null, changes: done = [], whole = false, expectChange = [], fresh = [], baseline = [], discardCode, seenFailures = [], sandbox, openSandbox, execute, adopt, markLooks, log, head = () => undefined, advising: advisingFirst = true, guide, previous, env = guide?.env, server }) => {
     const fixer = createFixer({ sandbox, openSandbox });
     const changes = [...done];
     const seen = [...seenFailures];
@@ -677,8 +697,8 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
                     const design = isDesignDraft(current);
                     const shown = design ? designRedOf(current, verdict) : undefined;
                     const proof = design
-                        ? resultCard('info', t('run.flow.designRedTitle', { id }), t('run.flow.designRedText', { id, file: shown.design, count: shown.deviations.length }), t('run.flow.designRedMuted', { test: current.id }))
-                        : resultCard('info', t('run.flow.redTitle', { id }), t('run.flow.redText', { id }), t('run.flow.redMuted', { test: current.id }));
+                        ? resultCard('info', t('run.flow.designRedTitle', { id }), t('run.flow.designRedText', { id, file: shown.design, count: shown.deviations.length }), t('run.flow.designRedMuted', { command: commandOn(env, current.id) }))
+                        : resultCard('info', t('run.flow.redTitle', { id }), t('run.flow.redText', { id }), t('run.flow.redMuted', { command: commandOn(env, current.id) }));
                     const context = { test: current.id, step: id, run: runId, ...(design ? { origin: 'design', deviations: shown.deviations.length } : {}) };
                     choice = await decide(chat, 'red.proof', context, guide === undefined ? proof : inPhase('red', proof, design), [adoptButton(current.steps.length), DISCARD]);
                     if (choice !== ADOPT.id) return { outcome: t('run.flow.discarded') };
@@ -695,7 +715,7 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
                             current = result.spec;
                             if (result.touched.length > 0 || result.notes) log(t('run.flow.adviceAdopted', { file: adopt(current, new Set(result.touched), { withNotes: result.notes }) }));
                         };
-                        retest = await guideFix(chat, { red: redFor(current, verdict, guide.cause), design, test: current.id, later: laterCommand(guide, current.id), adviseFix, store });
+                        retest = await guideFix(chat, { red: redFor(current, verdict, guide.cause), design, test: current.id, later: laterCommand(guide, current.id), adviseFix, store, server, reloadable: concluded.reloadable });
                         return retest ? { next: 'run' } : { outcome: t('run.guide.later', { command: laterCommand(guide, current.id) }) };
                     }
                     return { outcome: t('run.flow.saved', { file: saved }) };
@@ -773,8 +793,10 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
         }
         if (red) {
             if (choice === ADOPT.id && saved !== null) {
-                log(t(isDesignDraft(current) ? 'run.flow.designRedSaved' : 'run.flow.redSaved', { file: saved, id: redStep(current), test: current.id }));
-                return retest ? guide.rerun() : EXIT.pass;
+                log(t(isDesignDraft(current) ? 'run.flow.designRedSaved' : 'run.flow.redSaved', { file: saved, id: redStep(current), command: commandOn(env, current.id) }));
+                if (retest === false) return EXIT.pass;
+                if (retest.restart) await server.restart();
+                return guide.rerun();
             }
             log(t('run.flow.discarded'));
             return discardCode ?? played.exitCode;
@@ -800,7 +822,7 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
  * @param guide    a draft: the guided bug fix after its red proof (fixFlow)
  * @param previous the test file being recorded again, if there is one (fixFlow)
  */
-export const recordFlow = async ({ sandbox, execute, adopt, markLooks, log, head, guide, previous }) => {
+export const recordFlow = async ({ sandbox, execute, adopt, markLooks, log, head, guide, previous, env, server }) => {
     const recorded = await execute({
         sandbox,
         conclude: async ({ verdict, candidate, chat }) => {
@@ -812,7 +834,7 @@ export const recordFlow = async ({ sandbox, execute, adopt, markLooks, log, head
     });
     if (recorded.candidate === undefined) return recorded.exitCode;
     // The check run of a recording costs no further tokens unless asked: advice only comes once a step gets fixed.
-    return fixFlow({ draft: recorded.candidate, whole: true, expectChange: recorded.expectChange ?? [], fresh: recorded.fresh ?? [], baseline: recorded.baseline ?? [], seenFailures: hardFailures(recorded.verdict), sandbox, execute, adopt, markLooks, log, head, advising: false, guide, previous });
+    return fixFlow({ draft: recorded.candidate, whole: true, expectChange: recorded.expectChange ?? [], fresh: recorded.fresh ?? [], baseline: recorded.baseline ?? [], seenFailures: hardFailures(recorded.verdict), sandbox, execute, adopt, markLooks, log, head, advising: false, guide, previous, env, server });
 };
 
 /**
@@ -836,7 +858,7 @@ export const recordFlow = async ({ sandbox, execute, adopt, markLooks, log, head
  *                  names the restart the person does
  */
 export const runFlow = async (options) => {
-    const { spec, entry, through, handover, canFix, advise = false, fillBaselines = false, sessionAgent = false, reads = [], openSandbox, execute, adopt, log, hint, head = () => undefined, guide, openDesign, server } = options;
+    const { spec, entry, through, handover, canFix, advise = false, fillBaselines = false, sessionAgent = false, reads = [], openSandbox, execute, adopt, log, hint, head = () => undefined, guide, openDesign, server, env = guide?.env } = options;
     const fixer = createFixer({ openSandbox });
     // What the run learned (baselines, effects, looks) is written once: before promoting, which moves the draft, or afterwards.
     let learned = false;
@@ -1053,11 +1075,13 @@ export const runFlow = async (options) => {
                             const ready = await fixer.open(chat, (message) => { chat.progress(t('run.flow.cannotAdvise', { message })); });
                             return ready === null ? null : concluded.advise({ sandbox: ready, spec: current, fix: red });
                         };
-                        rerun = await guideFix(chat, { red, design, test: current.id, later: laterCommand(guide, current.id), again: known, title, adviseFix, store: (advised) => keep(advised, chat, { offer: false }) });
+                        const retest = await guideFix(chat, { red, design, test: current.id, later: laterCommand(guide, current.id), again: known, title, adviseFix, store: (advised) => keep(advised, chat, { offer: false }), server, reloadable });
+                        rerun = retest !== false;
+                        restartFirst = rerun && retest.restart;
                         return rerun ? windowAfter() : { outcome: t('run.guide.later', { command: laterCommand(guide, current.id) }) };
                     }
                     const text = design ? t(known ? 'run.flow.designStillRedText' : 'run.flow.designRedText', { id, file: red.design, count: red.deviations.length }) : t(known ? 'run.flow.stillRedText' : 'run.flow.redText', { id });
-                    await decide(chat, 'red.still', { test: current.id, step: id }, resultCard('info', title, text, t(design ? 'run.flow.designStillRedMuted' : 'run.flow.stillRedMuted', { test: current.id })), [ONLY_CLOSE]);
+                    await decide(chat, 'red.still', { test: current.id, step: id }, resultCard('info', title, text, t(design ? 'run.flow.designStillRedMuted' : 'run.flow.stillRedMuted', { command: commandOn(env, current.id) })), [ONLY_CLOSE]);
                     return undefined;
                 }
                 /** After Claude's advice. @returns true if that settles everything */
@@ -1175,7 +1199,7 @@ export const runFlow = async (options) => {
     const knownRed = current.red !== undefined;
     if (redNow && !knownRed) {
         current = withRed(current, played.runId, head);
-        log(t(isDesignDraft(current) ? 'run.flow.designRedSaved' : 'run.flow.redSaved', { file: adopt(current, undefined, {}), id: redStep(current), test: current.id }));
+        log(t(isDesignDraft(current) ? 'run.flow.designRedSaved' : 'run.flow.redSaved', { file: adopt(current, undefined, {}), id: redStep(current), command: commandOn(env, current.id) }));
     }
     if (rerun) {
         if (restartFirst) await server.restart();
@@ -1187,13 +1211,13 @@ export const runFlow = async (options) => {
         await openDesign(opening);
         return played.exitCode;
     }
-    const shared = { discardCode: EXIT.fail, sandbox: fixer.sandbox(), openSandbox, execute, adopt, log, head, previous: spec };
+    const shared = { discardCode: EXIT.fail, sandbox: fixer.sandbox(), openSandbox, execute, adopt, log, head, previous: spec, env, server };
     if (repaired !== null) {
         return fixFlow({ ...shared, draft: carry(repaired.candidate, current, repaired.id), changes: [changeOf(repaired)], seenFailures: hardFailures(repaired.verdict) });
     }
     if (target !== null) return fixFlow({ ...shared, draft: current, target });
     if (redNow) {
-        if (knownRed) log(t(isDesignDraft(current) ? 'run.flow.designStillRedLog' : 'run.flow.stillRedLog', { id: redStep(current), test: current.id }));
+        if (knownRed) log(t(isDesignDraft(current) ? 'run.flow.designStillRedLog' : 'run.flow.stillRedLog', { id: redStep(current), command: commandOn(env, current.id) }));
         return played.exitCode;
     }
     // After every failure the next commands; without a chat also where the cause can be clarified.

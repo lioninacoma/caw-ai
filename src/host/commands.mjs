@@ -1122,6 +1122,7 @@ export const runOne = async (root, options, deps = {}, loaded = undefined) => {
     const chatTarget = spec.runsOn.find((name) => claude.has(name));
     const code = await runFlow({
         spec,
+        env: target,
         entry,
         through,
         handover,
@@ -1467,6 +1468,8 @@ const recordFrom = async (root, options, deps = {}) => {
         const { execute, conversation } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, conversation: options.conversation });
         return fixFlow({
             draft: spec,
+            env: target,
+            server: lifecycle?.server,
             target: { id: step, reason: t('cli.recordFromReason', { step }), rerecord: true, from: true },
             guide: await fixGuide(root, options, deps, { spec, target, lifecycle, conversation }),
             sandbox,
@@ -1545,6 +1548,8 @@ const recordTest = async (root, options, deps = {}) => {
         const demonstration = ((attach !== undefined || (agent === undefined && agentMode(config) === 'session')) && exists) || headless ? undefined : await startRecording(root, config, spec, checked, { exists, conversation });
         const code = await recordFlow({
             sandbox,
+            env: target,
+            server: lifecycle?.server,
             execute: (call) => execute({ ...call, ...(call.replay === undefined && call.repair === undefined ? { demonstration } : {}) }),
             adopt: (draft, only, adoptOptions) => writeTest(root, draft, only, adoptOptions),
             // The steps the human ticked in the check run's card get look: true, after adopting.

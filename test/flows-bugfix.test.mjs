@@ -135,6 +135,23 @@ test('Fixing by the agent: the advice gets the red step as its task; an applied 
     assert.deepEqual(applied.options, ['retest', 'later']);
 });
 
+test('Fixing by the agent: the applied card names F5 and the server restart like any applied app change; caw restarts what it started before testing again', async () => {
+    for (const [restartable, says, restarts] of [['caw', /caw startet ihn vor dem erneuten Test mit seinem start-Befehl neu\./, 1], ['none', /Starte ihn vor dem erneuten Test selbst neu; die Umgebung hat keinen start-Befehl\./, 0]]) {
+        const reload = [];
+        const advise = async () => advice({ files: ['server.mjs'], restart: true });
+        const h = harness({ outcomes: [{ ...redRun(), candidate: draft }, redRun({ advise, reloadable: async (on) => { reload.push(on); } })], answers: ['adopt', 'fix-by-agent', 'retest'] });
+        const order = [];
+        const server = { restartable: () => restartable, restart: async () => { order.push('restart'); } };
+        assert.equal(await recordFlow({ sandbox: 'box', ...h, server, guide: { rerun: async () => { order.push('rerun'); return EXIT.pass; } } }), EXIT.pass);
+        const applied = h.questions[2];
+        assert.equal(applied.card.title, 'Änderung übernommen');
+        assert.match(applied.text, says);
+        assert.match(applied.text, /Um die Änderung vorher anzusehen, lade die App neu \(F5\)\./);
+        assert.deepEqual(reload, [true, false], 'F5 works while the card waits');
+        assert.deepEqual(order, [...(restarts === 1 ? ['restart'] : []), 'rerun']);
+    }
+});
+
 test('Fixing by the agent: a cause outside the project is pointed out, nothing to apply; fixing it there leads to testing again', async () => {
     const advise = async () => advice({ outside: [{ where: 'Repository billing-api', title: 'Der Preisdienst liefert 0' }] });
     const h = harness({ outcomes: [{ ...redRun(), candidate: draft }, redRun({ advise })], answers: ['adopt', 'fix-by-agent', 'fix-there', 'retest'] });
