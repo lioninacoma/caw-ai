@@ -1160,10 +1160,8 @@ export const runOne = async (root, options, deps = {}, loaded = undefined) => {
     if (pending.length > 0 && !quiet) ui.info(t('cli.pendingSteps', { ids: pending.join(', '), count: pending.length, test, step: pending[0], target }));
     // A draft proven red that passes now: the bug is fixed, promoting proves it against all other tests. A design draft once
     // its design is met after the check of its recorded step (a design shows the screen after its step).
-    const shown = !quiet && !handover && spec.draft === true && spec.red !== undefined && code === EXIT.pass && existsSync(draftPath(root, test));
-    if (shown && !isDesignDraft(spec)) ui.info(t('cli.draftGreen', { test, step: spec.red.step, target }));
-    const recorded = spec.steps.find(({ id }) => id === spec.red?.step)?.recording !== undefined;
-    if (shown && isDesignDraft(spec) && recorded && designMet(spec, played?.verdict)) ui.info(t('cli.designGreen', { test, step: spec.red.step, target }));
+    const green = !quiet && !handover && existsSync(draftPath(root, test)) ? draftGreenLine(spec, { code, verdict: played?.verdict, target, promoting: options.promote === true }) : undefined;
+    if (green !== undefined) ui.info(green);
     // The batch reports carry the playback's verdict (diagnosis, steps) and its report.md.
     return { code, failed, verdict: played?.verdict, report: played?.report, pending };
 };
@@ -1620,6 +1618,18 @@ export const fixReport = ({ id, red, green, target, others, changed, design, kno
         else lines.push(...parts.map(([key, messages]) => `- ${t(`cli.fixReport.${key}`, { list: messages.join('; ') })}`));
     }
     return `${lines.join('\n')}\n`;
+};
+
+/**
+ * The line after a green run of a draft proven red: the bug is fixed (a design draft: its design met after the check of its
+ * recorded step), promote it. Not while promoting: that is the command it would name.
+ * @returns the line, or undefined
+ */
+export const draftGreenLine = (spec, { code, verdict, target, promoting = false }) => {
+    if (promoting || spec.draft !== true || spec.red === undefined || code !== EXIT.pass) return undefined;
+    if (!isDesignDraft(spec)) return t('cli.draftGreen', { test: spec.id, step: spec.red.step, target });
+    const recorded = spec.steps.find(({ id }) => id === spec.red.step)?.recording !== undefined;
+    return recorded && designMet(spec, verdict) ? t('cli.designGreen', { test: spec.id, step: spec.red.step, target }) : undefined;
 };
 
 /**

@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 
-import { changeTracker, chooseEnv, failureHints, init, junitXml, list, open, record, reportJson, run, runMode, stepsText, summaryMarkdown, validate } from '../src/host/commands.mjs';
+import { changeTracker, chooseEnv, draftGreenLine, failureHints, init, junitXml, list, open, record, reportJson, run, runMode, stepsText, summaryMarkdown, validate } from '../src/host/commands.mjs';
 import { parseRunArgs } from '../src/host/linux.mjs';
 import { loadTest, stepHash, writeTest } from '../src/host/test-file.mjs';
 import { listProject, validateProject } from '../src/host/project-data.mjs';
@@ -748,4 +748,11 @@ test('after a failed step: a design not met points to building and to open --des
     const check = failureHints({ id: 'S4', kind: 'check' }, { ...at, hadChat: false });
     assert.match(check[0].text, /caw record erste@S4 --env local$/, 'a failed check keeps re-recording as the last resort');
     assert.equal(check[1].text, 'Bis zum Einstieg in den Schritt: caw open erste@S4 --env local');
+});
+
+test('a green draft proven red names --promote, but not in the run of --promote itself', () => {
+    const draft = { id: 'bug-x', draft: true, red: { step: 'S2', run: 'r1' }, steps: [recorded(step('S1', 'Suche')), recorded(step('S2', 'Treffer'))] };
+    assert.match(draftGreenLine(draft, { code: EXIT.pass, target: 'local' }), /caw run bug-x --promote --env local$/);
+    assert.equal(draftGreenLine(draft, { code: EXIT.pass, target: 'local', promoting: true }), undefined);
+    assert.equal(draftGreenLine(draft, { code: EXIT.fail, target: 'local' }), undefined);
 });
