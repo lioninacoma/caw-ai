@@ -190,6 +190,18 @@ test('Seam without a window: a failed step stops at its card without fixing; a d
     assert.equal(red.runs[0].undecided, undefined);
 });
 
+test('Seam without a window: a decision left open is no discard; the terminal does not say "Discarded"', async () => {
+    const h = harness({ headless: true });
+    const logged = [];
+    await fixFlow({ draft: testOf(), whole: true, previous: testOf(), fresh: ['Gespeichert'], execute: h.execute, adopt: h.adopt, log: (text) => logged.push(text), advising: false });
+    assert.equal(h.runs[0].undecided.id, 'recording.adopt');
+    assert.deepEqual(logged.filter((text) => /Verworfen/.test(text)), []);
+    const discarded = harness({ answers: ['discard'] });
+    const said = [];
+    await fixFlow({ draft: testOf(), whole: true, execute: discarded.execute, adopt: discarded.adopt, log: (text) => said.push(text), advising: false });
+    assert.ok(said.includes('Verworfen. Der Testplan bleibt unverändert.'), 'a real discard still says so');
+});
+
 test('Seam without a window: the run that follows is announced without a window, never as a new window', async () => {
     const h = harness({ headless: true });
     // The terminal: what ui prints goes to stdout and stderr.

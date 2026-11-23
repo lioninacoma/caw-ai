@@ -808,7 +808,7 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
                 if (retest.restart) await server.restart();
                 return guide.rerun();
             }
-            log(t('run.flow.discarded'));
+            if (played.undecided === undefined) log(t('run.flow.discarded'));
             return discardCode ?? played.exitCode;
         }
         if (played.verdict.status !== 'pass') {
@@ -820,7 +820,8 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
             log(t('run.flow.planReplaced', { file: saved }));
             return played.exitCode;
         }
-        log(t('run.flow.discarded'));
+        // A decision left open (a run without a window, a person's to take) discarded nothing: the run names it instead.
+        if (played.undecided === undefined) log(t('run.flow.discarded'));
         return discardCode ?? played.exitCode;
     }
 };
