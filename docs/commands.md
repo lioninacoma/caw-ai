@@ -260,7 +260,8 @@ A draft from [`reproduce`](#reproduce) that was recorded red (its `red` field) a
 draft; if it passes, every other test on the same environment (`run --all`); only when both are green does the test move to
 `caw/tests` and `caw/recordings` (without `red`), the draft is deleted and the draft's run folder gets `fix-report.md`: red at
 which step (run, commit), green in which run, the files changed since the red commit (`git diff --name-only` in the whole
-repository plus untracked files inside the project folder, never an untracked folder such as a nested repository; without
+repository plus untracked files inside the project folder, never an untracked folder such as a nested repository, plus a file
+modified in the working tree at red (`red.dirty`) whose content changed since; without
 `caw/` and `.caw/`) and how many other tests passed. A test of the same name is never overwritten (exit 3).
 
 A design draft (`origin: design`, see [Guide](guide.md#build-a-draft-test-first)) is promoted only with its target design met at
@@ -454,7 +455,7 @@ Started by Claude Code through `.mcp.json` (`claude mcp add caw --scope project 
 | `caw_role` | Roles as data (`list`), a new one in the config with its variable names (`add`, `name`; the human fills `caw/.env`), a saved session (`login`), `remove`; never user names or passwords | no |
 | `caw_config` | Read the config, or change it validated (`patch`, `dryRun`). A patch that adds or removes the `overlay` block changes the tool list. Refused: commands (`start`, `stop`, `reset`, `ready`, `lintCommand`, overlay `start`), environment flags, `browser.executablePath`, `sandboxImage`, `sandboxUser`, `agent.mode`; the session edits those in the file, where you see the diff | no |
 | `caw_validate` | `validate` as data; drafts from `caw/drafts` under `drafts` | no |
-| `caw_list` | `list` as data; drafts under `drafts`, each with `red` (`{ step, run, head }` or `null`) and, as in `caw_status`, `phase` and `next` (a design draft with `origin: design`) | no |
+| `caw_list` | `list` as data; drafts under `drafts`, each with `red` (`{ step, run, head, dirty? }` or `null`) and, as in `caw_status`, `phase` and `next` (a design draft with `origin: design`) | no |
 | `caw_reproductions` | The reproductions in `.caw/runs`, newest first: `runId`, `date`, `ref`, `status`, `reproduced`, `observed`, `expected`, `cause`, `covered`, `draft`, `phase`, `next`, `report`; `refs` (list) keeps those and names refs without a run as `missing` (never run, or pruned by `keepRuns`), `since` (ISO date) keeps newer runs | no |
 | `caw_design` | Target designs under `caw/design`: `snapshot` runs `design snapshot` (`test`, `step`, `file`, `env`; onto a design a step links only with `personAsked: true`); `put` writes `design/<name>.html` after checking name, size and that it is an HTML page, with `stylesFrom` (a snapshot) its own stylesheets replaced by the snapshot's, and replaces a design a step links only with `personAsked: true`; `list` returns the design files and the steps that link them; `link` sets or removes one step's `design:` in `caw/tests/<test>.yaml`, or in the draft `caw/drafts/<test>.yaml` when there is no such test (with `personAsked: true`, only when the person asked) | no |
 | `caw_overlay` | Only with an `overlay` block: `action: status` (`overlay status` in-process, fast), `check` or `apply` (`overlay check`, `--apply`; waits up to 3 minutes); `env`, `part` | no |

@@ -129,7 +129,7 @@ const recordingState = (spec) => {
 /**
  * `caw list` as data: per test start path, role, environments, whether it writes and the recording state per step. Without a
  * readable config the tests are listed as written (no defaults for role and environments).
- * Drafts from caw reproduce come apart under `drafts`, each with `red`: { step, run, head? } once a run proved it fails while the
+ * Drafts from caw reproduce come apart under `drafts`, each with `red`: { step, run, head?, dirty? } once a run proved it fails while the
  * bug is there, otherwise null.
  * @returns { config: 'ok'|'missing'|'invalid', tests: [{ id, start, role, environments, writes, recording, steps: [{ id, name, recording: 'recorded'|'stale'|'pending'|'none' }] } | { id, error }], drafts: [the same with red] }
  */

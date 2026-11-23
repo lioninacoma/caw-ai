@@ -438,7 +438,7 @@ export default {
     'config.report.proposals.intro': 'Ein aufgenommenes Element fehlt, ein ähnliches trat an seine Stelle: Es bewirkte die gelernte Wirkung des Schritts, schrieb nichts, und die unveränderte Prüfung bestand. Übernimm es mit dem Knopf im Chat oder ändere das Ziel in der Aufnahme.',
     'config.report.proposals.item': '- {step}, Aktion {number}: `{from}` → `{to}`',
     'config.test.redDraftOnly': 'red gehört nur in einen Entwurf in {dir}: Es belegt, dass der Entwurf scheitert, solange der Fehler da ist. Entferne es hier.',
-    'config.test.red': 'red ist { step, run, head? }: ein Schritt dieses Entwurfs, der Lauf, der ihn rot gezeigt hat, und der damals ausgecheckte Commit (kurzer Hash).',
+    'config.test.red': 'red ist { step, run, head?, dirty? }: ein Schritt dieses Entwurfs, der Lauf, der ihn rot gezeigt hat, der damals ausgecheckte Commit (kurzer Hash) und die damals im Arbeitsverzeichnis geänderten Dateien ([{ file, hash }]: Pfad relativ zum Repository, Git-Blob-ID oder null, wenn gelöscht).',
     'config.test.originDraftOnly': 'origin gehört nur in einen Entwurf in {dir}: Es sagt, dass der Entwurf für ein Zielbild geschrieben wurde. Entferne es hier.',
     'config.test.origin': 'origin ist {origin} (ein Entwurf für ein Zielbild), oder lass es weg (ein Entwurf aus caw reproduce).',
     'config.visual': 'visual muss ein Objekt sein mit screenshots (true/false), etwa { "screenshots": true }',

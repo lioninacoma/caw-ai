@@ -410,7 +410,8 @@ Der Entwurf macht aus dem Fehler einen Test, der den Fix belegt: vorher rot, dan
    richtige Verhalten, und die Prüfung antwortet „nein“, solange der Fehler da ist. caw behält genau diese scheiternde Prüfung,
    sofern sie ausgewertet wurde (eine Prüfung, die geworfen hat, belegt nichts). Der Prüflauf ohne den Agenten zeigt dann „S3 rot wie
    erwartet: der Test fängt den Fehler“, wenn alle Schritte davor bestanden und S3 an seiner Prüfung scheiterte; „Testplan übernehmen“
-   behält den Entwurf mit `red: {step, run, head}` (der Lauf und der damals ausgecheckte Commit). Besteht S3, fängt der Entwurf
+   behält den Entwurf mit `red: {step, run, head, dirty?}` (der Lauf, der damals ausgecheckte Commit und die damals im
+   Arbeitsverzeichnis geänderten Dateien). Besteht S3, fängt der Entwurf
    den Fehler nicht, und die Entscheidung sagt das.
 2. **Fix:** Du behebst den Fehler, von Hand oder mit deiner verbundenen Claude-Code-Session; jede Änderung braucht deine
    Zustimmung. caws eigener Agent ändert nie Code.
@@ -419,8 +420,9 @@ Der Entwurf macht aus dem Fehler einen Test, der den Fix belegt: vorher rot, dan
 4. **Übernehmen:** `caw run <id> --promote` spielt den Entwurf ab und, wenn er besteht, `run --all` auf derselben Umgebung. Erst
    wenn beides grün ist, wandert der Test nach `caw/tests` und `caw/recordings`, der Entwurf wird gelöscht, und der Laufordner
    des Entwurfs bekommt `fix-report.md`: rot bei welchem Schritt (Lauf, Commit), grün in welchem Lauf, die seit dem roten Commit
-   geänderten Dateien (versionierte Dateien, committet oder nicht, im ganzen Repository; neue Dateien nur im Projektordner; ohne
-   `caw/` und `.caw/`) und wie viele andere Tests bestanden haben.
+   geänderten Dateien (versionierte Dateien, committet oder nicht, im ganzen Repository; neue Dateien nur im Projektordner; eine
+   beim Rot im Arbeitsverzeichnis geänderte Datei, deren Inhalt sich seitdem geändert hat, auch wenn sie wieder dem Commit
+   entspricht; ohne `caw/` und `.caw/`) und wie viele andere Tests bestanden haben.
    Exit 0 übernommen, 1 nicht grün, 4 nicht aufgenommen oder nie rot.
 
 **Geführt in der Werkbank.** Mit Fenster führt der Chat in einem Prozess durch diese Schritte, jeden in einem neuen Fenster,

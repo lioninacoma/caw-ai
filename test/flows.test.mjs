@@ -942,6 +942,11 @@ test('Recording a draft: red at its last step as expected is the proof, saved wi
     assert.equal(h.adopted[0].draft.draft, true);
     assert.deepEqual(h.said.at(-1), { outcome: 'Gespeichert: caw/tests/t.yaml' });
     assert.equal(h.calls.length, 2, 'no Claude for the cause: fixing the app is the next step');
+    // The files modified in the working tree then go with the proof: a bug only there is still in the fix report.
+    const dirty = [{ file: 'web/app.js', hash: 'a'.repeat(40) }];
+    const again = harness({ outcomes: [{ ...redRun(), exitCode: EXIT.fail, candidate: draftSpec }, redRun()] });
+    assert.equal(await recordFlow({ sandbox: 's', ...again, head: () => ({ head: 'abc1234', dirty }), env: 'dev' }), EXIT.pass);
+    assert.deepEqual(again.adopted[0].draft.red, { step: 'S2', run: 'r-red', head: 'abc1234', dirty });
 });
 
 test('Recording a draft: discarding the red proof writes nothing; a check that threw or an earlier failure is no proof', async () => {

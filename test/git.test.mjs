@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { auditCommand } from '../src/host/audit.mjs';
-import { auditFiles, changedFiles, mergeBase, readAtCommit } from '../src/host/git.mjs';
+import { auditFiles, changedFiles, dirtyFiles, mergeBase, readAtCommit } from '../src/host/git.mjs';
 import { CawError, exitOf } from '../src/shared/errors.mjs';
 
 const CLI = fileURLToPath(new URL('../bin/caw.mjs', import.meta.url));
@@ -120,6 +120,32 @@ test('git: the fix report lists tracked changes repo-wide, untracked files only 
     assert.match(execFileSync('git', ['ls-files', '--others', '--exclude-standard'], { cwd: root }).toString('utf8'), /^vendor\/lib\/$/m, 'git lists the nested repository as a folder');
     assert.deepEqual(changedFiles(root, before), ['../api.js', 'src/new.js']);
     assert.deepEqual(changedFiles(root, start), ['../api.js', 'src/new.js'], 'a file added since the commit is tracked');
+});
+
+test('git: the red proof keeps the tracked files modified in the working tree with their content; one changed by the fix is listed even when it is back at the commit', (t) => {
+    const { top, root, git, write } = repository(t);
+    writeFileSync(join(top, 'api.js'), 'v1');
+    write('src/other.js', 'export {};');
+    write('src/gone.js', 'export {};');
+    git('add', '-A');
+    git('commit', '-q', '-m', 'More');
+    const head = git('rev-parse', '--short', 'HEAD');
+    // The bug exists only in the working tree, beside the project folder too; a deleted file, a test and an untracked file.
+    write('src/app.js', 'export const bug = true;');
+    writeFileSync(join(top, 'api.js'), 'v2');
+    write('src/other.js', 'still dirty');
+    rmSync(join(root, 'src/gone.js'));
+    write('caw/tests/bestellung.yaml', `${TEST}# x\n`);
+    write('src/untracked.js', 'x');
+    const dirty = dirtyFiles(root);
+    assert.deepEqual(dirty.map(({ file }) => file), ['api.js', 'app/src/app.js', 'app/src/gone.js', 'app/src/other.js'], 'relative to the repository, without caw/, tracked only');
+    assert.ok(dirty.filter(({ file }) => file !== 'app/src/gone.js').every(({ hash }) => /^[0-9a-f]{40}$/.test(hash)), 'git blob ids');
+    assert.equal(dirty.find(({ file }) => file === 'app/src/gone.js').hash, null, 'deleted: no content');
+    // The fix: app.js back to the committed content, gone.js restored; api.js and other.js stay as they were at red.
+    write('src/app.js', 'export {};');
+    write('src/gone.js', 'export {};');
+    assert.deepEqual(changedFiles(root, head), ['../api.js', 'src/other.js', 'src/untracked.js'], 'git diff alone misses the fix');
+    assert.deepEqual(changedFiles(root, head, dirty), ['../api.js', 'src/app.js', 'src/gone.js', 'src/other.js', 'src/untracked.js']);
 });
 
 test('git: a folder outside any repository is git-missing', (t) => {

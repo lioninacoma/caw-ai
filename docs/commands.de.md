@@ -262,7 +262,8 @@ den Entwurf ab; besteht er, alle anderen Tests auf derselben Umgebung (`run --al
 nach `caw/tests` und `caw/recordings` (ohne `red`), der Entwurf wird gelöscht, und der Laufordner des Entwurfs bekommt
 `fix-report.md`: rot bei welchem Schritt (Lauf, Commit), grün in welchem Lauf, die seit dem roten Commit geänderten Dateien
 (`git diff --name-only` im ganzen Repository plus neue Dateien im Projektordner, nie ein neuer Ordner wie ein eingebettetes
-Repository; ohne `caw/` und `.caw/`) und wie viele andere Tests bestanden haben. Ein Test gleichen
+Repository, plus eine beim Rot im Arbeitsverzeichnis geänderte Datei (`red.dirty`), deren Inhalt sich seitdem geändert hat;
+ohne `caw/` und `.caw/`) und wie viele andere Tests bestanden haben. Ein Test gleichen
 Namens wird nie überschrieben (Exit 3).
 
 Ein Zielbild-Entwurf (`origin: design`, siehe [Leitfaden](guide.de.md#einen-entwurf-testgetrieben-umsetzen)) wird nur mit
@@ -462,7 +463,7 @@ Startet Claude Code über `.mcp.json` (`claude mcp add caw --scope project -- np
 | `caw_role` | Rollen als Daten (`list`), eine neue in der Config mit ihren Variablennamen (`add`, `name`; `caw/.env` füllt der Mensch), eine gespeicherte Sitzung (`login`), `remove`; nie Benutzernamen oder Passwörter | nein |
 | `caw_config` | Config lesen oder geprüft ändern (`patch`, `dryRun`). Ein Patch, der den `overlay`-Block hinzufügt oder entfernt, ändert die Tool-Liste. Abgelehnt: Befehle (`start`, `stop`, `reset`, `ready`, `lintCommand`, Overlay-`start`), Umgebungs-Schalter, `browser.executablePath`, `sandboxImage`, `sandboxUser`, `agent.mode`; die ändert die Session in der Datei, wo du den Diff siehst | nein |
 | `caw_validate` | `validate` als Daten; Entwürfe aus `caw/drafts` unter `drafts` | nein |
-| `caw_list` | `list` als Daten; Entwürfe unter `drafts`, jeder mit `red` (`{ step, run, head }` oder `null`) und, wie in `caw_status`, `phase` und `next` (ein Zielbild-Entwurf mit `origin: design`) | nein |
+| `caw_list` | `list` als Daten; Entwürfe unter `drafts`, jeder mit `red` (`{ step, run, head, dirty? }` oder `null`) und, wie in `caw_status`, `phase` und `next` (ein Zielbild-Entwurf mit `origin: design`) | nein |
 | `caw_reproductions` | Die Nachstellungen in `.caw/runs`, die neueste zuerst: `runId`, `date`, `ref`, `status`, `reproduced`, `observed`, `expected`, `cause`, `covered`, `draft`, `phase`, `next`, `report`; `refs` (Liste) behält nur diese und nennt Refs ohne Lauf als `missing` (nie gelaufen oder durch `keepRuns` gelöscht), `since` (ISO-Datum) behält neuere Läufe | nein |
 | `caw_design` | Zielbilder unter `caw/design`: `snapshot` führt `design snapshot` aus (`test`, `step`, `file`, `env`; über ein Design, das ein Schritt nennt, nur mit `personAsked: true`); `put` schreibt `design/<name>.html`, nachdem Name, Größe und dass es eine HTML-Seite ist geprüft sind, mit `stylesFrom` (ein Snapshot) die eigenen Stylesheets durch die des Snapshots ersetzt, und ersetzt ein Design, das ein Schritt nennt, nur mit `personAsked: true`; `list` liefert die Entwurfsdateien und die Schritte, die sie nennen; `link` setzt oder entfernt `design:` an einem Schritt von `caw/tests/<test>.yaml`, oder des Entwurfs `caw/drafts/<test>.yaml`, wenn es diesen Test nicht gibt (mit `personAsked: true`, nur auf Wunsch des Menschen) | nein |
 | `caw_overlay` | Nur mit `overlay`-Block: `action: status` (`overlay status` im Prozess, schnell), `check` oder `apply` (`overlay check`, `--apply`; wartet bis zu 3 Minuten); `env`, `part` | nein |

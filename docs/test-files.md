@@ -113,7 +113,10 @@ evaluated and failed), the draft carries the proof:
 red: { step: S3, run: 2026-11-21T09-12-03-417Z-bug-search-finds-nothing, head: "2314150" }
 ```
 
-`step` is the red step, `run` the run that showed it, `head` the commit checked out then (left out outside git). Only drafts may
+`step` is the red step, `run` the run that showed it, `head` the commit checked out then (left out outside git). `dirty` lists the
+tracked files that were modified in the working tree then, as `[{ file, hash }]`: the path relative to the repository's top, the
+content as a git blob id (`null` when deleted); without such files it is left out. The fix report also names a file from it whose
+content changed since, so a bug that existed only in the working tree is not lost. Only drafts may
 carry `red`; in `caw/tests` `validate` rejects it. Recording the draft again drops it. `run <id> --promote` moves a green draft
 to `caw/tests` and `caw/recordings` without `red` ([commands](commands.md#promoting-a-draft)).
 

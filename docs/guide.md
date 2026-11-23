@@ -407,8 +407,8 @@ The draft turns the bug into a test that proves the fix: red before, green after
 1. **Red:** `caw record <id>` records the draft. Its last step is the one that must fail: the agent checks the correct behaviour
    there and the check answers "no" while the bug is there. caw keeps exactly that failing check, as long as it evaluated (a
    check that threw proves nothing). The check run without the agent then shows "S3 red as expected: the test catches the bug"
-   when every step before passed and S3 failed at its check; "Adopt test plan" keeps the draft with `red: {step, run, head}` (the run and
-   the commit checked out then). If S3 passes, the draft does not catch the bug, and the decision says so.
+   when every step before passed and S3 failed at its check; "Adopt test plan" keeps the draft with `red: {step, run, head, dirty?}` (the run,
+   the commit checked out then and the files modified in the working tree then). If S3 passes, the draft does not catch the bug, and the decision says so.
 2. **Fix:** you fix the bug, by hand or with your attached Claude Code session; every change needs your approval. caw's own
    agent never changes code.
 3. **Green:** `caw run <id>` replays the same recording without AI. Still red, the chat says "S3 still red: the bug is still
@@ -416,7 +416,8 @@ The draft turns the bug into a test that proves the fix: red before, green after
 4. **Promote:** `caw run <id> --promote` runs the draft and, if it passes, `run --all` on the same environment. Only when both
    are green does the test move to `caw/tests` and `caw/recordings`, the draft is deleted, and the draft's run folder gets
    `fix-report.md`: red at which step (run, commit), green in which run, the files changed since the red commit (tracked files,
-   committed or not, in the whole repository; new files only inside the project folder; without `caw/` and `.caw/`) and how
+   committed or not, in the whole repository; new files only inside the project folder; a file modified in the working tree at
+   red whose content changed since, even when it is back at the commit; without `caw/` and `.caw/`) and how
    many other tests passed. Exit 0 promoted, 1 not green,
    4 not recorded or never red.
 

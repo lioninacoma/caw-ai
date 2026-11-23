@@ -31,7 +31,7 @@ const STEP_ID = /^S[1-9]\d*$/;
 const TOP_FIELDS = ['id', 'role', 'writes', 'environments', 'start', 'notes', 'origin', 'red', 'steps', 'knownMessages'];
 /** `origin: design`: a draft written for a target design (guided target-image TDD); without it a draft comes from caw reproduce. */
 export const DESIGN_ORIGIN = 'design';
-const RED_FIELDS = ['step', 'run', 'head'];
+const RED_FIELDS = ['step', 'run', 'head', 'dirty'];
 const PLAN_STEP_FIELDS = ['id', 'name', 'do', 'expect', 'note', 'retry'];
 const RETRY_FIELDS = ['times', 'waitMs', 'from'];
 const MAX_RETRY_TIMES = 10;
@@ -413,16 +413,24 @@ export const parseTest = (text, label = t('config.test.label'), { description = 
         ...(value.start === undefined ? {} : { start: value.start }),
         notes: clean(value.notes),
         ...(value.origin === undefined ? {} : { origin: value.origin }),
-        ...(value.red === undefined ? {} : { red: { step: value.red.step, run: value.red.run, ...(value.red.head === undefined ? {} : { head: value.red.head }) } }),
+        ...(value.red === undefined ? {} : { red: { step: value.red.step, run: value.red.run, ...(value.red.head === undefined ? {} : { head: value.red.head }), ...(value.red.dirty === undefined ? {} : { dirty: value.red.dirty.map(({ file, hash }) => ({ file, hash })) }) } }),
         steps,
         ...knownOf(value.knownMessages, steps),
     });
 };
 
-/** `red: { step, run, head? }`: a step of the draft, the run that showed it red, and the commit checked out then. */
+/**
+ * `red: { step, run, head?, dirty? }`: a step of the draft, the run that showed it red, the commit checked out then, and the
+ * tracked files modified in the working tree then (`[{ file, hash }]`: relative to the repository's top, the git blob id or null
+ * when deleted).
+ */
 const redOk = (red, steps) => isObject(red) && Object.keys(red).every((key) => RED_FIELDS.includes(key))
     && typeof red.step === 'string' && steps.some(({ id }) => id === red.step) && isText(red.run) && !LINE_BREAK.test(red.run)
-    && (red.head === undefined || (typeof red.head === 'string' && /^[0-9a-f]{4,40}$/.test(red.head)));
+    && (red.head === undefined || (typeof red.head === 'string' && /^[0-9a-f]{4,40}$/.test(red.head)))
+    && (red.dirty === undefined || (Array.isArray(red.dirty) && red.dirty.every(dirtyOk)));
+const dirtyOk = (entry) => isObject(entry) && Object.keys(entry).every((key) => ['file', 'hash'].includes(key))
+    && isText(entry.file) && !LINE_BREAK.test(entry.file) && !/^([/\\]|[a-z]:)/i.test(entry.file) && !entry.file.split(/[/\\]/).includes('..')
+    && (entry.hash === null || (typeof entry.hash === 'string' && /^([0-9a-f]{40}|[0-9a-f]{64})$/.test(entry.hash)));
 
 /**
  * Reads the agent's plan: only `notes` and `steps`. Metadata and recordings it sends anyway are dropped, because role, environments

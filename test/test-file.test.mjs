@@ -670,8 +670,23 @@ test('drafts: red only in caw/drafts, with a known step, the run and an optional
     assert.throws(() => parseTest(draftText, 'x', { description: true }), /red gehört nur/);
     assert.deepEqual(parseTest(draftText, 'x', { draft: true }).red, { step: 'S2', run: '2026-11-20T09-00-00-000Z-bug', head: '2314150' });
     for (const red of ['{ step: S9, run: r }', '{ step: S2 }', '{ step: S2, run: r, head: "HEAD~1" }', '{ step: S2, run: r, why: x }', 'S2']) {
-        assert.throws(() => parseTest(`${YAML}red: ${red}\n`, 'x', { draft: true }), /red ist \{ step, run, head\? \}/, red);
+        assert.throws(() => parseTest(`${YAML}red: ${red}\n`, 'x', { draft: true }), /red ist \{ step, run, head\?, dirty\? \}/, red);
     }
+});
+
+test('drafts: red keeps the tracked files modified in the working tree then, each with its blob id or null when deleted', (t) => {
+    const hash = 'a'.repeat(40);
+    const dirty = [{ file: 'web/app.js', hash }, { file: 'web/gone.js', hash: null }];
+    const text = `${YAML}red: { step: S2, run: r1, head: "2314150", dirty: [{ file: web/app.js, hash: "${hash}" }, { file: web/gone.js, hash: null }] }\n`;
+    assert.deepEqual(parseTest(text, 'x', { draft: true }).red, { step: 'S2', run: 'r1', head: '2314150', dirty });
+    for (const bad of ['dirty: web/app.js', 'dirty: [{ file: web/app.js }]', 'dirty: [{ file: web/app.js, hash: "HEAD" }]', `dirty: [{ file: "", hash: "${hash}" }]`, `dirty: [{ file: web/app.js, hash: "${hash}", why: x }]`]) {
+        assert.throws(() => parseTest(`${YAML}red: { step: S2, run: r1, head: "2314150", ${bad} }\n`, 'x', { draft: true }), /red ist \{ step, run, head\?, dirty\? \}/, bad);
+    }
+    const root = mkdtempSync(join(tmpdir(), 'caw-draft-'));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const draft = { ...spec(recorded('S1'), recorded('S2')), id: 'bug-d', draft: true, red: { step: 'S2', run: 'r1', head: 'abc1234', dirty } };
+    assert.equal(writeTest(root, draft), 'caw/drafts/bug-d.yaml');
+    assert.deepEqual(loadDraft(root, 'bug-d').red, draft.red, 'written and read back');
 });
 
 test('drafts: loaded from caw/drafts when caw/tests has none, written back there as one file with red; tests win', (t) => {

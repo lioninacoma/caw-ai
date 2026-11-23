@@ -438,7 +438,7 @@ export default {
     'config.report.proposals.intro': 'A recorded element is gone, one similar element took its place: it caused the step\'s learned effect, wrote nothing, and the unchanged check passed. Adopt it with the button in the chat, or change the target in the recording.',
     'config.report.proposals.item': '- {step}, action {number}: `{from}` → `{to}`',
     'config.test.redDraftOnly': 'red belongs to a draft in {dir} only: it proves the draft fails while the bug is there. Remove it here.',
-    'config.test.red': 'red is { step, run, head? }: a step of this draft, the run that showed it red, and the commit checked out then (a short hash).',
+    'config.test.red': 'red is { step, run, head?, dirty? }: a step of this draft, the run that showed it red, the commit checked out then (a short hash) and the files modified in the working tree then ([{ file, hash }]: path relative to the repository, git blob id or null when deleted).',
     'config.test.originDraftOnly': 'origin belongs to a draft in {dir} only: it says the draft was written for a target design. Remove it here.',
     'config.test.origin': 'origin is {origin} (a draft written for a target design), or leave it out (a draft from caw reproduce).',
     'config.visual': 'visual must be an object with screenshots (true/false), e.g. { "screenshots": true }',

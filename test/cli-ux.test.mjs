@@ -642,12 +642,14 @@ test('run --promote: one draft only; no draft, no recording, never red, a red dr
 
 test('run --promote: green draft and green others move the test to caw/tests, delete the draft and write the fix report', async (t) => {
     const root = project(t);
-    writeDraft(root);
+    // The bug was in the working tree then: the files modified there go to the fix report's comparison.
+    const dirty = [{ file: 'web/list.js', hash: 'b'.repeat(40) }];
+    writeDraft(root, { red: { step: 'S2', run: '2026-11-20T09-00-00-000Z-bug-x', head: 'abc1234', dirty } });
     const runDir = join(root, '.caw', 'runs', '2026-11-21T10-00-00-000Z-bug-x');
     mkdirSync(runDir, { recursive: true });
     const runOne = async (_root, { test: id }) => ({ code: EXIT.pass, verdict: { status: 'pass' }, report: id === 'bug-x' ? '.caw/runs/2026-11-21T10-00-00-000Z-bug-x/report.md' : `.caw/runs/r-${id}/report.md` });
     const since = [];
-    const git = { head: () => 'fff0000', changedFiles: (_root, head) => { since.push(head); return ['server/search.mjs', 'web/list.js']; } };
+    const git = { head: () => 'fff0000', changedFiles: (_root, head, atRed) => { since.push([head, atRed]); return ['server/search.mjs', 'web/list.js']; } };
     assert.equal(await run(root, ['bug-x', '--promote', '--env', 'local'], { runOne, git }), EXIT.pass);
     assert.ok(!existsSync(join(root, 'caw', 'drafts', 'bug-x.yaml')), 'the draft is gone');
     const promoted = loadTest(root, 'bug-x');
@@ -655,7 +657,7 @@ test('run --promote: green draft and green others move the test to caw/tests, de
     assert.equal(promoted.red, undefined);
     assert.equal(promoted.steps[1].recording.check, 'true');
     assert.doesNotMatch(readFileSync(join(root, 'caw', 'tests', 'bug-x.yaml'), 'utf8'), /red|recording/);
-    assert.deepEqual(since, ['abc1234']);
+    assert.deepEqual(since, [['abc1234', dirty]]);
     assert.equal(readFileSync(join(runDir, 'fix-report.md'), 'utf8'), [
         '# Fix-Bericht: bug-x',
         '',

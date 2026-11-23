@@ -3,6 +3,8 @@
 // project folder (the cwd), which need not be the repository's top.
 
 import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
@@ -77,10 +79,13 @@ export const shortHead = (root) => git(root, ['rev-parse', '--short', 'HEAD']).t
  * folder only, never an untracked folder git lists as a whole (a nested repository, "lib/"); relative to the project folder,
  * without caw/ and .caw/ (the tests themselves and the runs). A path outside the project folder keeps its place in the
  * repository, marked with a leading ../ per level.
+ * A file the red proof found modified in the working tree (`dirty`) counts too once its content differs from then: a bug that
+ * existed only in the working tree and was fixed back to the commit leaves no diff against it.
  * @param since a commit hash, as a draft's red.head records it
+ * @param dirty a draft's red.dirty: [{ file, hash }], see dirtyFiles
  * @returns the paths, sorted, with forward slashes
  */
-export const changedFiles = (root, since) => {
+export const changedFiles = (root, since, dirty = []) => {
     if (typeof since !== 'string' || !/^[0-9a-f]{4,40}$/.test(since)) throw new CawError('git-ref', t('cli.audit.badRef', { ref: String(since ?? '') }));
     const prefix = git(root, ['rev-parse', '--show-prefix']).toString('utf8').trim();
     const names = (args) => git(root, args).toString('utf8').split('\0').filter((path) => path !== '' && !path.includes('\n'));
@@ -88,11 +93,41 @@ export const changedFiles = (root, since) => {
     const diff = names(['diff', '--name-only', '-z', since, '--', ':/']);
     // Untracked only inside the project folder: whatever else lies untracked in the repository is not the fix's.
     const untracked = names(['ls-files', '--others', '--exclude-standard', '--full-name', '-z', '--', '.']).filter((path) => !path.endsWith('/'));
+    const now = contentIds(root, dirty.map(({ file }) => file));
+    const changedSinceRed = dirty.filter(({ file, hash }) => now.get(file) !== hash).map(({ file }) => file);
     const up = prefix === '' ? '' : prefix.split('/').filter(Boolean).map(() => '../').join('');
     const shown = (path) => (path.startsWith(prefix) ? path.slice(prefix.length) : `${up}${path}`);
-    return [...new Set([...diff, ...untracked].map(shown))]
+    return [...new Set([...diff, ...untracked, ...changedSinceRed].map(shown))]
         .filter((path) => ![PROJECT_DIR, RUN_DIR].some((dir) => path.startsWith(`${dir}/`)))
         .sort();
+};
+
+/**
+ * The content of files in the working tree as git blob ids (with git's filters, see workingBlobIds), null for a file that is not
+ * there. @param files paths relative to the repository's top
+ */
+const contentIds = (root, files) => {
+    if (files.length === 0) return new Map();
+    const top = git(root, ['rev-parse', '--show-toplevel']).toString('utf8').trim();
+    const present = files.filter((file) => existsSync(join(top, file)));
+    const ids = workingBlobIds(root, present.map((file) => join(top, file)));
+    return new Map(files.map((file) => [file, ids.get(join(top, file)) ?? null]));
+};
+
+/**
+ * For a draft's red proof: the tracked files modified in the working tree (staged or not, against HEAD) in the whole repository,
+ * without the project's caw/ and .caw/, each with its content as a git blob id, null when deleted. At promote changedFiles
+ * lists those whose content changed since.
+ * @returns [{ file, hash }], paths relative to the repository's top with forward slashes, sorted
+ */
+export const dirtyFiles = (root) => {
+    const prefix = git(root, ['rev-parse', '--show-prefix']).toString('utf8').trim();
+    const files = git(root, ['diff', '--name-only', '-z', 'HEAD', '--', ':/']).toString('utf8').split('\0')
+        .filter((path) => path !== '' && !path.includes('\n'))
+        .filter((path) => ![PROJECT_DIR, RUN_DIR].some((dir) => path.startsWith(`${prefix}${dir}/`)))
+        .sort();
+    const ids = contentIds(root, files);
+    return files.map((file) => ({ file, hash: ids.get(file) }));
 };
 
 /** Is this file part of the test data audit compares? Test and recording files directly in their folders, and the config. */

@@ -334,10 +334,15 @@ const redAsExpected = (spec, failed, verdict) => {
     return before.every((id) => (verdict?.results ?? []).some((result) => result.id === id && result.status === 'pass'));
 };
 
-/** The draft with its red proof: the step, the run that showed it and the commit checked out then (if git knows one). */
+/**
+ * The draft with its red proof: the step, the run that showed it, the commit checked out then (if git knows one) and the tracked
+ * files modified in the working tree then (`head()` may give { head, dirty }).
+ */
 const withRed = (spec, run, head) => {
-    const commit = head();
-    return { ...spec, red: { step: redStep(spec), run, ...(commit === undefined ? {} : { head: commit }) } };
+    const state = head();
+    const commit = typeof state === 'object' && state !== null ? state.head : state;
+    const dirty = typeof state === 'object' && state !== null && Array.isArray(state.dirty) && state.dirty.length > 0 ? state.dirty : undefined;
+    return { ...spec, red: { step: redStep(spec), run, ...(commit === undefined ? {} : { head: commit }), ...(dirty === undefined ? {} : { dirty }) } };
 };
 
 /** The red step of a draft for the fix, also before its red proof is written: the step it must fail at. */
@@ -589,7 +594,8 @@ const changeNote = (changes) => {
  * @param adopt        (test, changed steps or undefined for all, { withNotes }) writes the file and returns its name
  * @param advising     Claude advises on its own on failures and warnings; after a recording only once a step gets fixed
  * @param log          message in the terminal
- * @param head         () => the checked-out commit's short hash or undefined: a draft's red proof records it
+ * @param head         () => the checked-out commit's short hash or undefined, or { head, dirty } with the files modified in the
+ *                     working tree (git.mjs dirtyFiles): a draft's red proof records it
  * @param markLooks    (test, step ids) => the file: writes `look: true` on the steps the human ticked when adopting a whole
  *                     recording; without it nothing is suggested
  * @param guide        a draft with a window (the guided bug fix): { env, cause, rerun }; once its red proof is saved the card offers the

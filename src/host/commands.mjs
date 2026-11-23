@@ -27,7 +27,7 @@ import { ensureMcpEntry } from './mcp-entry.mjs';
 import { decide } from './decisions.mjs';
 import { promptTerminal } from './decision-prompt.mjs';
 import { projectPath } from './project-path.mjs';
-import { changedFiles, shortHead } from './git.mjs';
+import { changedFiles, dirtyFiles, shortHead } from './git.mjs';
 import { brokenChain, checkTest, draftIds, draftPath, environmentProblems, isDesignDraft, loadDraft, loadTest, pendingSteps, recordingHints, setStepLooks, staleSteps, testExists, testPath, withDefaults, writeTest } from './test-file.mjs';
 import { DESIGN_REPORT, FIX_REPORT, designMet, designOf, deviationsOf } from './bugfix.mjs';
 import { withLearning } from './learning.mjs';
@@ -1571,10 +1571,16 @@ const recordTest = async (root, options, deps = {}) => {
     });
 };
 
-/** The checked-out commit for a draft's red proof; undefined outside a git repository. */
+/**
+ * The git state for a draft's red proof: the checked-out commit and, when git gives them, the tracked files modified in the
+ * working tree ({ head, dirty }); undefined outside a git repository.
+ */
 const headOf = (root, git) => {
+    const used = git ?? gitDefault;
     try {
-        return (git ?? gitDefault).head(root);
+        const head = used.head(root);
+        if (head === undefined || used.dirty === undefined) return head;
+        return { head, dirty: used.dirty(root) };
     } catch (error) {
         if (error instanceof CawError) return undefined;
         throw error;
@@ -1582,7 +1588,8 @@ const headOf = (root, git) => {
 };
 const gitDefault = {
     head: (root) => shortHead(root),
-    changedFiles: (root, since) => changedFiles(root, since),
+    dirty: (root) => dirtyFiles(root),
+    changedFiles: (root, since, dirty) => changedFiles(root, since, dirty),
 };
 
 /** A draft as a test for caw/tests: without the draft mark, its origin and the red proof. */
@@ -1620,7 +1627,7 @@ export const fixReport = ({ id, red, green, target, others, changed, design }) =
  * `caw run <draft> --promote`: the draft must pass (its red step green, the bug fixed) and so must every other test that runs
  * on the same environment (`run --all`). Then the test goes to caw/tests and caw/recordings, the draft is deleted and the
  * draft's run folder gets fix-report.md.
- * @param git tests only: { head(root), changedFiles(root, since) }
+ * @param git tests only: { head(root), dirty?(root), changedFiles(root, since, dirty) }
  * @returns 0 promoted, 1 the draft or another test did not pass, 4 the draft is not recorded or never proven red
  */
 const promote = async (root, options, deps) => {
@@ -1685,7 +1692,7 @@ const promoteGreen = async (root, options, deps, { config, test, target, red, re
     let changed = null;
     if (red.head !== undefined) {
         try {
-            changed = git.changedFiles(root, red.head);
+            changed = git.changedFiles(root, red.head, red.dirty ?? []);
         } catch (error) {
             if (!(error instanceof CawError)) throw error;
         }
