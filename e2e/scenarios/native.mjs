@@ -1661,3 +1661,99 @@ ${finishOf(ids)}`;
         for (const dir of ['caw/tests', 'caw/recordings']) rmSync(join(native, dir, `${DESIGN_TDD}.yaml`), { force: true });
     }
 });
+
+// ---- N24: guided target-image TDD, "build it with TDD" as a scripted session (guide topic design, "Build a draft with TDD").
+// A project of its own on the native app, so adopting runs only its one other test: the session writes a design draft
+// (origin: design), records the reach headless, adds the design's step pending and links it; a headless run judges its design
+// not met at its entry and saves the red proof; "building" is the restyle switch (Archive bold, the dev server restarted with
+// the change); a run judges it met (green), the whole draft is recorded headless (the red proof stays), --promote adopts it
+// with design-report.md. Every phase as caw_list or caw_status names it.
+
+const TDD_ID = 'rec-design-draft';
+const TDD_FILE = 'design/n24-archive.html';
+const tddRoot = join(native, 'design-tdd');
+
+scenario('N24', 'Guided target-image TDD: design draft → reach recorded headless → design linked → run red at the pending step\'s entry (saved) → restyle switch → green → record --headless keeps the proof → --promote adopts with design-report.md', async () => {
+    const agent = (plan, ids, commands) => `A='caw agent'
+${tag}
+${planOf(plan)}
+$A plan --file /tmp/p.yaml > /dev/null
+${commands}
+${finishOf(ids)}`;
+    const draftFile = join(tddRoot, 'caw/drafts', `${TDD_ID}.yaml`);
+    rmSync(tddRoot, { recursive: true, force: true });
+    mkdirSync(join(tddRoot, 'caw/drafts'), { recursive: true });
+    writeFileSync(join(tddRoot, 'caw.config.json'), readFileSync(join(native, 'caw.config.json')));
+    // The one other test on the environment: adopting runs it (run --all) before the draft moves.
+    const page = { id: 'S1', name: 'Seite', do: 'Öffne die Seite.', expect: 'Archive ist da.' };
+    writeTest(tddRoot, { id: 'tdd-page', environments: ['test'], writes: false, notes: '', steps: [{ ...page, recording: { hash: stepHash(page), recordedOn: 'test', recordedAt: '2026-11-23T09:00:00.000Z', locale: 'de-DE', timezone: 'Europe/Berlin', actions: [], check: "!!document.getElementById('archive')" } }] });
+    const mcp = sessionMcpHandler({ root: tddRoot });
+    await mcp({ jsonrpc: '2.0', id: 0, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {} } });
+    let id = 1;
+    const tool = async (name, args) => (await mcp({ jsonrpc: '2.0', id: id++, method: 'tools/call', params: { name, arguments: args } })).result;
+    const listed = async () => (await tool('caw_list', {})).structuredContent.drafts.find((draft) => draft.id === TDD_ID);
+    const status = async () => (await tool('caw_status', {})).structuredContent;
+    try {
+        await renameSwitch(false);
+        await restyleSwitch(false);
+        // 1. The design, then the draft as the session writes it: origin design, the reach of the screen.
+        const put = await tool('caw_design', { action: 'put', file: TDD_FILE, content: ARCHIVE_DESIGN });
+        verify('caw_design put: written', put.isError !== true, put.content[0].text);
+        writeFileSync(draftFile, `id: ${TDD_ID}\norigin: design\nenvironments: [test]\nwrites: true\n${REACH_PLAN}\n`);
+        let row = await listed();
+        verify('caw_list: a design draft in phase draft, next records it headless', row?.origin === 'design' && row.phase === 'draft' && row.next?.command === 'record' && row.next.headless === true, JSON.stringify(row));
+
+        // 2. The reach recorded without a window, like a test: no failing check required, adopted by caw into the draft.
+        const reach = await record(tddRoot, [TDD_ID, ...recordArgs, '--headless'], { interactive: false, containerCommand: ['bash', '-c', agent(REACH_PLAN, ['S1'], S1_COMMANDS)] });
+        const reached = loadTest(tddRoot, TDD_ID);
+        verify('reach recorded headless into the draft: exit 0, S1 recorded, still a design draft, not red', reach === 0 && reached.draft === true && reached.origin === 'design' && reached.steps[0].recording !== undefined && reached.red === undefined, `${reach} ${JSON.stringify(reached.red)}`);
+        verify('caw_list: next links the design', (await listed())?.next?.do === 'link-design', JSON.stringify(await listed()));
+
+        // 3. The design's step at the end (pending), its design linked on the person's request.
+        writeTest(tddRoot, { ...reached, steps: [...reached.steps, { id: 'S2', name: 'Archivieren', do: 'Archiviere die Besorgungen.', expect: 'Der Status zeigt "Archived".' }] });
+        const linked = await tool('caw_design', { action: 'link', test: TDD_ID, step: 'S2', file: TDD_FILE, personAsked: true });
+        verify('caw_design link: S2 of the draft has the design', linked.isError !== true && linked.structuredContent.testFile === `caw/drafts/${TDD_ID}.yaml` && loadTest(tddRoot, TDD_ID).steps[1].design === TDD_FILE, linked.content[0].text);
+        row = await listed();
+        verify('caw_list: next runs it headless to prove red', row?.next?.command === 'run' && row.next.headless === true, JSON.stringify(row));
+
+        // 4. Red: S2 pending, its design judged not met at its entry; the run passes and saves the proof into the draft.
+        const unbuilt = await runQuietly(TDD_ID, ['--headless'], tddRoot);
+        const proven = loadTest(tddRoot, TDD_ID);
+        verify('red: exit 0 (S2 pending), the proof saved at S2 with its run', unbuilt.code === 0 && proven.red?.step === 'S2' && new RegExp(`Z-${TDD_ID}$`).test(proven.red?.run ?? ''), `${unbuilt.code} ${JSON.stringify(proven.red)}`);
+        const red = await status();
+        verify('caw_status: phase red, next build-design with the style to build', red.origin === 'design' && red.phase === 'red' && red.next?.do === 'build-design'
+            && (red.next.red?.deviations ?? []).includes('style: button "Archive": font-weight 700 → 400') && red.next.decision === 'fix.guide', JSON.stringify(red.next));
+        const early = await run(tddRoot, [TDD_ID, '--promote', ...target]);
+        verify('--promote while S2 is pending: exit 4, the draft stays', early === 4 && existsSync(draftFile), String(early));
+
+        // 5. Built (the dev server restarted with the change): a run judges it met, green; S2 is recorded next.
+        await restyleSwitch(true);
+        const built = await runQuietly(TDD_ID, ['--headless'], tddRoot);
+        const green = await status();
+        verify('green: exit 0, next records the draft headless', built.code === 0 && green.phase === 'green' && green.next?.command === 'record' && green.next.headless === true, `${built.code} ${JSON.stringify(green.next)}`);
+        verify('the red proof stays', loadTest(tddRoot, TDD_ID).red?.run === proven.red.run);
+
+        // 6. The whole draft recorded without a window: S2 recorded, origin and red proof kept; next adopts.
+        const recorded = await record(tddRoot, [TDD_ID, ...recordArgs, '--headless'], { interactive: false, containerCommand: ['bash', '-c', agent(`${REACH_PLAN}${ARCHIVE_STEP}`, ['S1', 'S2'], `${S1_COMMANDS}\n${S2_COMMANDS}`)] });
+        const whole = loadTest(tddRoot, TDD_ID);
+        verify('draft recorded headless: exit 0, S2 recorded, origin and red kept', recorded === 0 && whole.steps[1].recording !== undefined && whole.origin === 'design' && whole.red?.run === proven.red.run, `${recorded} ${JSON.stringify(whole.red)}`);
+        const ready = await status();
+        verify('caw_status: green, next promotes (the person\'s decision)', ready.phase === 'green' && ready.next?.promote === true && ready.next.decision === 'fix.green', JSON.stringify(ready.next));
+
+        // 7. Adopt: the draft with its design met and tdd-page green; the test moves, the run gets the design report.
+        const promoted = await run(tddRoot, [TDD_ID, '--promote', ...target]);
+        verify('--promote: exit 0, the test in caw/tests, the draft gone', promoted === 0 && existsSync(join(tddRoot, 'caw/tests', `${TDD_ID}.yaml`)) && !existsSync(draftFile), String(promoted));
+        verify('the test file carries neither origin nor red', !/^(origin|red):/m.test(readFileSync(join(tddRoot, 'caw/tests', `${TDD_ID}.yaml`), 'utf8')));
+        const { dir } = newestRunOf(tddRoot, TDD_ID);
+        const report = existsSync(join(dir, 'design-report.md')) ? readFileSync(join(dir, 'design-report.md'), 'utf8') : '';
+        verify('design report: red at S2 with the design not met and its deviations, green with its run, one other test green',
+            new RegExp(`Zielbild-Bericht: ${TDD_ID}`).test(report) && new RegExp(`Rot bei S2: Zielbild design/n24-archive\\.html nicht erfüllt \\(\\d+ Abweichung\\(en\\)\\), Lauf ${proven.red.run}`).test(report)
+            && new RegExp(`Grün: Lauf .*-${TDD_ID}, Zielbild erfüllt`).test(report) && /1 andere\(r\) Test\(s\) auf test grün/.test(report), report);
+        const { fixState } = await import('../../src/host/bugfix.mjs');
+        const adopted = fixState(tddRoot, TDD_ID);
+        verify('phase adopted with the design report', adopted?.phase === 'adopted' && /design-report\.md$/.test(adopted.next?.designReport ?? ''), JSON.stringify(adopted));
+    } finally {
+        await restyleSwitch(false).catch(() => {});
+        rmSync(tddRoot, { recursive: true, force: true });
+    }
+});
