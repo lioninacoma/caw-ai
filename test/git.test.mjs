@@ -145,7 +145,24 @@ test('git: the red proof keeps the tracked files modified in the working tree wi
     write('src/app.js', 'export {};');
     write('src/gone.js', 'export {};');
     assert.deepEqual(changedFiles(root, head), ['../api.js', 'src/other.js', 'src/untracked.js'], 'git diff alone misses the fix');
-    assert.deepEqual(changedFiles(root, head, dirty), ['../api.js', 'src/app.js', 'src/gone.js', 'src/other.js', 'src/untracked.js']);
+    assert.deepEqual(changedFiles(root, head, dirty), ['src/app.js', 'src/gone.js', 'src/untracked.js'], 'api.js and other.js are as at red: the fix did not touch them');
+});
+
+test('git: a file dirty at red that the fix left untouched is not listed, though it differs from the commit at red', (t) => {
+    const { root, git, write } = repository(t);
+    write('src/a.js', 'a1');
+    write('src/b.js', 'b1');
+    write('src/c.js', 'c1');
+    git('add', '-A');
+    git('commit', '-q', '-m', 'ABC');
+    const head = git('rev-parse', '--short', 'HEAD');
+    write('src/a.js', 'a2');
+    write('src/b.js', 'b2');
+    const dirty = dirtyFiles(root);
+    // The fix: b and c change; a stays as it was at red.
+    write('src/b.js', 'b3');
+    write('src/c.js', 'c2');
+    assert.deepEqual(changedFiles(root, head, dirty), ['src/b.js', 'src/c.js']);
 });
 
 test('git: a folder outside any repository is git-missing', (t) => {

@@ -80,7 +80,8 @@ export const shortHead = (root) => git(root, ['rev-parse', '--short', 'HEAD']).t
  * without caw/ and .caw/ (the tests themselves and the runs). A path outside the project folder keeps its place in the
  * repository, marked with a leading ../ per level.
  * A file the red proof found modified in the working tree (`dirty`) counts too once its content differs from then: a bug that
- * existed only in the working tree and was fixed back to the commit leaves no diff against it.
+ * existed only in the working tree and was fixed back to the commit leaves no diff against it. Such a file whose content is
+ * still the same as then is left out: the fix did not touch it, even though it differs from the commit at red.
  * @param since a commit hash, as a draft's red.head records it
  * @param dirty a draft's red.dirty: [{ file, hash }], see dirtyFiles
  * @returns the paths, sorted, with forward slashes
@@ -95,9 +96,11 @@ export const changedFiles = (root, since, dirty = []) => {
     const untracked = names(['ls-files', '--others', '--exclude-standard', '--full-name', '-z', '--', '.']).filter((path) => !path.endsWith('/'));
     const now = contentIds(root, dirty.map(({ file }) => file));
     const changedSinceRed = dirty.filter(({ file, hash }) => now.get(file) !== hash).map(({ file }) => file);
+    // Dirty at red and the same content now: the fix did not touch it, though it differs from the commit at red.
+    const sameAsRed = new Set(dirty.filter(({ file, hash }) => now.get(file) === hash).map(({ file }) => file));
     const up = prefix === '' ? '' : prefix.split('/').filter(Boolean).map(() => '../').join('');
     const shown = (path) => (path.startsWith(prefix) ? path.slice(prefix.length) : `${up}${path}`);
-    return [...new Set([...diff, ...untracked, ...changedSinceRed].map(shown))]
+    return [...new Set([...diff.filter((path) => !sameAsRed.has(path)), ...untracked, ...changedSinceRed].map(shown))]
         .filter((path) => ![PROJECT_DIR, RUN_DIR].some((dir) => path.startsWith(`${dir}/`)))
         .sort();
 };

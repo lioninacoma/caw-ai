@@ -417,7 +417,8 @@ The draft turns the bug into a test that proves the fix: red before, green after
    are green does the test move to `caw/tests` and `caw/recordings`, the draft is deleted, and the draft's run folder gets
    `fix-report.md`: red at which step (run, commit), green in which run, the files changed since the red commit (tracked files,
    committed or not, in the whole repository; new files only inside the project folder; a file modified in the working tree at
-   red whose content changed since, even when it is back at the commit; without `caw/` and `.caw/`) and how
+   red whose content changed since, even when it is back at the commit; such a file the fix left as it was at red is left out,
+   even though it differs from the red commit; without `caw/` and `.caw/`) and how
    many other tests passed. Exit 0 promoted, 1 not green,
    4 not recorded or never red.
 

@@ -422,7 +422,8 @@ Der Entwurf macht aus dem Fehler einen Test, der den Fix belegt: vorher rot, dan
    des Entwurfs bekommt `fix-report.md`: rot bei welchem Schritt (Lauf, Commit), grün in welchem Lauf, die seit dem roten Commit
    geänderten Dateien (versionierte Dateien, committet oder nicht, im ganzen Repository; neue Dateien nur im Projektordner; eine
    beim Rot im Arbeitsverzeichnis geänderte Datei, deren Inhalt sich seitdem geändert hat, auch wenn sie wieder dem Commit
-   entspricht; ohne `caw/` und `.caw/`) und wie viele andere Tests bestanden haben.
+   entspricht; eine solche Datei, die der Fix gelassen hat, wie sie beim Rot war, fehlt, obwohl sie vom roten Commit abweicht;
+   ohne `caw/` und `.caw/`) und wie viele andere Tests bestanden haben.
    Exit 0 übernommen, 1 nicht grün, 4 nicht aufgenommen oder nie rot.
 
 **Geführt in der Werkbank.** Mit Fenster führt der Chat in einem Prozess durch diese Schritte, jeden in einem neuen Fenster,

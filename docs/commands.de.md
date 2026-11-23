@@ -262,7 +262,8 @@ den Entwurf ab; besteht er, alle anderen Tests auf derselben Umgebung (`run --al
 nach `caw/tests` und `caw/recordings` (ohne `red`), der Entwurf wird gelöscht, und der Laufordner des Entwurfs bekommt
 `fix-report.md`: rot bei welchem Schritt (Lauf, Commit), grün in welchem Lauf, die seit dem roten Commit geänderten Dateien
 (`git diff --name-only` im ganzen Repository plus neue Dateien im Projektordner, nie ein neuer Ordner wie ein eingebettetes
-Repository, plus eine beim Rot im Arbeitsverzeichnis geänderte Datei (`red.dirty`), deren Inhalt sich seitdem geändert hat;
+Repository, plus eine beim Rot im Arbeitsverzeichnis geänderte Datei (`red.dirty`), deren Inhalt sich seitdem geändert hat, und nie
+eine solche Datei, deren Inhalt noch derselbe ist wie beim Rot;
 ohne `caw/` und `.caw/`) und wie viele andere Tests bestanden haben. Ein Test gleichen
 Namens wird nie überschrieben (Exit 3).
 

@@ -261,7 +261,8 @@ draft; if it passes, every other test on the same environment (`run --all`); onl
 `caw/tests` and `caw/recordings` (without `red`), the draft is deleted and the draft's run folder gets `fix-report.md`: red at
 which step (run, commit), green in which run, the files changed since the red commit (`git diff --name-only` in the whole
 repository plus untracked files inside the project folder, never an untracked folder such as a nested repository, plus a file
-modified in the working tree at red (`red.dirty`) whose content changed since; without
+modified in the working tree at red (`red.dirty`) whose content changed since, and never such a file whose content is still the
+same as at red; without
 `caw/` and `.caw/`) and how many other tests passed. A test of the same name is never overwritten (exit 3).
 
 A design draft (`origin: design`, see [Guide](guide.md#build-a-draft-test-first)) is promoted only with its target design met at

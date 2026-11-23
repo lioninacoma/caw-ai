@@ -117,7 +117,8 @@ red: { step: S3, run: 2026-11-21T09-12-03-417Z-bug-search-finds-nothing, head: "
 git). `dirty` listet die versionierten Dateien, die damals im Arbeitsverzeichnis geändert waren, als `[{ file, hash }]`: der Pfad
 relativ zum Repository, der Inhalt als Git-Blob-ID (`null`, wenn gelöscht); ohne solche Dateien fehlt es. Der Fix-Bericht nennt
 auch eine Datei daraus, deren Inhalt sich seitdem geändert hat: Ein Fehler, der nur im Arbeitsverzeichnis bestand, geht so nicht
-verloren. Nur Entwürfe dürfen `red` tragen; in `caw/tests` lehnt `validate` es ab. Eine neue Aufnahme des Entwurfs lässt es fallen.
+verloren; eine, deren Inhalt noch derselbe ist wie beim Rot, fehlt, obwohl sie von `head` abweicht: Der Fix hat sie nicht
+angefasst. Nur Entwürfe dürfen `red` tragen; in `caw/tests` lehnt `validate` es ab. Eine neue Aufnahme des Entwurfs lässt es fallen.
 `run <id> --promote` übernimmt einen grünen Entwurf ohne `red` nach `caw/tests` und `caw/recordings`
 ([Befehle](commands.de.md#einen-entwurf-übernehmen)).
 
