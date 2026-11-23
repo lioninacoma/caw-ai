@@ -1,6 +1,7 @@
 // The documents caw handles itself (app-view.mjs) in real Chrome with caw's host lock flags, the app served under a name below
-// .localhost as caw serves a local app: only Chrome resolves it (the lock pins it to 127.0.0.1), Node does not. A top-window form
-// POST in the workbench (and a rewritten popup document, see below) must reach the app all the same. Skipped without Chrome. Invented data only.
+// .localhost as caw serves a local app: Chrome resolves it through the lock (pinned to 127.0.0.1); whether Node resolves it too
+// depends on the network (a DNS server may answer *.localhost with loopback, many do not). A top-window form POST in the
+// workbench (and a rewritten popup document, see below) must reach the app all the same. Skipped without Chrome. Invented data only.
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { after, before, test } from 'node:test';
@@ -14,9 +15,12 @@ let server = null;
 let host = '';
 let base = '';
 const asked = [];
+// A name only Chrome resolves on every network: .invalid never resolves (RFC 6761), the test pins it like the lock pins .localhost.
+const CHROME_ONLY = 'popup.caw.invalid';
 
 before(async () => {
-    browser = await launchChrome({ args: browserArgs() });
+    const [rules, ...rest] = browserArgs();
+    browser = await launchChrome({ args: [`${rules}, MAP ${CHROME_ONLY} 127.0.0.1`, ...rest] });
     server = createServer((request, response) => {
         let body = '';
         request.on('data', (chunk) => { body += chunk; });
@@ -89,21 +93,37 @@ test('workbench: a top-window POST answered with a redirect and a cookie loads t
     assert.deepEqual((await context.cookies()).map(({ name, value }) => `${name}=${value}`), ['session=abc']);
 });
 
-// rewriteOtherPages fetches a popup's first document from Node (no page exists yet to ask Chrome through), which does not resolve
-// app.localhost. Owner decision: the popup then opens as the server delivers it, without the local code, and caw says so.
-test('local code: a popup of an app under .localhost opens without the local code, and caw names it', async (t) => {
-    if (browser === null) return t.skip('no Chrome');
+/** The app under `appHost` with the local code laid over it; a popup to /popup. @returns the popup and the URLs caw named */
+const openPopup = async (t, appHost) => {
     const context = await browser.newContext();
     t.after(() => context.close());
     const page = await context.newPage();
     const rewrite = async (html) => html.replace('<p id="app">', '<p id="app" data-rewritten="yes">');
     const unrewritten = [];
-    await interceptDocuments(context, page, [host], { rewrite, onUnrewritten: (url) => unrewritten.push(url) });
-    await page.goto(`${base}/start`);
+    const appBase = `http://${appHost}:${server.address().port}`;
+    await interceptDocuments(context, page, [appHost], { rewrite, onUnrewritten: (url) => unrewritten.push(url) });
+    await page.goto(`${appBase}/start`);
     assert.equal(await page.locator('#app').getAttribute('data-rewritten'), 'yes', 'the page itself');
-    const [popup] = await Promise.all([context.waitForEvent('page', { timeout: 10000 }), page.evaluate((address) => { window.open(address); }, `${base}/popup`)]);
+    const [popup] = await Promise.all([context.waitForEvent('page', { timeout: 10000 }), page.evaluate((address) => { window.open(address); }, `${appBase}/popup`)]);
     await popup.waitForLoadState();
     assert.equal(await popup.locator('#app').textContent({ timeout: 5000 }), 'App /popup', 'the popup reached the app');
+    return { popup, unrewritten, appBase };
+};
+
+// rewriteOtherPages fetches a popup's first document from Node (no page exists yet to ask Chrome through). For a name only Chrome
+// resolves (as app.localhost on a network whose DNS does not answer .localhost) that fails. Owner decision: the popup then opens as
+// the server delivers it, without the local code, and caw says so. The name is one no network resolves, so the case is the same
+// everywhere; app.localhost itself resolves in Node on some networks, and then the next test's case applies.
+test('local code: a popup of an app under a name only Chrome resolves opens without the local code, and caw names it', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { popup, unrewritten, appBase } = await openPopup(t, CHROME_ONLY);
     assert.equal(await popup.locator('#app').getAttribute('data-rewritten'), null, 'the popup runs the deployed code');
-    assert.deepEqual(unrewritten, [`${base}/popup`]);
+    assert.deepEqual(unrewritten, [`${appBase}/popup`]);
+});
+
+test('local code: a popup of an app under a name Node resolves too gets the local code, nothing to name', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { popup, unrewritten } = await openPopup(t, '127.0.0.1');
+    assert.equal(await popup.locator('#app').getAttribute('data-rewritten'), 'yes', 'the popup runs the local code');
+    assert.deepEqual(unrewritten, []);
 });
