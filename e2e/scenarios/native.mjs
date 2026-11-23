@@ -1125,11 +1125,14 @@ const adoptRed = async (chat) => {
     await decide(chat, 'Testplan übernehmen');
     await findCard(chat, 'Jetzt den Fehler beheben');
 };
-/** The run of the draft after the fix: green, then Übernehmen promotes it or Später keeps the draft. */
+/**
+ * The run of the draft after the fix: green, then Übernehmen promotes it or Später keeps the draft. Promoted, the last card
+ * stands in phase Übernommen ("<test> übernommen", the moved files) and waits for nothing: the window lingers briefly, then closes.
+ */
 const greenWindow = (choice) => async (chat) => {
     await findCard(chat, 'S2 grün: der Fehler ist behoben');
     await decide(chat, choice === 'promote' ? /^Übernehmen$/ : 'Später');
-    if (choice === 'promote') await findCard(chat, /Übernommen: caw\/tests\//);
+    if (choice === 'promote') await findCard(chat, new RegExp(`${FIX_ID} übernommen.*Verschoben: caw/tests/`, 's'));
 };
 /** Promoted: the test in caw/tests and caw/recordings, the draft gone, the green run's fix report. */
 const verifyPromoted = (label, red) => {
