@@ -1132,6 +1132,21 @@ const watchOnly = async (page) => {
     while (Date.now() < deadline && await page.locator('body').count().catch(() => 0) > 0) await sleep(300);
 };
 /**
+ * A window caw ends by itself because the next one follows (no linger): until it closes, noting whether it ever showed a choice.
+ * Its last notice ("Gleich öffnet sich ein neues Fenster ...", "Übernommen: ... caw testet jetzt erneut.") stands only until
+ * the window closes right after it, so a human waiting for that notice races the close; the terminal keeps the line.
+ */
+const untilClosed = async (page) => {
+    const deadline = Date.now() + 240000;
+    let offered = false;
+    while (Date.now() < deadline) {
+        if (await page.locator('body').count().catch(() => 0) === 0) return { closed: true, offered };
+        offered ||= await page.locator('#choices button:visible').count().catch(() => 0) > 0;
+        await sleep(300);
+    }
+    return { closed: false, offered };
+};
+/**
  * The run of the draft after the fix: green, then Übernehmen promotes it or Später keeps the draft. Promoted, the last card
  * stands in phase Übernommen ("<test> übernommen", the moved files) and waits for nothing: the window lingers briefly, then closes.
  */
@@ -1205,8 +1220,8 @@ ${recorderScript}
 fi`;
         // Reproduced, caw captures the bug in a test at once: the window names the next one and closes, nothing to click.
         const reproduced = async (chat) => {
-            await findCard(chat, 'Gleich öffnet sich ein neues Fenster für den Test, der den Fehler festhält.');
-            verify('(1) no card to click after reproducing', await chat.locator('#choices button').count() === 0);
+            const { closed, offered } = await untilClosed(chat);
+            verify('(1) no card to click after reproducing: the window closes by itself', closed && !offered, `closed ${closed}, offered ${offered}`);
         };
         let redProof = null;
         const fixMyself = async (chat) => {
@@ -1262,7 +1277,9 @@ $A advise --file /tmp/a.json; echo "ADVISE Exit=$?"`;
             const listed = await chat.locator('.message.notice', { hasText: 'Übernommen: Summe aus den Preisen' }).last().textContent();
             verify('(2) the applied change is listed with its file, no card to apply it', /src\/total\.mjs/.test(listed) && await chat.locator('#choices button', { hasText: 'Änderung übernehmen' }).count() === 0, listed);
             verify('(2) the advice task carried the red step (task.fix)', /task\.fix: S2 Die Summe zeigt Total: 5\./.test(listed), listed);
-            await findCard(chat, 'Übernommen: src/total.mjs. caw testet jetzt erneut.');
+            // Applied, caw tests again on its own: the window closes for the new run without another click.
+            const { closed } = await untilClosed(chat);
+            verify('(2) applied, the window closes for the new run without a click', closed);
         };
         const h = humans(watchOnly, byAgent, greenWindow('later'));
         const recorded = await record(fixRoot, [id, ...recordArgs], { interactive: true, containerCommand: ['bash', '-c', recorderScript], adviseCommand: ['bash', '-c', advice], onChatOpen: h.onChatOpen });
