@@ -208,7 +208,6 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.designSnapshotNote.file': 'A file the page references was not stored; offline it is missing: {detail}',
     'cli.designSnapshotNote.limit': 'Snapshot limit reached, not stored: {detail}',
     'cli.designSnapshotNote.frame': 'A frame is kept empty (its content is not part of the snapshot): {detail}',
-    'cli.designSnapshotNote.shadow': 'Shadow DOM is not part of the snapshot: {detail}',
     'cli.designSnapshotNote.scroll': 'Scrolled content ({detail}) shows from the top in the snapshot.',
     'cli.usageLine': 'Usage: {synopsis}',
     'cli.errorCode': '(code: {code}, exit {exit})',

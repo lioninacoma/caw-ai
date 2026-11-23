@@ -1828,10 +1828,12 @@ ${finishOf(ids)}`;
         verify('the draft written', put.isError !== true, put.content[0].text);
         await tool('caw_design', { action: 'link', test: SNAP_ID, step: 'S1', file: 'design/n25-archive.html', personAsked: true });
 
-        // 4. Red: S1 fails with kind design, exactly the new style differs; 5. built: met.
+        // 4. Red: S1 fails with kind design, exactly the new style differs (bold text makes the button wider, as N24 sees it too);
+        // 5. built: met.
         const red = await runQuietly(SNAP_ID, ['--headless'], snapRoot);
         verify('red: not met after S1, exactly the bold Archive', red.code === 1 && s1Design()?.verdict === 'not-met'
-            && JSON.stringify(s1Design()?.styleDiffs) === JSON.stringify(['button "Archive": font-weight 700 → 400']) && (s1Design()?.missing ?? []).length === 0 && (s1Design()?.layoutDiffs ?? []).length === 0, JSON.stringify(s1Design()));
+            && JSON.stringify(s1Design()?.styleDiffs) === JSON.stringify(['button "Archive": font-weight 700 → 400']) && (s1Design()?.missing ?? []).length === 0
+            && (s1Design()?.layoutDiffs ?? []).every((line) => /^button "Archive": width \d+px → \d+px$/.test(line)), JSON.stringify(s1Design()));
         await restyleSwitch(true);
         const green = await runQuietly(SNAP_ID, ['--headless'], snapRoot);
         verify('built: the draft met after S1', green.code === 0 && s1Design()?.verdict === 'met', JSON.stringify(s1Design()));

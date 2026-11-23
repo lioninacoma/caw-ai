@@ -84,21 +84,44 @@ export function snapshotProbe() {
     };
     const sheets = [];
     const sheetOf = new Map();
-    for (const sheet of document.styleSheets) {
-        if (sheet.ownerNode === null) continue;
-        const css = rulesOf(sheet, sheet.href ?? document.baseURI);
-        if (css === null) notes.push({ kind: 'sheet', detail: sheet.href });
-        sheetOf.set(sheet.ownerNode, css === null ? null : { css, disabled: sheet.disabled, media: sheet.media?.mediaText ?? '' });
-    }
-    const adopted = [...(document.adoptedStyleSheets ?? [])].map((sheet) => rulesOf(sheet, document.baseURI)).filter((css) => css !== null && css !== '');
+    // The stylesheets of the document or of a shadow root, by the element that holds them (<link>, <style>).
+    const readSheets = (list) => {
+        for (const sheet of list) {
+            if (sheet.ownerNode === null) continue;
+            const css = rulesOf(sheet, sheet.href ?? document.baseURI);
+            if (css === null) notes.push({ kind: 'sheet', detail: sheet.href });
+            sheetOf.set(sheet.ownerNode, css === null ? null : { css, disabled: sheet.disabled, media: sheet.media?.mediaText ?? '' });
+        }
+    };
+    readSheets(document.styleSheets);
+    const adoptedOf = (root) => [...(root.adoptedStyleSheets ?? [])].map((sheet) => rulesOf(sheet, document.baseURI)).filter((css) => css !== null && css !== '');
+    const adopted = adoptedOf(document);
 
-    const source = document.documentElement;
-    const clone = source.cloneNode(true);
-    const originals = [source, ...source.querySelectorAll('*')];
-    const copies = [clone, ...clone.querySelectorAll('*')];
     const drop = [];
-    originals.forEach((node, at) => {
-        const copy = copies[at];
+    /** A copy of an element and everything in it, frozen node by node, open shadow roots included. */
+    const freeze = (source) => {
+        const clone = source.cloneNode(true);
+        const originals = [source, ...source.querySelectorAll('*')];
+        const copies = [clone, ...clone.querySelectorAll('*')];
+        originals.forEach((node, at) => freezeNode(node, copies[at]));
+        return clone;
+    };
+    // An open shadow root as declarative shadow DOM: the parser attaches it again, without scripts. Its stylesheets come along,
+    // the adopted ones last as they apply. A closed shadow root cannot be reached.
+    const shadowOf = (root) => {
+        readSheets(root.styleSheets);
+        const template = document.createElement('template');
+        template.setAttribute('shadowrootmode', 'open');
+        for (const child of root.childNodes) template.content.append(child.nodeType === 1 ? freeze(child) : child.cloneNode(true));
+        const own = adoptedOf(root);
+        if (own.length > 0) {
+            const style = document.createElement('style');
+            style.textContent = own.join('\n');
+            template.content.append(style);
+        }
+        return template;
+    };
+    const freezeNode = (node, copy) => {
         const tag = node.tagName;
         for (const { name } of [...copy.attributes]) if (/^on/i.test(name)) copy.removeAttribute(name);
         if (copy.hasAttribute('style')) copy.setAttribute('style', cssUrls(copy.getAttribute('style'), document.baseURI));
@@ -166,9 +189,10 @@ export function snapshotProbe() {
             else copy.removeAttribute('selected');
             return;
         }
-        if (node.shadowRoot !== null && node.shadowRoot !== undefined) notes.push({ kind: 'shadow', detail: tag.toLowerCase() });
         if (node.scrollTop > 0 || node.scrollLeft > 0) notes.push({ kind: 'scroll', detail: tag.toLowerCase() });
-    });
+        if (node.shadowRoot !== null && node.shadowRoot !== undefined) copy.prepend(shadowOf(node.shadowRoot));
+    };
+    const clone = freeze(document.documentElement);
     for (const node of drop) node.remove();
     if (adopted.length > 0) {
         const style = document.createElement('style');

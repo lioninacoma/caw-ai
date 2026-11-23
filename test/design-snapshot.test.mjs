@@ -206,6 +206,50 @@ test('snapshot: rendered offline from caw/design it looks like the app and meets
     }
 });
 
+test('snapshot: an open shadow root is kept (declarative shadow DOM) and meets the app with no deviation', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    const caw = tempCaw(t);
+    const context = await browser.newContext({ viewport: { width: 800, height: 600 } });
+    try {
+        await context.route(`${ORIGIN}/**`, (route) => route.fulfill({ status: 200, contentType: 'text/html', body: `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>App</title></head>
+<body><h1>Errands</h1><app-rating></app-rating><div style="border:1px solid #888"><p>Show message</p></div>
+<script>customElements.define('app-rating', class extends HTMLElement {
+  connectedCallback() {
+    const root = this.attachShadow({ mode: 'open' });
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync('button { font-weight: 700; }');
+    root.adoptedStyleSheets = [sheet];
+    root.innerHTML = '<style>div { padding: 6px; }</style><div role="group" aria-label="Rating"><label>Comment <input></label><button onclick="this.textContent = 1">Rate</button><p role="status"></p></div>';
+  }
+});</script></body></html>` }));
+        const page = await context.newPage();
+        await page.goto(`${ORIGIN}/screen`);
+        await page.locator('app-rating input').fill('Fine');
+        const file = 'design/rating.html';
+        const taken = await snapshotOf(page, file);
+        assert.deepEqual(taken.notes.filter(({ kind }) => kind === 'shadow'), [], 'an open shadow root is kept, nothing to name');
+        writeSnapshot(caw, file, taken);
+        const html = readFileSync(join(caw, file), 'utf8');
+        assert.match(html, /<app-rating><template shadowrootmode="open">/);
+        assert.doesNotMatch(html, /onclick|<script/i);
+        const rendered = await renderDesign(browser, html, { width: 800, height: 600 }, { cawDir: caw, file });
+        try {
+            const inside = await rendered.evaluate(() => {
+                const root = document.querySelector('app-rating').shadowRoot;
+                return { value: root?.querySelector('input').getAttribute('value'), weight: root === null ? '' : getComputedStyle(root.querySelector('button')).fontWeight };
+            });
+            assert.deepEqual(inside, { value: 'Fine', weight: '700' });
+            const found = compareDetailed(await structureOf(rendered), await structureOf(page));
+            assert.deepEqual(found.deviations, []);
+            assert.equal(found.met, true);
+        } finally {
+            await rendered.context().close();
+        }
+    } finally {
+        await context.close();
+    }
+});
+
 test('snapshot again: files of the earlier snapshot that are no longer needed go', async (t) => {
     if (needsChrome()) return t.skip('no Chrome');
     const caw = tempCaw(t);

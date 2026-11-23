@@ -379,7 +379,8 @@ Der Bildschirm am Einstieg in S3 als Entwurfsseite, der Ausgangspunkt für einen
 - `caw/design/<name>.html` (Standard `<test>-S3`): das DOM der Seite ohne Skripte, Event-Handler, Inhalte von Frames und
   `<base>`; Feldwerte als Attribute eingefroren (`value`, `checked`, `selected`, der Text einer Textarea), nie ein Passwort
   oder der Wert eines versteckten Felds; die Geheimnisse der Rolle geschwärzt wie in `result.json`; jede Animation und
-  jeder Übergang an ihrem Ende;
+  jeder Übergang an ihrem Ende; eine offene Shadow Root (die einer Web Component) als deklaratives Shadow DOM
+  (`<template shadowrootmode="open">`) mit ihren Styles, ebenso eingefroren (eine geschlossene ist nicht erreichbar);
 - `caw/design/assets/<name>/`: die Stylesheets der App als Dateien (`sheet-<n>.css`, aus dem CSSOM der Seite: Regeln, die ein
   Skript eingefügt hat, bleiben, `@import` wird an Ort und Stelle aufgelöst; Inline-`<style>` bleibt in der Seite), und die
   Schriften und Bilder, auf die Stylesheets und Seite verweisen (`<n>-<datei>`), mit relativ umgeschriebenem `url()`. Eine
@@ -390,7 +391,7 @@ Der Bildschirm am Einstieg in S3 als Entwurfsseite, der Ausgangspunkt für einen
   sagst `--replace` (oder wählst einen anderen `--name`).
 
 Er liest die App nur und läuft nie auf Produktion: eine Umgebung mit `production` wird abgelehnt (`env-denied`), weil der Snapshot ihre echten Daten ins Repository legte. Das Terminal nennt, was nicht übernommen werden konnte (ein Stylesheet einer anderen
-Herkunft ohne CORS, Frames, Shadow DOM, ein gescrollter Bereich, der im Snapshot oben steht). Offline aus `caw/design`
+Herkunft ohne CORS, Frames, ein gescrollter Bereich, der im Snapshot oben steht). Offline aus `caw/design`
 gerendert sieht er aus wie die App, und gegen denselben Zustand beurteilt ist er ohne Abweichung erfüllt (gemessen am Beispiel
 errand und an ExtJS 6.5 Modern mit dem Theme Material). Daten bleiben, wie der Bildschirm sie zeigt; die
 [Datenregel](test-files.de.md#was-daten-sind) gilt für Entwurf und App gleich. Der Snapshot enthält die Daten dieses Zustands

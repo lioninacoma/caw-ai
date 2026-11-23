@@ -212,7 +212,6 @@ Browser:
     'cli.designSnapshotNote.file': 'Eine Datei, auf die die Seite verweist, wurde nicht gespeichert; offline fehlt sie: {detail}',
     'cli.designSnapshotNote.limit': 'Grenze des Snapshots erreicht, nicht gespeichert: {detail}',
     'cli.designSnapshotNote.frame': 'Ein Frame bleibt leer (sein Inhalt gehört nicht zum Snapshot): {detail}',
-    'cli.designSnapshotNote.shadow': 'Shadow DOM gehört nicht zum Snapshot: {detail}',
     'cli.designSnapshotNote.scroll': 'Gescrollter Inhalt ({detail}) steht im Snapshot wieder oben.',
     'cli.usageLine': 'Aufruf: {synopsis}',
     'cli.errorCode': '(code: {code}, exit {exit})',

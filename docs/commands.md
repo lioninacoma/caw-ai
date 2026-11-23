@@ -374,7 +374,9 @@ The screen at the entry of S3 as a design page, the starting point for a draft i
 
 - `caw/design/<name>.html` (default `<test>-S3`): the page's DOM without scripts, event handlers, frames' content and
   `<base>`; field values frozen into attributes (`value`, `checked`, `selected`, a textarea's text), never a password or a
-  hidden field's value; the role's secrets redacted as in `result.json`; every animation and transition at its end;
+  hidden field's value; the role's secrets redacted as in `result.json`; every animation and transition at its end; an open
+  shadow root (a web component's) as declarative shadow DOM (`<template shadowrootmode="open">`) with its styles, frozen
+  the same way (a closed one cannot be reached);
 - `caw/design/assets/<name>/`: the app's stylesheets as files (`sheet-<n>.css`, from the page's CSSOM: rules a script
   inserted are kept, `@import` resolved in place; inline `<style>` stays in the page), and the fonts and images the
   stylesheets and the page reference (`<n>-<file>`), with `url()` rewritten relative. A file is stored when it comes from the
@@ -384,7 +386,7 @@ The screen at the entry of S3 as a design page, the starting point for a draft i
   `--replace` (or choose another `--name`).
 
 It only reads the app, and never runs on production: an environment with `production` is refused (`env-denied`), since the snapshot would put its real data into the repository. The terminal names what could not be kept (a stylesheet of another origin without
-CORS, frames, shadow DOM, a scrolled area that shows from the top in the snapshot). Rendered offline from `caw/design` it looks
+CORS, frames, a scrolled area that shows from the top in the snapshot). Rendered offline from `caw/design` it looks
 like the app, and judged against the same state it is met with no deviation (measured on the errand example and on ExtJS 6.5
 Modern with the Material theme). Data stays as the screen shows it; the [data rule](test-files.md#what-is-data) applies to
 design and app alike. The snapshot holds the data of that state from the environment it ran on: take it on a development or test environment.
