@@ -1840,6 +1840,8 @@ export const design = async (root, args, deps = {}) => {
     if (file === null) throw new CawError('usage', t('cli.designSnapshotName', { name }));
     const { config, spec, target } = loadChecked(root, options.test, options.target, 'run', { overlay: options.overlay, start: options.start });
     if (!spec.steps.some(({ id }) => id === options.step)) throw stepUnknown('cli.stepUnknown', spec, options.step);
+    // A snapshot lands in caw/design, in the repository: never one of production, whose screens hold real data.
+    if (effectiveEnvironment(config, target).production) throw new CawError('env-denied', t('cli.designSnapshotProduction', { target }));
     const cawDir = join(root, PROJECT_DIR);
     let written;
     let failure;

@@ -384,7 +384,7 @@ Der Bildschirm am Einstieg in S3 als Entwurfsseite, der Ausgangspunkt für einen
   GET aus der Seite selbst, durch die Schutzregeln des Laufs. Ein früherer Snapshot gleichen Namens wird ersetzt, Dateien,
   die er nicht mehr braucht, fallen weg.
 
-Er liest die App nur, auch auf Produktion. Das Terminal nennt, was nicht übernommen werden konnte (ein Stylesheet einer anderen
+Er liest die App nur und läuft nie auf Produktion: eine Umgebung mit `production` wird abgelehnt (`env-denied`), weil der Snapshot ihre echten Daten ins Repository legte. Das Terminal nennt, was nicht übernommen werden konnte (ein Stylesheet einer anderen
 Herkunft ohne CORS, Frames, Shadow DOM, ein gescrollter Bereich, der im Snapshot oben steht). Offline aus `caw/design`
 gerendert sieht er aus wie die App, und gegen denselben Zustand beurteilt ist er ohne Abweichung erfüllt (gemessen am Beispiel
 errand und an ExtJS 6.5 Modern mit dem Theme Material). Daten bleiben, wie der Bildschirm sie zeigt; die

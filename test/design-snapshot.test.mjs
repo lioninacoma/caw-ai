@@ -93,6 +93,28 @@ test('caw design: only snapshot, always with a step, a plain name; nothing is lo
     }
 });
 
+test('caw design snapshot refuses production: its screens hold real data and would land in caw/design', async (t) => {
+    const { design } = await import('../src/host/commands.mjs');
+    const root = tempCaw(t);
+    mkdirSync(join(root, 'caw/tests'), { recursive: true });
+    writeFileSync(join(root, 'caw.config.json'), JSON.stringify({ environments: { live: { url: 'https://shop.example.com', production: true } } }));
+    writeFileSync(join(root, 'caw/tests/order.yaml'), [
+        'writes: false',
+        'environments: [live]',
+        'steps:',
+        '  - id: S1',
+        '    name: Start',
+        '    do: Open the shop.',
+        '    expect: The shop is shown.',
+        '  - id: S2',
+        '    name: Order',
+        '    do: Open the order form.',
+        '    expect: The order form is shown.',
+        '',
+    ].join('\n'));
+    await assert.rejects(design(root, ['snapshot', 'order@S2', '--env', 'live']), (error) => error.code === 'env-denied' && /live ist Produktion: ein Snapshot/.test(error.message));
+});
+
 test('snapshot: static page without scripts, fields frozen (no password, no hidden value), the app\'s stylesheets, font and images as files', async (t) => {
     if (needsChrome()) return t.skip('no Chrome');
     const caw = tempCaw(t);

@@ -200,6 +200,7 @@ Browser:
     'cli.synopsis.open': 'caw open [--env <name>] [--role <rolle>]  oder  caw open <test>[@<S4>] [--design] [--env <name>] [--agent local|docker | --attach [<key>]]',
     'cli.synopsis.overlay': 'caw overlay status|check [--env <name>] [--part <teil>] [--apply] [--start] [--json]',
     'cli.designAction': 'design kennt snapshot: caw design snapshot <test>@<S4> [--env <name>] [--name <name>]. Nicht: „{action}“.',
+    'cli.designSnapshotProduction': '{target} ist Produktion: ein Snapshot legte ihre echten Daten nach caw/design. Nimm ihn auf einer Entwicklungs- oder Testumgebung.',
     'cli.designSnapshotStep': 'design snapshot braucht einen Schritt: caw design snapshot {test}@S2 nimmt den Bildschirm am Einstieg in S2.',
     'cli.designSnapshotName': '„{name}“ ist kein Name für eine Entwurfsseite: einfache Teile (Buchstaben, Ziffern, - _ .), z. B. --name bestellformular, nicht unter assets/.',
     'cli.designSnapshotWritten': ({ file, count, assets }) => `Snapshot geschrieben: ${file}, ${count > 0 ? `${count} Dateien in ${assets}` : 'ohne externe Stylesheets oder Dateien'}. Entwurf davon ausgehend: Markup und Klassen behalten, nur Neues ergänzen.`,

@@ -196,6 +196,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.synopsis.open': 'caw open [--env <name>] [--role <role>]  or  caw open <test>[@<S4>] [--design] [--env <name>] [--agent local|docker | --attach [<key>]]',
     'cli.synopsis.overlay': 'caw overlay status|check [--env <name>] [--part <part>] [--apply] [--start] [--json]',
     'cli.designAction': 'design knows snapshot: caw design snapshot <test>@<S4> [--env <name>] [--name <name>]. Not: "{action}".',
+    'cli.designSnapshotProduction': '{target} is production: a snapshot would put its real data into caw/design. Take it on a development or test environment.',
     'cli.designSnapshotStep': 'design snapshot needs a step: caw design snapshot {test}@S2 takes the screen at the entry of S2.',
     'cli.designSnapshotName': '"{name}" is no name for a design page: plain segments (letters, digits, - _ .), e.g. --name order-form, not under assets/.',
     'cli.designSnapshotWritten': ({ file, count, assets }) => `Snapshot written: ${file}, ${count > 0 ? `${count} files in ${assets}` : 'without external stylesheets or files'}. Draft from it: keep its markup and classes, add only what is new.`,

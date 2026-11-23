@@ -378,11 +378,11 @@ The screen at the entry of S3 as a design page, the starting point for a draft i
   app's origin or the page loaded it already; it is read with GET from the page itself, through the run's guards. An earlier
   snapshot of the same name is replaced, files it no longer needs go.
 
-It only reads the app, also on production. The terminal names what could not be kept (a stylesheet of another origin without
+It only reads the app, and never runs on production: an environment with `production` is refused (`env-denied`), since the snapshot would put its real data into the repository. The terminal names what could not be kept (a stylesheet of another origin without
 CORS, frames, shadow DOM, a scrolled area that shows from the top in the snapshot). Rendered offline from `caw/design` it looks
 like the app, and judged against the same state it is met with no deviation (measured on the errand example and on ExtJS 6.5
 Modern with the Material theme). Data stays as the screen shows it; the [data rule](test-files.md#what-is-data) applies to
-design and app alike. The snapshot holds the data of that state from the environment it ran on: prefer a test environment.
+design and app alike. The snapshot holds the data of that state from the environment it ran on: take it on a development or test environment.
 
 | Option | |
 |---|---|

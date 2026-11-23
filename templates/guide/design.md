@@ -97,8 +97,8 @@ markup, so the new part is built with the framework's own classes and components
    the artifact's own CSS: 61); a new field and button on ExtJS drafted from the snapshot's markup: met, 0 deviations (in
    own CSS approximating the theme: 65).
 
-A snapshot is the screen with the data of that state, from the environment it ran on: on production that is real data. Write
-it into a project the person shares only with their consent, and prefer a test environment.
+A snapshot is the screen with the data of that state, from the environment it ran on. caw refuses production (`env-denied`):
+take it on a development or test environment.
 
 ## Take a draft from a Design artifact
 
