@@ -163,6 +163,8 @@ The same rule holds in the design and in the app. Data keeps its place in the la
 
 A sample text in the design that is data in the app but has no digit (a name, a status): mark it `data-caw-data` in the design and in the app.
 
+The run's secrets (the role's password, values remembered with `secret: true`) are masked as `••••` on both sides before the comparison: a design that shows such a value where the app shows it is met, and no verdict, report or comparison page contains it.
+
 `result.json` holds per judged step `design: { file, verdict, missing, extra, styleDiffs, layoutDiffs, textDiffs }` under `steps`. A passed step that met its design says so: in the terminal after its time (`✓ S5  Leave a note  2.6s · design met`), in `report.md` in its note (`Design met: design/note.html`). With `visual.screenshots` every passed step also gets `screenshot` (`step-S3.png` in the `agent` folder, the step's screen at its recorded viewport), with `look: true` `visual`: `verdict` (`learning`, `same` or `changed`) and the changed style lines as `styles`.
 
 ### Visual regression

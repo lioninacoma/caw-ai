@@ -770,10 +770,13 @@ export const createDesignJudge = ({ cawDir, launch, read, secrets = () => [] }) 
             const bars = await scrollbarsOf(page);
             const rendered = await renderDesign(browser, html, { width: size.width - bars.width, height: size.height - bars.height }, { cawDir, file });
             try {
-                const target = await structureOf(rendered, { texts });
+                // Both sides redacted alike: a design may show what the app shows, the test user's name too; compared redacted, equal
+                // texts stay equal and no secret reaches the verdict.
+                const hidden = secrets();
+                const target = await structureOf(rendered, { secrets: hidden, texts });
                 // A click's ripple or a moving label is not the screen: measured once it settled (ExtJS Material, settleProbe).
                 await settle(page);
-                const actual = await structureOf(page, { secrets: secrets(), texts });
+                const actual = await structureOf(page, { secrets: hidden, texts });
                 if (entry) {
                     const missing = missingControls(target, actual);
                     return { file, verdict: missing.length === 0 ? 'ready' : 'not-ready', missing };

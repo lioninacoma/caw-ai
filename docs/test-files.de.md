@@ -165,6 +165,8 @@ Dieselbe Regel gilt im Entwurf und in der App. Daten behalten ihren Platz im Lay
 
 Ein Beispieltext im Entwurf, der in der App Daten ist, aber keine Ziffer hat (ein Name, ein Status): im Entwurf und in der App mit `data-caw-data` markieren.
 
+Die Geheimnisse des Laufs (das Passwort der Rolle, mit `secret: true` gemerkte Werte) stehen vor dem Vergleich auf beiden Seiten als `••••`: Ein Entwurf, der so einen Wert dort zeigt, wo ihn die App zeigt, ist erfüllt, und kein Urteil, Bericht oder Vergleichsseite enthält ihn.
+
 `result.json` führt je beurteiltem Schritt `design: { file, verdict, missing, extra, styleDiffs, layoutDiffs, textDiffs }` unter `steps`. Ein bestandener Schritt, der sein Zielbild erfüllt, sagt es: im Terminal nach seiner Zeit (`✓ S5  Leave a note  2.6s · Zielbild erfüllt`), in `report.md` in seiner Notiz (`Zielbild erfüllt: design/note.html`). Mit `visual.screenshots` bekommt außerdem jeder bestandene Schritt `screenshot` (`step-S3.png` im Ordner `agent`, der Bildschirm des Schritts im aufgenommenen Viewport), mit `look: true` `visual`: `verdict` (`learning`, `same` oder `changed`) und die geänderten Style-Zeilen als `styles`.
 
 ### Visuelle Regression

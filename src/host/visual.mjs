@@ -283,7 +283,8 @@ export const designComparison = async ({ cawDir, file, viewport, page, capture, 
         const rendered = await renderDesign(browser, readFileSync(path, 'utf8'), viewport, { cawDir, file });
         try {
             const design = await rendered.screenshot({ scale: 'css', fullPage: true });
-            const target = await structureOf(rendered);
+            // Redacted like the app (design.mjs createDesignJudge): equal texts compare equal, no secret on the page.
+            const target = await structureOf(rendered, { secrets });
             await settle(page);
             const actual = await structureOf(page, { secrets });
             const scroll = await page.evaluate(() => ({ x: scrollX, y: scrollY })).catch(() => ({ x: 0, y: 0 }));

@@ -499,6 +499,32 @@ test('the judge: met, missing file; its own browser closes', async (t) => {
     }
 });
 
+test('the judge and the comparison page redact secrets on both sides: a design showing the signed-in user is met, no secret in the result', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    const caw = tempCaw(t);
+    // The header of a design shows the test user like the app does; the user's name is a secret of the run.
+    const screen = '<!doctype html><body><header><b>D</b><span>Dana Example · Sign out</span></header><main><h1>Note</h1><p>Bring seeds</p></main></body>';
+    writeDesign(caw, 'design/header.html', Buffer.from(screen));
+    const judge = createDesignJudge({ cawDir: caw, launch: launchChrome, read: (path) => readFileSync(path, 'utf8'), secrets: () => ['Dana Example'] });
+    const context = await browser.newContext({ viewport: { width: 800, height: 600 } });
+    try {
+        const page = await context.newPage();
+        await page.setContent(screen);
+        const met = await judge.judge({ file: 'design/header.html' }, page);
+        assert.equal(met.verdict, 'met', JSON.stringify(met));
+        await page.setContent(screen.replace('Bring seeds', 'Bring nuts'));
+        const notMet = await judge.judge({ file: 'design/header.html' }, page);
+        assert.equal(notMet.verdict, 'not-met');
+        assert.ok(!JSON.stringify(notMet).includes('Dana Example'), 'the secret never reaches the result');
+        const shown = await designComparison({ cawDir: caw, file: 'design/header.html', viewport: { width: 800, height: 600 }, page, capture: () => captureStep(page), launch: () => launchChrome(), secrets: ['Dana Example'] });
+        assert.deepEqual(shown.deviations.map(({ kind }) => kind), ['text'], JSON.stringify(shown.deviations));
+        assert.ok(!JSON.stringify(shown.deviations).includes('Dana Example'));
+    } finally {
+        await judge.close();
+        await context.close();
+    }
+});
+
 test('the judge at a pending step\'s entry: only the design\'s controls count, ready or still missing, never met', async (t) => {
     if (needsChrome()) return t.skip('no Chrome');
     const caw = tempCaw(t);
