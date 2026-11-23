@@ -345,7 +345,7 @@ Werkbank-Einstellungen und deine Sprache liegen je Nutzer in `prefs.json` unter 
 |---|---|---|
 | `mode` | `system` (Standard), `light`, `dark` | Hell oder dunkel für Werkbank, Chat, Berichtsseite und die Karte „caw explore“. `system` folgt deinem Betriebssystem. |
 | `animations` | `on` (Standard), `off` | `off` hält Spinner, pulsierende Punkte und den blinkenden Cursor an (F10). |
-| `steps`, `chat` | `open` (Standard), `closed` | Ob Schrittliste und Chat offen sind, wenn ein Lauf beginnt (F4, F6). |
+| `steps`, `chat` | `open`, `closed` | Ob die Schritte eingeblendet sind (nur bei `open`) und das Panel offen ist (außer bei `closed`), wenn ein Lauf beginnt (F4, F6). |
 | `tokenNotice` | `on` (Standard), `off` | `off` überspringt den Hinweis, bevor der Agent Token verbraucht. Gesetzt von „Nicht mehr fragen“; entfernst du den Eintrag, kommt der Hinweis wieder. |
 | `language` | `de`, `en` | Deine Sprache für caws eigene Texte. `CAW_LANG` gewinnt. |
 

@@ -341,7 +341,7 @@ or `~/.config/caw-ai`. Not in the project. Your own `caw.md` (see above) lies in
 |---|---|---|
 | `mode` | `system` (default), `light`, `dark` | Light or dark for workbench, chat, report page and the "caw explore" card. `system` follows your operating system. |
 | `animations` | `on` (default), `off` | `off` stops the spinner, pulsing dots and the blinking cursor (F10). |
-| `steps`, `chat` | `open` (default), `closed` | Whether the steps and the chat panel are open when a run starts (F4, F6). |
+| `steps`, `chat` | `open`, `closed` | Whether the steps are shown (hidden unless `open`) and the panel is open (unless `closed`) when a run starts (F4, F6). |
 | `tokenNotice` | `on` (default), `off` | `off` skips the notice before the agent uses tokens. Set by "Don't ask again"; remove it to get the notice back. |
 | `language` | `de`, `en` | Your language for caw's own texts. `CAW_LANG` wins over it. |
 
