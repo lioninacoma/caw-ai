@@ -19,6 +19,7 @@ Run every command from your project root: `npx caw <command>` (or `pnpm exec`, `
 | [`run`](#run) | Replay a test, or several for CI | only if you ask |
 | [`open`](#open) | Open the app with workbench and chat; with a test at its end or at the entry of a step | only if you ask |
 | [`reproduce`](#reproduce) | The agent reproduces a bug report on its own: report and, when reproduced, a draft in `caw/drafts` | yes |
+| [`design snapshot`](#design-snapshot) | The screen at a step's entry as a design page with the app's own stylesheets: the starting point for a draft | no |
 | [`role`](#role) | List, add or remove roles and their test users; `role login` stores a session (SSO) | no |
 | [`skill`](#skill) | Write or update the Claude Code skill `caw-attach` for your own session | no |
 | [`export`](#export) | The recorded test as a Playwright test that runs without caw | no |
@@ -357,6 +358,41 @@ it a test ([from the bug to a proven fix](guide.md#from-the-bug-to-a-proven-fix)
 Exit codes: `0` reproduced, `1` not reproduced or unclear, `2` environment error (also when the starting state of `--from` was
 not reached: `reproduce-state`), `3` invalid input.
 
+## design snapshot
+
+```bash
+npx caw design snapshot create-ticket@S3 --env local
+npx caw design snapshot create-ticket@S3 --env local --name ticket-form
+```
+
+The screen at the entry of S3 as a design page, the starting point for a draft in the app's own style
+([a draft from the app](guide.md#develop-against-a-target-design)). caw plays the test headless to the entry of S3, as
+`open create-ticket@S3` would, but without window, chat or learning, and writes:
+
+- `caw/design/<name>.html` (default `<test>-S3`): the page's DOM without scripts, event handlers, frames' content and
+  `<base>`; field values frozen into attributes (`value`, `checked`, `selected`, a textarea's text), never a password or a
+  hidden field's value; the role's secrets redacted as in `result.json`; every animation and transition at its end;
+- `caw/design/assets/<name>/`: the app's stylesheets as files (`sheet-<n>.css`, from the page's CSSOM: rules a script
+  inserted are kept, `@import` resolved in place; inline `<style>` stays in the page), and the fonts and images the
+  stylesheets and the page reference (`<n>-<file>`), with `url()` rewritten relative. A file is stored when it comes from the
+  app's origin or the page loaded it already; it is read with GET from the page itself, through the run's guards. An earlier
+  snapshot of the same name is replaced, files it no longer needs go.
+
+It only reads the app, also on production. The terminal names what could not be kept (a stylesheet of another origin without
+CORS, frames, shadow DOM, a scrolled area that shows from the top in the snapshot). Rendered offline from `caw/design` it looks
+like the app, and judged against the same state it is met with no deviation (measured on the errand example and on ExtJS 6.5
+Modern with the Material theme). Data stays as the screen shows it; the [data rule](test-files.md#what-is-data) applies to
+design and app alike. The snapshot holds the data of that state from the environment it ran on: prefer a test environment.
+
+| Option | |
+|---|---|
+| `--name <name>` | The page's name under `caw/design`, plain segments (`ticket-form`, `screens/ticket`), not under `assets/`. |
+| `--json` | The result as one JSON line: `ok`, `file`, `assets`, `files`, `notes`, `report` (or `reason`). |
+| `--start`, `--overlay[=<parts>]`, `--step-timeout <duration>` | As for `run`. |
+
+Exit codes: `0` written, `1` the way to the step failed (the report names the step), `2` the snapshot could not be written,
+`3` invalid input. From your session: `caw_design` `{action: "snapshot", test, step, file?, env?}`.
+
 ## role
 
 ```bash
@@ -417,7 +453,7 @@ Started by Claude Code through `.mcp.json` (`claude mcp add caw --scope project 
 | `caw_validate` | `validate` as data; drafts from `caw/drafts` under `drafts` | no |
 | `caw_list` | `list` as data; drafts under `drafts`, each with `red` (`{ step, run, head }` or `null`) and, as in `caw_status`, `phase` and `next` (a design draft with `origin: design`) | no |
 | `caw_reproductions` | The reproductions in `.caw/runs`, newest first: `runId`, `date`, `ref`, `status`, `reproduced`, `observed`, `expected`, `cause`, `covered`, `draft`, `phase`, `next`, `report`; `refs` (list) keeps those and names refs without a run as `missing` (never run, or pruned by `keepRuns`), `since` (ISO date) keeps newer runs | no |
-| `caw_design` | Target designs under `caw/design`: `put` writes `design/<name>.html` after checking name, size and that it is an HTML page, and replaces a design a step links only with `personAsked: true`; `list` returns the design files and the steps that link them; `link` sets or removes one step's `design:` in `caw/tests/<test>.yaml`, or in the draft `caw/drafts/<test>.yaml` when there is no such test (with `personAsked: true`, only when the person asked) | no |
+| `caw_design` | Target designs under `caw/design`: `snapshot` runs `design snapshot` (`test`, `step`, `file`, `env`; onto a design a step links only with `personAsked: true`); `put` writes `design/<name>.html` after checking name, size and that it is an HTML page, with `stylesFrom` (a snapshot) its own stylesheets replaced by the snapshot's, and replaces a design a step links only with `personAsked: true`; `list` returns the design files and the steps that link them; `link` sets or removes one step's `design:` in `caw/tests/<test>.yaml`, or in the draft `caw/drafts/<test>.yaml` when there is no such test (with `personAsked: true`, only when the person asked) | no |
 | `caw_overlay` | Only with an `overlay` block: `action: status` (`overlay status` in-process, fast), `check` or `apply` (`overlay check`, `--apply`; waits up to 3 minutes); `env`, `part` | no |
 | `caw_attach` | Attach this session: returns its key and the command to start with the Monitor tool; every chat message and task of an attached window then reaches the session as a line. |
 | `caw_start` | Start `run`, `record`, `open` or `reproduce` attached to this session (`--attach=<key>`) (`reproduce`: `bug`, `from`, `role`, `env`, `ref`, `headless`; `test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset`, or `args`; `step` for `record` and `open`, only with `test`; `promote` for `run` of a draft; `strict` for `run`; `design` for `open`). With `overlay` it checks the local code server first: `down`, `wrong-app` or `stale` returns `state`, `url`, `start` and `partDir` instead of starting; `moved` starts with `--overlay <foundUrl>`. Never `--start` together with `overlay`: the session starts the local code server itself after asking you. `start` and `reset` run the environment's configured commands | none beyond your session |

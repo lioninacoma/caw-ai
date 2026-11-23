@@ -139,6 +139,17 @@ Nachdem die Prüfung des Schritts bestanden hat, rendert caw den `.html`-Entwurf
 
 Fehlt etwas, ändert sich ein Text oder weichen Stil oder Layout ab, scheitert der Schritt mit kind `design`; Bedienelemente, die nur die App hat, werden genannt, lassen aber nichts scheitern (ein Entwurf lässt den Rahmen der App meist weg). Das Abspielen geht weiter, der Schritt wird nicht wiederholt und lernt in diesem Lauf keine Wirkungen. Mit `design.fail: []` in der Config warnt er nur.
 
+Die Seite der App wird gemessen, wenn sie zur Ruhe gekommen ist: Animationen, die enden, sind zu Ende, und das DOM blieb 300 ms unverändert, höchstens 3 s lang (ein Ripple nach einem Klick oder eine noch wandernde Beschriftung in ExtJS Material zeigten sich sonst als 12 Abweichungen). Ein Entwurf darf Dateien neben sich in `caw/design` relativ einbinden, etwa die Stylesheets, Schriften und Bilder eines [Snapshots](commands.de.md#design-snapshot) unter `design/assets/<name>/`; nur die werden ausgeliefert, sonst lädt nichts.
+
+#### Strukturbereiche
+
+Ein Element des Entwurfs mit `data-caw-match="structure"` wird mit allem darin nur nach Struktur verglichen:
+
+- **verglichen:** Vorhandensein (Bedienelemente, Ansichtszeilen, Texte, wie oben), feste Texte, Reihenfolge und die Lage jedes Elements zu seinem Nachbarn (unter, über, rechts von, links von, in);
+- **nicht verglichen:** Aussehen (Schriften, Farben, Hintergründe, Innenabstände, Rundungen, Rahmen und Schatten von Blöcken), Abstände, Einzüge und Maße, auch der Abstand vom Element davor in den Bereich hinein und aus ihm heraus.
+
+Außerhalb des Bereichs bleibt alles genau. Nimm ihn für einen Teil, der aussehen darf, wie das Framework der App ihn zeichnet; ein Entwurf aus einem Snapshot braucht keinen. Die Abweichungszeilen sind dieselben wie ohne. Gemessen an ExtJS: Ein Entwurf mit eigenem CSS weicht an 65 Stellen von der App ab (38 Stil, 23 Layout, 4 fehlen), mit dem ganzen Bildschirm als Strukturbereich an 5 (die 4 fehlenden sind Buttons und Checkbox der App ohne zugänglichen Namen, die ein einfacher Entwurf benennt; die fünfte eine Beschriftung, die in einem leeren Feld steht); vertauschte Buttons, ein geänderter Titel und ein fehlender Button werden weiter erkannt. Ein Bereich, der einem Entwurf hinzugefügt wird, den ein Schritt nennt, ändert diesen Entwurf: `caw audit` meldet das als Abschwächung (`design-file-changed`) und nennt, wie viele Bereiche dazukamen.
+
 #### Was Daten sind
 
 Dieselbe Regel gilt im Entwurf und in der App. Daten behalten ihren Platz im Layout und ihre Schrift, ihr Text wird aber nicht verglichen:
