@@ -1667,6 +1667,20 @@ test('chat: a card of the guided bug fix has its phase bar above it, done ticked
     return undefined;
 });
 
+test('chat: a card of a design draft has the phases of the target design over it: Entwurf › Rot › Umsetzen › Grün › Übernommen', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { chat, frame } = await chatReady(t);
+    const card = { kind: 'result', tone: 'next', title: 'Jetzt das Zielbild umsetzen', rows: [{ label: 'Stil', text: 'button "Save note": background-color #5f8f6b → #e5533a' }], phase: 'build', phases: 'design' };
+    const chosen = chat.choose('deciding', card.title, [{ id: 'later', label: 'Später', primary: true }], card);
+    assert.ok(await until(() => frame.isVisible('ol.phases')));
+    const bar = await frame.$$eval('ol.phases li', (items) => items.map((li) => `${li.textContent}${li.getAttribute('aria-current') === 'step' ? ' *' : ''}${li.querySelector('svg') === null ? '' : ' ✓'}`));
+    assert.deepEqual(bar, ['Entwurf ✓', 'Rot ✓', 'Umsetzen *', 'Grün', 'Übernommen']);
+    assert.equal(await frame.getAttribute('ol.phases', 'aria-label'), 'Zielbild');
+    chat.closed?.();
+    void chosen;
+    return undefined;
+});
+
 test('chat: the terminal names the token notice it waits for', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { chat, waiting } = await open(t);

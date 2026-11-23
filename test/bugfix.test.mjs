@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { fixPhase, fixState, redOf, reproductionOf } from '../src/host/bugfix.mjs';
+import { designMet, designOf, designRed, designRedOf, deviationsOf, fixPhase, fixState, redOf, reproductionOf } from '../src/host/bugfix.mjs';
 import { stepHash, writeTest } from '../src/host/test-file.mjs';
 
 const stepOf = (id, expect) => {
@@ -91,4 +91,95 @@ test('fixState: an open at the entry of the red step passes without judging it a
     // A run that judged the red step and passed it is the fix.
     run('2026-11-22T09-00-00-000Z-bug-x', { status: 'pass', results: [{ id: 'S1', status: 'pass' }, { id: 'S2', status: 'pass' }] });
     assert.equal(fixState(root, 'bug-x').phase, 'green');
+});
+
+// A design draft: S1 and S2 lead to the screen, S3 is the step its design is for.
+const designed = { id: 'S3', name: 'Notiz', do: 'Öffne die Notiz.', expect: 'Die Notiz ist zu sehen.', design: 'design/note.html' };
+const designDraft = { id: 'note', draft: true, origin: 'design', writes: false, notes: '', steps: [stepOf('S1', 'Da.'), stepOf('S2', 'Liste.'), designed], expectations: [] };
+const notMet = { file: 'design/note.html', verdict: 'not-met', missing: ['button "Save note"'], textDiffs: ['text: heading "Note" → "Notes"'], styleDiffs: [], layoutDiffs: ['gap button "Save" → block "Note": 19px → 43px'], extra: ['link "Hilfe"'] };
+const met = { file: 'design/note.html', verdict: 'met', missing: [], textDiffs: [], styleDiffs: [], layoutDiffs: [], extra: [] };
+const before = [{ id: 'S1', status: 'pass' }, { id: 'S2', status: 'pass' }];
+// S3 pending: judged at its entry. Recorded: judged after its check, failing with kind design while not met.
+const atEntry = (runId, judged, status = 'pass') => ({ runId, status, results: before, steps: [...before, { id: 'S3', status: 'pending' }], pendingDesign: { step: 'S3', ...judged } });
+const afterCheck = (runId, judged) => ({ runId, status: judged.verdict === 'met' ? 'pass' : 'fail', results: [...before, { id: 'S3', status: judged.verdict === 'met' ? 'pass' : 'fail' }], steps: [...before, { id: 'S3', status: judged.verdict === 'met' ? 'pass' : 'fail', ...(judged.verdict === 'met' ? {} : { kind: 'design' }), design: judged }] });
+
+test('designRed, designMet: the red step\'s design judged at its entry or after its check, everything before it passed', () => {
+    assert.deepEqual(designOf(atEntry('r', notMet), 'S3'), { step: 'S3', ...notMet });
+    assert.deepEqual(designOf(afterCheck('r', notMet), 'S3'), notMet);
+    assert.equal(designOf({ results: before }, 'S3'), undefined, 'not judged');
+    assert.deepEqual(deviationsOf(notMet), [
+        { kind: 'missing', text: 'button "Save note"' },
+        { kind: 'text', text: 'text: heading "Note" → "Notes"' },
+        { kind: 'layout', text: 'gap button "Save" → block "Note": 19px → 43px' },
+    ], 'controls only in the app fail nothing');
+    assert.equal(designRed(designDraft, atEntry('r', notMet)), true);
+    assert.equal(designRed(designDraft, afterCheck('r', notMet)), true);
+    assert.equal(designMet(designDraft, atEntry('r', met)), true);
+    assert.equal(designMet(designDraft, afterCheck('r', met)), true);
+    // A step before it failed: proves nothing. The red step failed its check: neither red nor green by its design.
+    assert.equal(designRed(designDraft, { ...atEntry('r', notMet), results: [{ id: 'S1', status: 'pass' }, { id: 'S2', status: 'fail' }] }), false);
+    const checkFailed = afterCheck('r', notMet);
+    checkFailed.steps[2] = { ...checkFailed.steps[2], kind: 'check' };
+    assert.equal(designRed(designDraft, checkFailed), false);
+    assert.equal(designRed({ ...designDraft, origin: undefined }, atEntry('r', notMet)), false, 'a draft from caw reproduce');
+    assert.deepEqual(designRedOf(designDraft, atEntry('r', notMet)), {
+        step: 'S3', name: 'Notiz', expect: 'Die Notiz ist zu sehen.', design: 'design/note.html',
+        deviations: ['missing: button "Save note"', 'text: text: heading "Note" → "Notes"', 'layout: gap button "Save" → block "Note": 19px → 43px'],
+    });
+});
+
+test('fixPhase of a design draft: draft until a run judged its design not met, red until a later run judged it met, green, adopted', () => {
+    const record = { tool: 'caw_start', command: 'record', test: 'note', headless: true };
+    const run = { tool: 'caw_start', command: 'run', test: 'note', headless: true };
+    // Written, nothing recorded: record the steps up to the screen first.
+    const unrecorded = { ...designDraft, steps: [{ ...designDraft.steps[0], recording: undefined }, designDraft.steps[1], designed] };
+    assert.deepEqual(fixPhase({ id: 'note', draft: unrecorded }), { origin: 'design', phase: 'draft', next: record });
+    // Recorded up to the screen, no step with a design yet: the person links it.
+    assert.deepEqual(fixPhase({ id: 'note', draft: { ...designDraft, steps: designDraft.steps.slice(0, 2) } }), { origin: 'design', phase: 'draft', next: { do: 'link-design', test: 'note' } });
+    // The design's step pending: a run judges it at its entry and proves it red.
+    assert.deepEqual(fixPhase({ id: 'note', draft: designDraft }), { origin: 'design', phase: 'draft', next: run });
+    const proven = { ...designDraft, red: { step: 'S3', run: '2026-11-23T09-00-00-000Z-note', head: 'abc1234' } };
+    const redRun = atEntry('2026-11-23T09-00-00-000Z-note', notMet);
+    const build = { do: 'build-design', red: designRedOf(proven, redRun), then: run, decision: 'fix.guide' };
+    assert.deepEqual(fixPhase({ id: 'note', draft: proven, runs: [redRun] }), { origin: 'design', phase: 'red', next: build });
+    // A later run that did not judge the design (an open) keeps the red run's deviations; one still not met shows its own.
+    const opened = { runId: '2026-11-23T10-00-00-000Z-note', status: 'pass', results: before };
+    assert.deepEqual(fixPhase({ id: 'note', draft: proven, runs: [opened, redRun] }).next.red.deviations.length, 3);
+    const closer = atEntry('2026-11-23T11-00-00-000Z-note', { ...notMet, missing: [], textDiffs: [] });
+    assert.deepEqual(fixPhase({ id: 'note', draft: proven, runs: [closer, opened, redRun] }).next.red.deviations, ['layout: gap button "Save" → block "Note": 19px → 43px']);
+    // Met at its entry: green, and S3 is recorded next.
+    const metRun = atEntry('2026-11-23T12-00-00-000Z-note', met);
+    assert.deepEqual(fixPhase({ id: 'note', draft: proven, runs: [metRun, closer, redRun] }), { origin: 'design', phase: 'green', next: record });
+    // Recorded and met after its check: green, adopt next.
+    const recordedRed = { ...proven, steps: [proven.steps[0], proven.steps[1], { ...stepOf('S3', 'Die Notiz ist zu sehen.'), design: 'design/note.html' }] };
+    assert.deepEqual(fixPhase({ id: 'note', draft: recordedRed, runs: [afterCheck('2026-11-23T13-00-00-000Z-note', met), metRun, redRun] }), { origin: 'design', phase: 'green', next: { tool: 'caw_start', command: 'run', test: 'note', promote: true, decision: 'fix.green' } });
+    assert.equal(fixPhase({ id: 'note', draft: recordedRed, runs: [afterCheck('2026-11-23T14-00-00-000Z-note', notMet), metRun] }).phase, 'red', 'not met again after its check');
+    // Adopted: the design report names it.
+    assert.deepEqual(fixPhase({ id: 'note', promoted: true, designReport: '.caw/runs/r/design-report.md' }), { origin: 'design', phase: 'adopted', next: { done: true, designReport: '.caw/runs/r/design-report.md' } });
+});
+
+test('fixState of a design draft: runs from disk with their judged designs; adopted once caw/tests has it and its run the design report', (t) => {
+    const root = mkdtempSync(join(tmpdir(), 'caw-design-phase-'));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const run = (runId, result, files = {}) => {
+        const dir = join(root, '.caw', 'runs', runId);
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(join(dir, 'result.json'), JSON.stringify(result));
+        for (const [name, text] of Object.entries(files)) writeFileSync(join(dir, name), text);
+    };
+    writeTest(root, designDraft);
+    assert.equal(fixState(root, 'note').phase, 'draft');
+    writeTest(root, { ...designDraft, red: { step: 'S3', run: '2026-11-23T09-00-00-000Z-note' } });
+    // result.json has no runId: the folder names the run.
+    const withoutId = ({ runId: _id, ...rest }) => rest;
+    const result = (runId, judged) => withoutId(atEntry(runId, judged));
+    run('2026-11-23T09-00-00-000Z-note', result('2026-11-23T09-00-00-000Z-note', notMet));
+    const redState = fixState(root, 'note');
+    assert.equal(redState.phase, 'red');
+    assert.equal(redState.next.red.deviations.length, 3);
+    run('2026-11-23T10-00-00-000Z-note', result('2026-11-23T10-00-00-000Z-note', met), { 'design-report.md': '# Zielbild-Bericht' });
+    assert.equal(fixState(root, 'note').phase, 'green');
+    rmSync(join(root, 'caw', 'drafts', 'note.yaml'));
+    writeTest(root, { ...designDraft, draft: undefined, origin: undefined });
+    assert.deepEqual(fixState(root, 'note'), { origin: 'design', phase: 'adopted', next: { done: true, designReport: '.caw/runs/2026-11-23T10-00-00-000Z-note/design-report.md' } });
 });

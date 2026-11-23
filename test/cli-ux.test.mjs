@@ -659,3 +659,47 @@ test('run --promote: green draft and green others move the test to caw/tests, de
         '',
     ].join('\n'));
 });
+
+test('run --promote of a design draft: only with its design met; the test moves without origin and red, the run gets the design report', async (t) => {
+    const root = project(t);
+    const designed = { ...recorded(step('S2', 'Notiz')), design: 'design/note.html' };
+    const red = { step: 'S2', run: '2026-11-23T09-00-00-000Z-note', head: 'abc1234' };
+    const draft = (extra = {}) => writeTest(root, { id: 'note', role: 'tester', environments: ['local'], writes: false, notes: '', draft: true, origin: 'design', steps: [recorded(step('S1', 'Liste')), designed], ...extra });
+    draft();
+    const never = async () => assert.fail('nothing runs');
+    assert.equal(await run(root, ['note', '--promote', '--env', 'local'], { runOne: never }), EXIT.needsRecording, 'never shown red');
+    draft({ red });
+    // The red run judged S2 not met with three deviations: the report counts them.
+    const redDir = join(root, '.caw', 'runs', red.run);
+    mkdirSync(redDir, { recursive: true });
+    const judged = (verdict) => ({ file: 'design/note.html', verdict, missing: verdict === 'met' ? [] : ['button "Save note"'], textDiffs: verdict === 'met' ? [] : ['text: heading "Note" → "Notes"', 'text: button "Save" → "Store"'], styleDiffs: [], layoutDiffs: [], extra: [] });
+    writeFileSync(join(redDir, 'result.json'), JSON.stringify({ status: 'fail', steps: [{ id: 'S1', status: 'pass' }, { id: 'S2', status: 'fail', kind: 'design', design: judged('not-met') }] }));
+    const greenDir = join(root, '.caw', 'runs', '2026-11-23T10-00-00-000Z-note');
+    mkdirSync(greenDir, { recursive: true });
+    const verdictOf = (verdict) => ({ status: 'pass', results: [{ id: 'S1', status: 'pass' }, { id: 'S2', status: 'pass' }], steps: [{ id: 'S1', status: 'pass' }, { id: 'S2', status: 'pass', design: judged(verdict) }] });
+    // With design.fail without target a design not met passes the run: adopting still needs it met.
+    const passedNotMet = async (_root, { test: id }) => ({ code: EXIT.pass, verdict: id === 'note' ? verdictOf('not-met') : { status: 'pass' }, report: `.caw/runs/r-${id}/report.md` });
+    assert.equal(await run(root, ['note', '--promote', '--env', 'local'], { runOne: passedNotMet }), EXIT.fail);
+    assert.ok(existsSync(join(root, 'caw', 'drafts', 'note.yaml')), 'the draft stays');
+    const runOne = async (_root, { test: id }) => ({ code: EXIT.pass, verdict: id === 'note' ? verdictOf('met') : { status: 'pass' }, report: id === 'note' ? '.caw/runs/2026-11-23T10-00-00-000Z-note/report.md' : `.caw/runs/r-${id}/report.md` });
+    const git = { head: () => 'fff0000', changedFiles: () => ['web/note.css'] };
+    assert.equal(await run(root, ['note', '--promote', '--env', 'local'], { runOne, git }), EXIT.pass);
+    const adopted = loadTest(root, 'note');
+    assert.equal(adopted.origin, undefined);
+    assert.equal(adopted.red, undefined);
+    assert.equal(adopted.steps[1].design, 'design/note.html', 'the design stays with its step');
+    assert.doesNotMatch(readFileSync(join(root, 'caw', 'tests', 'note.yaml'), 'utf8'), /origin|red:/);
+    assert.ok(!existsSync(join(greenDir, 'fix-report.md')));
+    assert.equal(readFileSync(join(greenDir, 'design-report.md'), 'utf8'), [
+        '# Zielbild-Bericht: note',
+        '',
+        '- Rot bei S2: Zielbild design/note.html nicht erfüllt (3 Abweichung(en)), Lauf 2026-11-23T09-00-00-000Z-note, Commit abc1234',
+        '- Grün: Lauf 2026-11-23T10-00-00-000Z-note, Zielbild erfüllt',
+        '- 3 andere(r) Test(s) auf local grün',
+        '',
+        '## Geänderte Dateien seit abc1234 (ohne caw/ und .caw/)',
+        '',
+        '- web/note.css',
+        '',
+    ].join('\n'));
+});

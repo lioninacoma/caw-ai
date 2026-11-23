@@ -33,11 +33,22 @@ export const composeTest = (meta, { notes, steps }) => withExpectations({
     writes: meta.writes,
     ...(meta.environments === undefined ? {} : { environments: meta.environments }),
     ...(meta.start === undefined ? {} : { start: meta.start }),
-    // A draft stays one (it is written back to caw/drafts); its red proof does not survive a new plan.
+    // A draft stays one (it is written back to caw/drafts), a design draft with its origin. Its red proof does not survive a new
+    // plan, except a design draft's while its red step keeps its design and expected result: the proof is about that design.
     ...(meta.draft === true ? { draft: true } : {}),
+    ...(meta.draft === true && meta.origin !== undefined ? { origin: meta.origin } : {}),
+    ...(designRedKept(meta, steps) ? { red: meta.red } : {}),
     notes,
     steps,
 });
+
+/** A design draft's red proof holds for a new plan whose red step has the same design and expected result. */
+const designRedKept = (meta, steps) => {
+    if (meta.draft !== true || meta.origin !== 'design' || meta.red === undefined) return false;
+    const before = meta.steps.find(({ id }) => id === meta.red.step);
+    const now = steps.find(({ id }) => id === meta.red.step);
+    return before !== undefined && now !== undefined && before.design !== undefined && now.design === before.design && now.expect === before.expect;
+};
 
 /** Replaces exactly one step; all other steps stay the same objects. */
 export const replaceStep = (spec, step) => withExpectations({ ...spec, steps: spec.steps.map((current) => (current.id === step.id ? step : current)) });

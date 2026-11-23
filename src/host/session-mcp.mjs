@@ -528,7 +528,8 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
         description: 'Shows whether a run is waiting for you as the agent (with its task) and the last lines of its output. As data: the last run '
             + '(result with status, code, reason, steps, failures, warnings; last step; artefacts such as report.md, trace and logs), explore '
             + 'suggestions after caw_init with mode explore and the last overlay check. For a reproduction with a draft and for a run of a draft: phase '
-            + '(reproduced, red, green, promoted) and next, the step after it (topic reproduce). When a run waits for you, waiting.guide names the caw_guide topics for it. While a run is going, pass wait (seconds, up to 120): the call returns '
+            + '(reproduced, red, green, promoted) and next, the step after it (topic reproduce); a design draft has origin design and the phases draft, '
+            + 'red, green, adopted (topic design, "Build a draft with TDD"). When a run waits for you, waiting.guide names the caw_guide topics for it. While a run is going, pass wait (seconds, up to 120): the call returns '
             + 'as soon as the run needs you, ends or reports something new, instead of you asking again and again.',
         inputSchema: { type: 'object', properties: { wait: { type: 'integer', minimum: 0, maximum: MAX_STATUS_WAIT_S } }, additionalProperties: false },
         call: async (input = {}) => {
@@ -673,11 +674,15 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
     },
     {
         name: 'caw_list',
-        description: 'caw list as data: per test the start path, role, the environments it runs on, whether it writes, and the recording state of each step. No tokens.',
+        description: 'caw list as data: per test the start path, role, the environments it runs on, whether it writes, and the recording state of each step. '
+            + 'Drafts in caw/drafts under drafts, each with red, phase and next like caw_status (origin design for a design draft). No tokens.',
         inputSchema: EMPTY,
         call: async () => {
             const { listProject } = await import('./project-data.mjs');
-            const data = listProject(root);
+            const { fixState } = await import('./bugfix.mjs');
+            const listed = listProject(root);
+            // Each draft with where it stands and what comes next: a bug on its way to a fix, a design draft to its design met.
+            const data = { ...listed, drafts: listed.drafts.map((row) => (row.error === undefined ? { ...row, ...fixState(root, row.id) } : row)) };
             return answer(t('run.mcp.list', { count: data.tests.length }), data);
         },
     },
@@ -761,7 +766,8 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             + 'design/<name>.html (one screen, inline CSS; rendered later without scripts or network). '
             + 'Replacing a design a step links needs personAsked: true, like link. {action: "list"}: the design files and which steps link them '
             + '(or carry look: true, a learned look the person set by hand). '
-            + '{action: "link", test, step, file | null, personAsked: true}: sets or removes design: on one step of caw/tests/<test>.yaml. '
+            + '{action: "link", test, step, file | null, personAsked: true}: sets or removes design: on one step of caw/tests/<test>.yaml '
+            + '(or of the draft caw/drafts/<test>.yaml when there is no such test). '
             + 'Link only when the person asked for exactly that in this conversation; design:, needs: and look: belong to the person. '
             + 'A run judges a linked .html design after the step\'s check passed; read caw_guide topic design. No tokens.',
         inputSchema: {
@@ -780,16 +786,18 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
         call: async (input = {}) => {
             const design = await import('./design.mjs');
             const cawDir = join(root, PROJECT_DIR);
-            /** The steps of caw/tests with design:, needs: or look: true. */
+            /** The steps of caw/tests and caw/drafts with design:, needs: or look: true. */
             const stepLinks = async () => {
-                const { TEST_DIR, loadTest } = await import('./test-file.mjs');
+                const { TEST_DIR, draftIds, loadDraft, loadTest } = await import('./test-file.mjs');
                 const testsDir = join(root, TEST_DIR);
                 const ids = existsSync(testsDir) ? readdirSync(testsDir).filter((name) => name.endsWith('.yaml')).map((name) => name.slice(0, -'.yaml'.length)).sort() : [];
-                return ids.flatMap((id) => {
+                const files = [...ids.map((id) => ({ id, load: () => loadTest(root, id) })), ...draftIds(root).map((id) => ({ id, draft: true, load: () => loadDraft(root, id) }))];
+                return files.flatMap(({ id, draft, load }) => {
                     try {
-                        return loadTest(root, id).steps.filter((step) => step.design !== undefined || step.needs !== undefined || step.look === true)
+                        return load().steps.filter((step) => step.design !== undefined || step.needs !== undefined || step.look === true)
                             .map((step) => ({
                                 test: id,
+                                ...(draft ? { draft: true } : {}),
                                 step: step.id,
                                 ...(step.design === undefined ? {} : { design: step.design, exists: design.designPath(cawDir, step.design) !== null }),
                                 ...(step.needs === undefined ? {} : { needs: step.needs }),

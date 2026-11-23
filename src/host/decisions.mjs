@@ -68,13 +68,15 @@ export const DECISIONS = {
     'advice.item': { accept: HUMAN, apply: HUMAN, discard: FREE, next: FREE },
     'advice.rerun': { rerun: FREE, close: FREE },
     'run.result': { close: FREE },
-    // The guided bug fix (bugfix.mjs): reproduced, red, fix, green.
+    // The guided bug fix (bugfix.mjs): reproduced, red, fix, green; a design draft takes the same decisions.
     'reproduced.record': { 'record-red': FREE, later: FREE },
     'red.proof': { adopt: FREE, discard: FREE },
     'red.still': { close: FREE },
     'fix.guide': { 'fix-by-agent': FREE, 'fix-myself': FREE, 'fix-there': FREE, retest: FREE, later: FREE, close: FREE },
     'fix.green': { promote: HUMAN, later: FREE },
     'fix.refused': { close: FREE },
+    // A design draft met at its pending step's entry: the card only says to record it next.
+    'design.record': { close: FREE },
     // Developing: a state picked with F1 may come from the app or the agent; only the person confirms it.
     'state.restore': { 'restore-picked': HUMAN, 'cancel-restore': FREE },
 };

@@ -760,3 +760,40 @@ test('caw_design: put replaces a design a step links only on the person\'s reque
     assert.equal(replaced.isError, false);
     assert.equal(readFileSync(join(root, 'caw', 'design', 'bestellung.html'), 'utf8'), other);
 });
+
+test('a design draft for the session: caw_design links its step, caw_list and caw_status name origin, phase and next from draft over red to green', async (t) => {
+    const root = project(t);
+    const { call } = session(root);
+    const runs = join(root, '.caw', 'runs');
+    const run = (runId, result) => {
+        mkdirSync(join(runs, runId), { recursive: true });
+        writeFileSync(join(runs, runId, 'result.json'), JSON.stringify(result));
+        writeFileSync(join(root, '.caw', 'last-run.json'), JSON.stringify({ runId, runDir: join(runs, runId), pid: 1, command: 'run', test: 'note', target: 'local', startedAt: new Date().toISOString() }));
+    };
+    // The steps up to the screen, recorded; the design's step written after them, pending.
+    const { steps } = fixDraft();
+    writeTest(root, { id: 'note', draft: true, origin: 'design', writes: false, notes: '', steps: [...steps, { id: 'S3', name: 'Notiz', do: 'Öffne sie.', expect: 'Die Notiz.' }] });
+    const draftOf = async () => (await call('caw_list')).structuredContent.drafts.find(({ id }) => id === 'note');
+    assert.deepEqual([(await draftOf()).origin, (await draftOf()).phase, (await draftOf()).next], ['design', 'draft', { do: 'link-design', test: 'note' }]);
+    await call('caw_design', { action: 'put', file: 'design/note.html', content: '<!doctype html><body><h1>Note</h1></body>' });
+    const linked = await call('caw_design', { action: 'link', test: 'note', step: 'S3', file: 'design/note.html', personAsked: true });
+    assert.equal(linked.isError, false);
+    assert.equal(linked.structuredContent.testFile, 'caw/drafts/note.yaml');
+    assert.deepEqual((await call('caw_design', { action: 'list' })).structuredContent.links, [{ test: 'note', draft: true, step: 'S3', design: 'design/note.html', exists: true }]);
+    assert.deepEqual((await draftOf()).next, { tool: 'caw_start', command: 'run', test: 'note', headless: true });
+    // A run judged S3 not met at its entry and saved the red proof: build it.
+    const results = [{ id: 'S1', status: 'pass' }, { id: 'S2', status: 'pass' }];
+    const judged = (verdict, missing = []) => ({ step: 'S3', file: 'design/note.html', verdict, missing, textDiffs: [], styleDiffs: [], layoutDiffs: [], extra: [] });
+    run('2026-11-23T09-00-00-000Z-note', { status: 'pass', results, steps: [...results, { id: 'S3', status: 'pending' }], pendingDesign: judged('not-met', ['heading "Note"']) });
+    const draft = (await import('../src/host/test-file.mjs')).loadDraft(root, 'note');
+    writeTest(root, { ...draft, red: { step: 'S3', run: '2026-11-23T09-00-00-000Z-note' } });
+    const status = (await call('caw_status')).structuredContent;
+    assert.equal(status.origin, 'design');
+    assert.equal(status.phase, 'red');
+    assert.deepEqual(status.next, { do: 'build-design', red: { step: 'S3', name: 'Notiz', expect: 'Die Notiz.', design: 'design/note.html', deviations: ['missing: heading "Note"'] }, then: { tool: 'caw_start', command: 'run', test: 'note', headless: true }, decision: 'fix.guide' });
+    assert.deepEqual(status.result.pendingDesign.missing, ['heading "Note"']);
+    // Met at its entry: green, S3 is recorded next.
+    run('2026-11-23T10-00-00-000Z-note', { status: 'pass', results, steps: [...results, { id: 'S3', status: 'pending' }], pendingDesign: judged('met') });
+    assert.deepEqual([(await call('caw_status')).structuredContent.phase, (await call('caw_status')).structuredContent.next], ['green', { tool: 'caw_start', command: 'record', test: 'note', headless: true }]);
+    assert.equal((await draftOf()).phase, 'green');
+});

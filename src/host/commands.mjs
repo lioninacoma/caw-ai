@@ -28,7 +28,8 @@ import { decide } from './decisions.mjs';
 import { promptTerminal } from './decision-prompt.mjs';
 import { projectPath } from './project-path.mjs';
 import { changedFiles, shortHead } from './git.mjs';
-import { brokenChain, checkTest, draftIds, draftPath, environmentProblems, loadDraft, loadTest, pendingSteps, recordingHints, setStepLooks, staleSteps, testExists, testPath, withDefaults, writeTest } from './test-file.mjs';
+import { brokenChain, checkTest, draftIds, draftPath, environmentProblems, isDesignDraft, loadDraft, loadTest, pendingSteps, recordingHints, setStepLooks, staleSteps, testExists, testPath, withDefaults, writeTest } from './test-file.mjs';
+import { DESIGN_REPORT, FIX_REPORT, designMet, designOf, deviationsOf } from './bugfix.mjs';
 import { withLearning } from './learning.mjs';
 
 const TOOL_DIR = fileURLToPath(new URL('../../', import.meta.url));
@@ -1160,8 +1161,12 @@ export const runOne = async (root, options, deps = {}, loaded = undefined) => {
     if (canFix || learns) ui.info(tracker.summary());
     // After the result, so the pending steps are not mistaken for a failure; a batch names them in its table instead.
     if (pending.length > 0 && !quiet) ui.info(t('cli.pendingSteps', { ids: pending.join(', '), count: pending.length, test, step: pending[0], target }));
-    // A draft proven red that passes now: the bug is fixed, promoting proves it against all other tests.
-    if (spec.draft === true && spec.red !== undefined && code === EXIT.pass && !quiet && !handover && existsSync(draftPath(root, test))) ui.info(t('cli.draftGreen', { test, step: spec.red.step, target }));
+    // A draft proven red that passes now: the bug is fixed, promoting proves it against all other tests. A design draft once
+    // its design is met at its recorded step (met at a pending step's entry, it is recorded first).
+    const shown = !quiet && !handover && spec.draft === true && spec.red !== undefined && code === EXIT.pass && existsSync(draftPath(root, test));
+    if (shown && !isDesignDraft(spec)) ui.info(t('cli.draftGreen', { test, step: spec.red.step, target }));
+    const recorded = spec.steps.find(({ id }) => id === spec.red?.step)?.recording !== undefined;
+    if (shown && isDesignDraft(spec) && recorded && designMet(spec, played?.verdict)) ui.info(t('cli.designGreen', { test, step: spec.red.step, target }));
     // The batch reports carry the playback's verdict (diagnosis, steps) and its report.md.
     return { code, failed, verdict: played?.verdict, report: played?.report, pending };
 };
@@ -1571,22 +1576,26 @@ const gitDefault = {
     changedFiles: (root, since) => changedFiles(root, since),
 };
 
-/** A draft as a test for caw/tests: without the draft mark and the red proof. */
-const asTest = ({ draft: _draft, red: _red, ...test }) => test;
+/** A draft as a test for caw/tests: without the draft mark, its origin and the red proof. */
+const asTest = ({ draft: _draft, origin: _origin, red: _red, ...test }) => test;
 
 /** The run id of a report path `.caw/runs/<run>/report.md`. */
 const runOf = (report) => basename(dirname(report));
 
 /**
  * The fix report of a promoted draft: red at its step before (run, commit), green now (run), the files changed since the red
- * commit outside caw/ and .caw/, and how many other tests passed on the environment.
+ * commit outside caw/ and .caw/, and how many other tests passed on the environment. Of a design draft (design: { file,
+ * count? }) the design report: red with the design not met and its number of deviations in the red run, green with it met.
  */
-export const fixReport = ({ id, red, green, target, others, changed }) => {
+export const fixReport = ({ id, red, green, target, others, changed, design }) => {
+    const head = red.head ?? '–';
+    let redLine = t('cli.fixReport.red', { step: red.step, run: red.run, head });
+    if (design !== undefined) redLine = t(design.count === undefined ? 'cli.designReport.redUnknown' : 'cli.designReport.red', { step: red.step, design: design.file, count: design.count, run: red.run, head });
     const lines = [
-        `# ${t('cli.fixReport.title', { test: id })}`,
+        `# ${t(design === undefined ? 'cli.fixReport.title' : 'cli.designReport.title', { test: id })}`,
         '',
-        `- ${t('cli.fixReport.red', { step: red.step, run: red.run, head: red.head ?? '–' })}`,
-        `- ${t('cli.fixReport.green', { run: green })}`,
+        `- ${redLine}`,
+        `- ${t(design === undefined ? 'cli.fixReport.green' : 'cli.designReport.green', { run: green })}`,
         `- ${t('cli.fixReport.others', { count: others, target })}`,
         '',
         `## ${t('cli.fixReport.changed', { head: red.head ?? '–' })}`,
@@ -1615,14 +1624,16 @@ const promote = async (root, options, deps) => {
         ui.warn(t('cli.promoteNotRecorded', { test }));
         return EXIT.needsRecording;
     }
+    const design = isDesignDraft(spec);
     if (spec.red === undefined) {
-        ui.warn(t('cli.promoteNotRed', { test }));
+        ui.warn(t(design ? 'cli.promoteDesignNotRed' : 'cli.promoteNotRed', { test }));
         return EXIT.needsRecording;
     }
     const red = { ...spec.red };
     const played = await withLifecycle(lifecycleOf(root, config, target, options, 'run'), async (lifecycle) => (deps.runOne ?? runOne)(root, { ...options, target, lifecycle, guided: false }, deps));
-    if (played.code !== EXIT.pass) {
-        ui.warn(t('cli.promoteDraftFailed', { test, step: red.step }));
+    // A design draft adopts only with its design met: with design.fail without target a design not met passes the run.
+    if (played.code !== EXIT.pass || (design && !designMet(spec, played.verdict))) {
+        ui.warn(t(design ? 'cli.promoteDesignNotMet' : 'cli.promoteDraftFailed', { test, step: red.step }));
         return EXIT.fail;
     }
     const promoted = await promoteGreen(root, options, deps, { config, test, target, red, report: played.report });
@@ -1657,7 +1668,9 @@ const promoteGreen = async (root, options, deps, { config, test, target, red, re
         if (code !== EXIT.pass) return refused(t('cli.promoteOthersFailed', { test, target }));
     }
     // The draft as the green run left it, learned baselines included, becomes the test; red stays in the fix report only.
-    const written = writeTest(root, withLearning(root, asTest(loadDraft(root, test))));
+    const draft = loadDraft(root, test);
+    const design = isDesignDraft(draft) ? { file: draft.steps.find(({ id }) => id === red.step)?.design, ...redDeviations(root, red) } : undefined;
+    const written = writeTest(root, withLearning(root, asTest(draft)));
     rmSync(draftPath(root, test));
     const git = deps.git ?? gitDefault;
     let changed = null;
@@ -1669,11 +1682,22 @@ const promoteGreen = async (root, options, deps, { config, test, target, red, re
         }
     }
     const runDir = dirname(join(root, report));
-    const text = inLanguage(teamLanguage(config), () => fixReport({ id: test, red, green: runOf(report), target, others: others.length, changed }));
-    writeFileSync(join(runDir, 'fix-report.md'), text);
-    const shownReport = posix.join(dirname(report), 'fix-report.md');
-    ui.success(t('cli.promoted', { test, files: written, report: shownReport }));
+    const text = inLanguage(teamLanguage(config), () => fixReport({ id: test, red, green: runOf(report), target, others: others.length, changed, ...(design === undefined ? {} : { design }) }));
+    const name = design === undefined ? FIX_REPORT : DESIGN_REPORT;
+    writeFileSync(join(runDir, name), text);
+    const shownReport = posix.join(dirname(report), name);
+    ui.success(t(design === undefined ? 'cli.promoted' : 'cli.designAdopted', { test, files: written, report: shownReport }));
     return { ok: true, test, files: written, report: shownReport, others: others.length, target };
+};
+
+/** How many deviations the red run of a design draft judged at its red step: { count }, or {} once its run folder is gone. */
+const redDeviations = (root, red) => {
+    try {
+        const judged = designOf(JSON.parse(readFileSync(join(root, RUN_DIR, 'runs', red.run, 'result.json'), 'utf8')), red.step);
+        return judged === undefined ? {} : { count: deviationsOf(judged).length };
+    } catch {
+        return {};
+    }
 };
 
 /** The name a reproduction runs under: report and window title. */

@@ -223,3 +223,111 @@ test('Test run of a red draft guided: promoting refused says so on a card, the d
     await runFlow({ spec: proven, handover: false, canFix: true, openSandbox: async () => assert.fail('no agent'), ...later, guide: { env: 'test', promote: async () => assert.fail('later') } });
     assert.deepEqual(later.said[0], { outcome: 'Später weiter mit caw run bug-x --promote --env test.' });
 });
+
+// A design draft: S1 leads to the screen, S2 is the step its design is for (pending until it is recorded).
+const designStep = { ...stepOf('S2', 'Die Notiz ist zu sehen.'), design: 'design/note.html' };
+const designDraft = { id: 'note', draft: true, origin: 'design', steps: [stepOf('S1'), designStep], expectations: [{ id: 'S1' }, { id: 'S2' }] };
+const pendingDraft = { ...designDraft, steps: [stepOf('S1'), { ...designStep, recording: undefined }], expectations: [{ id: 'S1' }] };
+const notMet = { file: 'design/note.html', verdict: 'not-met', missing: ['button "Save note"'], textDiffs: ['text: heading "Note" → "Notes"'], styleDiffs: ['button "Save": background-color #5f8f6b → #e5533a'], layoutDiffs: [], extra: [] };
+const met = { file: 'design/note.html', verdict: 'met', missing: [], textDiffs: [], styleDiffs: [], layoutDiffs: [], extra: [] };
+// Recorded: the check of S2 passed, its design not met fails it with kind design. Pending: judged at its entry, the run passes.
+const designRun = (judged, runId = 'r-red', concluded = {}) => {
+    const ok = judged.verdict === 'met';
+    return {
+        exitCode: ok ? EXIT.pass : EXIT.fail,
+        runId,
+        verdict: { status: ok ? 'pass' : 'fail', results: [{ id: 'S1', status: 'pass' }, { id: 'S2', status: ok ? 'pass' : 'fail' }], steps: [{ id: 'S1', status: 'pass' }, { id: 'S2', status: ok ? 'pass' : 'fail', ...(ok ? {} : { kind: 'design' }), design: judged }] },
+        failed: ok ? null : { id: 'S2', reason: 'S2 entspricht nicht seinem Zielbild.', kind: 'design', suspect: false, clean: false },
+        concluded: { runId, ...concluded },
+    };
+};
+const entryRun = (judged, runId = 'r-red') => ({
+    exitCode: EXIT.pass,
+    runId,
+    verdict: { status: 'pass', results: [{ id: 'S1', status: 'pass' }], steps: [{ id: 'S1', status: 'pass' }, { id: 'S2', status: 'pending' }], pending: ['S2'], pendingDesign: { step: 'S2', ...judged } },
+    failed: null,
+    concluded: { runId },
+});
+
+test('Recording a design draft guided: its design not met after the passed check is the red proof; the card to build lists the deviations', async () => {
+    const asked = [];
+    const advise = async (options) => {
+        asked.push(options);
+        return advice({ spec: designDraft, files: ['web/note.css'] });
+    };
+    const h = harness({ outcomes: [{ ...designRun(notMet), candidate: designDraft }, designRun(notMet, 'r-red', { advise })], answers: ['adopt', 'fix-by-agent', 'retest'] });
+    const code = await recordFlow({ sandbox: 'box', ...h, head: () => 'abc1234', guide: { env: 'test', rerun: async () => EXIT.pass } });
+    assert.equal(code, EXIT.pass);
+    assert.deepEqual(h.adopted[0].spec.red, { step: 'S2', run: 'r-red', head: 'abc1234' }, 'saved like the red proof of a bug');
+    const proof = h.questions[0];
+    assert.equal(proof.card.title, 'S2 erfüllt sein Zielbild noch nicht: der Test fängt, was fehlt');
+    assert.equal(proof.card.text, 'Alle Schritte vor S2 bestehen, und sein Bildschirm weicht in 3 Punkt(en) von design/note.html ab.');
+    assert.equal(proof.card.phase, 'red');
+    assert.equal(proof.card.phases, 'design');
+    const build = h.questions[1];
+    assert.equal(build.card.title, 'Jetzt das Zielbild umsetzen');
+    assert.equal(build.card.phase, 'build');
+    assert.equal(build.card.phases, 'design');
+    assert.deepEqual(build.card.rows, [
+        { label: 'Schritt', text: 'S2 Summe' },
+        { label: 'Zielbild', text: 'design/note.html', code: true },
+        { label: 'Fehlt', text: 'button "Save note"' },
+        { label: 'Text', text: 'text: heading "Note" → "Notes"' },
+        { label: 'Stil', text: 'button "Save": background-color #5f8f6b → #e5533a' },
+    ]);
+    assert.deepEqual(build.options, ['fix-by-agent', 'fix-myself', 'later']);
+    assert.deepEqual(build.labels, ['Von Claude Code umsetzen lassen', 'Ich setze selbst um', 'Später']);
+    // The agent's task: the step, its design and what deviates.
+    assert.deepEqual(asked[0].fix, { step: 'S2', name: 'Summe', expect: 'Die Notiz ist zu sehen.', design: 'design/note.html', deviations: ['missing: button "Save note"', 'text: text: heading "Note" → "Notes"', 'style: button "Save": background-color #5f8f6b → #e5533a'] });
+    assert.match(h.questions[2].text, /Geändert: web\/note\.css\. Erneut testen zeigt, ob S2 sein Zielbild jetzt erfüllt\./);
+});
+
+test('Recording a design draft headless: the red proof is saved on its own; a design met already says the draft shows nothing missing', async () => {
+    const h = harness({ outcomes: [{ ...designRun(notMet), candidate: designDraft }, designRun(notMet)], answers: ['adopt'] });
+    await recordFlow({ sandbox: 'box', ...h, head: () => 'abc1234' });
+    assert.deepEqual(h.adopted[0].spec.red, { step: 'S2', run: 'r-red', head: 'abc1234' });
+    assert.equal(h.questions[0].card.phase, undefined, 'no window: no phases');
+
+    const already = harness({ outcomes: [{ ...designRun(met, 'r-1'), candidate: designDraft }, designRun(met, 'r-1')], answers: ['adopt'] });
+    await recordFlow({ sandbox: 'box', ...already });
+    assert.deepEqual(already.notices, ['Das Zielbild von S2 ist schon erfüllt: Der Entwurf zeigt nichts, was fehlt. Schreibe ihn, solange der Bildschirm noch vom Zielbild abweicht.']);
+    assert.equal(already.adopted[0].spec.red, undefined);
+});
+
+test('Test run of a design draft: its pending step\'s design not met at the entry is the red proof, written after the run; guided, the card to build comes', async () => {
+    const headless = harness({ outcomes: [entryRun(notMet)] });
+    assert.equal(await runFlow({ spec: pendingDraft, handover: false, canFix: false, head: () => 'abc1234', ...headless }), EXIT.pass, 'a pending step fails nothing');
+    assert.deepEqual(headless.adopted[0].spec.red, { step: 'S2', run: 'r-red', head: 'abc1234' });
+
+    const h = harness({ outcomes: [entryRun(notMet)], answers: ['later'] });
+    await runFlow({ spec: pendingDraft, handover: false, canFix: true, openSandbox: async () => 'box', head: () => 'abc1234', ...h, guide: { env: 'test' } });
+    assert.equal(h.questions[0].card.title, 'S2 erfüllt sein Zielbild noch nicht: der Test fängt, was fehlt');
+    assert.equal(h.questions[0].card.phase, 'build');
+    assert.deepEqual(h.said[0], { outcome: 'Später weiter mit caw run note --env test.' });
+    assert.deepEqual(h.adopted[0].spec.red, { step: 'S2', run: 'r-red', head: 'abc1234' });
+
+    // Known red, still not met: the card says so, offers building on and keeps the first proof.
+    const again = harness({ outcomes: [entryRun(notMet, 'r-2')], answers: ['close'] });
+    await runFlow({ spec: { ...pendingDraft, red: { step: 'S2', run: 'r-red' } }, handover: false, canFix: true, openSandbox: async () => 'box', ...again, guide: { env: 'test' } });
+    assert.equal(again.questions[0].card.title, 'S2 erfüllt sein Zielbild noch nicht');
+    assert.deepEqual(again.questions[0].labels, ['Weiter umsetzen lassen', 'Erneut testen', 'Lauf beenden']);
+    assert.deepEqual(again.adopted, []);
+});
+
+test('Test run of a red design draft: met at its pending step\'s entry, the card says to record it next; met after its check, adopting writes the design report', async () => {
+    const red = { step: 'S2', run: 'r-red', head: 'abc1234' };
+    const pending = harness({ outcomes: [entryRun(met, 'r-met')] });
+    await runFlow({ spec: { ...pendingDraft, red }, handover: false, canFix: true, openSandbox: async () => assert.fail('no agent'), ...pending, guide: { env: 'test', promote: async () => assert.fail('S2 is not recorded') } });
+    assert.equal(pending.questions[0].card.title, 'Zielbild am Einstieg von S2 erfüllt');
+    assert.equal(pending.questions[0].card.phase, 'green');
+    assert.deepEqual(pending.questions[0].options, ['close']);
+    assert.deepEqual(pending.said[0], { outcome: 'Später weiter mit caw record note --env test.' });
+
+    const h = harness({ outcomes: [designRun(met, 'r-green')], answers: ['promote'] });
+    const promote = async () => ({ ok: true, test: 'note', files: 'caw/tests/note.yaml, caw/recordings/note.yaml', report: '.caw/runs/r-green/design-report.md', others: 2, target: 'test' });
+    assert.equal(await runFlow({ spec: { ...designDraft, red }, handover: false, canFix: true, openSandbox: async () => assert.fail('no agent'), ...h, guide: { env: 'test', promote } }), EXIT.pass);
+    assert.equal(h.questions[0].card.title, 'Zielbild erfüllt: S2');
+    assert.equal(h.questions[0].card.phases, 'design');
+    assert.deepEqual(h.questions[0].labels, ['Übernehmen', 'Später']);
+    assert.deepEqual(h.said[0], { outcome: 'Übernommen: caw/tests/note.yaml, caw/recordings/note.yaml. 2 andere(r) Test(s) auf test grün. Zielbild-Bericht: .caw/runs/r-green/design-report.md' });
+});

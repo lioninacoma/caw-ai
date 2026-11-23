@@ -438,6 +438,8 @@ export default {
     'config.report.proposals.item': '- {step}, action {number}: `{from}` → `{to}`',
     'config.test.redDraftOnly': 'red belongs to a draft in {dir} only: it proves the draft fails while the bug is there. Remove it here.',
     'config.test.red': 'red is { step, run, head? }: a step of this draft, the run that showed it red, and the commit checked out then (a short hash).',
+    'config.test.originDraftOnly': 'origin belongs to a draft in {dir} only: it says the draft was written for a target design. Remove it here.',
+    'config.test.origin': 'origin is {origin} (a draft written for a target design), or leave it out (a draft from caw reproduce).',
     'config.visual': 'visual must be an object with screenshots (true/false), e.g. { "screenshots": true }',
     'config.visual.unknown': 'visual.{key} doesn\'t exist (allowed: {fields}){hint}',
     'config.visualIgnore': 'visualIgnore must be a list of CSS selectors, e.g. ["#clock", ".avatar"]',

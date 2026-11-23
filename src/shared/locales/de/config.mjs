@@ -438,6 +438,8 @@ export default {
     'config.report.proposals.item': '- {step}, Aktion {number}: `{from}` → `{to}`',
     'config.test.redDraftOnly': 'red gehört nur in einen Entwurf in {dir}: Es belegt, dass der Entwurf scheitert, solange der Fehler da ist. Entferne es hier.',
     'config.test.red': 'red ist { step, run, head? }: ein Schritt dieses Entwurfs, der Lauf, der ihn rot gezeigt hat, und der damals ausgecheckte Commit (kurzer Hash).',
+    'config.test.originDraftOnly': 'origin gehört nur in einen Entwurf in {dir}: Es sagt, dass der Entwurf für ein Zielbild geschrieben wurde. Entferne es hier.',
+    'config.test.origin': 'origin ist {origin} (ein Entwurf für ein Zielbild), oder lass es weg (ein Entwurf aus caw reproduce).',
     'config.visual': 'visual muss ein Objekt sein mit screenshots (true/false), etwa { "screenshots": true }',
     'config.visual.unknown': 'visual.{key} gibt es nicht (erlaubt: {fields}){hint}',
     'config.visualIgnore': 'visualIgnore muss eine Liste von CSS-Selektoren sein, etwa ["#clock", ".avatar"]',

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { assertPlayable, buildReplay, cutReplay, groupSteps, missingRemembered, replayBefore, replayOf, replayToEntry, replayUpToStale, trailingNumbers } from '../src/host/replay.mjs';
-import { brokenChain, draftIds, draftPath, humanFields, loadDraft, loadTest, parsePlan, parseRecordings, parseTest, pendingSteps, recordingHints, recordingPath, redStep, renderPlan, renderTest, setStepDesign, setStepLooks, staleSteps, stepHash, testExists, testPath, writeTest } from '../src/host/test-file.mjs';
+import { brokenChain, checkRedStep, draftIds, draftPath, humanFields, isDesignDraft, loadDraft, loadTest, parsePlan, parseRecordings, parseTest, pendingSteps, recordingHints, recordingPath, redStep, renderPlan, renderTest, setStepDesign, setStepLooks, staleSteps, stepHash, testExists, testPath, writeTest } from '../src/host/test-file.mjs';
 import { composeTest, planView, readPlan, replaceStep } from '../src/host/test-plan.mjs';
 import { learningPath, withLearning } from '../src/host/learning.mjs';
 
@@ -679,4 +679,46 @@ test('drafts: loaded from caw/drafts when caw/tests has none, written back there
     // A test of the same name wins over the draft.
     writeTest(root, { ...spec(recorded('S1')), id: 'bug-x' });
     assert.equal(loadTest(root, 'bug-x').draft, undefined);
+});
+
+test('a design draft: origin design only in a draft, written and read back; its red step is the last step with a design, its checks are recorded like a test', (t) => {
+    assert.equal(parseTest(`${YAML}origin: design\n`, 'x', { draft: true }).origin, 'design');
+    assert.throws(() => parseTest(`${YAML}origin: design\n`, 'x', { description: true }), /origin gehört nur in einen Entwurf in caw\/drafts/);
+    assert.throws(() => parseTest(`${YAML}origin: ticket\n`, 'x', { draft: true }), /origin ist design/);
+    const root = mkdtempSync(join(tmpdir(), 'caw-design-draft-'));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const draft = { ...spec(recorded('S1'), recorded('S2'), plain('S3')), id: 'note', draft: true, origin: 'design' };
+    assert.equal(writeTest(root, draft), 'caw/drafts/note.yaml');
+    assert.match(readFileSync(draftPath(root, 'note'), 'utf8'), /^origin: design$/m);
+    const loaded = loadDraft(root, 'note');
+    assert.equal(loaded.origin, 'design');
+    assert.equal(isDesignDraft(loaded), true);
+    assert.equal(redStep(loaded), undefined, 'no step with a design yet: nothing to be red at');
+    assert.equal(checkRedStep(loaded), undefined);
+    // The person links the design to S3 (caw_design link): it is the red step now, and still none whose check must fail.
+    assert.deepEqual(setStepDesign(root, 'note', 'S3', 'design/note.html'), { file: 'caw/drafts/note.yaml', changed: true });
+    const linked = loadDraft(root, 'note');
+    assert.equal(linked.steps[2].design, 'design/note.html');
+    assert.equal(linked.red, undefined);
+    assert.equal(redStep(linked), 'S3');
+    assert.equal(checkRedStep(linked), undefined, 'recorded like a test');
+    assert.equal(checkRedStep({ ...linked, origin: undefined }), 'S3', 'a draft from caw reproduce keeps its failing check');
+    assert.equal(redStep({ ...linked, red: { step: 'S2', run: 'r1' } }), 'S2', 'the red proof names it');
+    assert.equal(isDesignDraft({ ...linked, draft: undefined }), false);
+});
+
+test('composeTest: a new plan keeps the origin; a design draft keeps its red proof while its red step keeps design and expected result', () => {
+    const designed = { ...plain('S2'), design: 'design/note.html' };
+    const draft = { ...meta, draft: true, origin: 'design', red: { step: 'S2', run: 'r1', head: 'abc1234' }, steps: [plain('S1'), designed] };
+    const again = composeTest(draft, { notes: '', steps: [plain('S1'), designed] });
+    assert.equal(again.origin, 'design');
+    assert.deepEqual(again.red, { step: 'S2', run: 'r1', head: 'abc1234' });
+    assert.equal(composeTest(draft, { notes: '', steps: [plain('S1'), { ...designed, expect: 'Anders.' }] }).red, undefined, 'another expected result');
+    assert.equal(composeTest(draft, { notes: '', steps: [plain('S1'), { ...designed, design: 'design/other.html' }] }).red, undefined, 'another design');
+    assert.equal(composeTest(draft, { notes: '', steps: [plain('S1')] }).red, undefined, 'the step is gone');
+    // A draft from caw reproduce loses its red proof with a new plan, as before.
+    const bug = { ...meta, draft: true, red: { step: 'S2', run: 'r1' }, steps: [plain('S1'), plain('S2')] };
+    const plan = composeTest(bug, { notes: '', steps: [plain('S1'), plain('S2')] });
+    assert.equal(plan.red, undefined);
+    assert.equal(plan.origin, undefined);
 });

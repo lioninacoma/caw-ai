@@ -26,8 +26,11 @@ import { splitLearning } from './learning.mjs';
 export { DRAFT_DIR, RECORDING_DIR, TEST_DIR } from '../shared/names.mjs';
 const RECORDING_TOP_FIELDS = ['test', 'steps', 'knownMessages'];
 const STEP_ID = /^S[1-9]\d*$/;
-// `red` only in a draft (caw/drafts): the run that proved the draft fails at that step while the bug is there.
-const TOP_FIELDS = ['id', 'role', 'writes', 'environments', 'start', 'notes', 'red', 'steps', 'knownMessages'];
+// `red` only in a draft (caw/drafts): the run that proved the draft fails at that step while the bug is there, or, in a draft
+// with `origin: design`, that its target design is not met there yet.
+const TOP_FIELDS = ['id', 'role', 'writes', 'environments', 'start', 'notes', 'origin', 'red', 'steps', 'knownMessages'];
+/** `origin: design`: a draft written for a target design (guided target-image TDD); without it a draft comes from caw reproduce. */
+export const DESIGN_ORIGIN = 'design';
 const RED_FIELDS = ['step', 'run', 'head'];
 const PLAN_STEP_FIELDS = ['id', 'name', 'do', 'expect', 'note', 'retry'];
 const RETRY_FIELDS = ['times', 'waitMs', 'from'];
@@ -393,7 +396,9 @@ export const parseTest = (text, label = t('config.test.label'), { description = 
     if (description && value.knownMessages !== undefined) report(['knownMessages'], t('config.test.recordingOnly', { key: 'knownMessages' }));
     else if (!knownMessagesOk(value.knownMessages)) report(['knownMessages'], t('config.test.knownMessages'));
     const steps = readSteps(value.steps, problems, lineOf, { allowRecording: !description, description, framework });
-    // A test in caw/tests proves no bug: red belongs to the draft and goes when the draft is promoted.
+    // A test in caw/tests proves no bug: red and origin belong to the draft and go when the draft is promoted.
+    if (value.origin !== undefined && !draft) report(['origin'], t('config.test.originDraftOnly', { dir: DRAFT_DIR }));
+    else if (value.origin !== undefined && value.origin !== DESIGN_ORIGIN) report(['origin'], t('config.test.origin', { origin: DESIGN_ORIGIN }));
     if (value.red !== undefined && !draft) report(['red'], t('config.test.redDraftOnly', { dir: DRAFT_DIR }));
     else if (value.red !== undefined && !redOk(value.red, steps)) report(['red'], t('config.test.red'));
     problems.push(...commentCuts(text));
@@ -406,6 +411,7 @@ export const parseTest = (text, label = t('config.test.label'), { description = 
         writes: value.writes,
         ...(value.start === undefined ? {} : { start: value.start }),
         notes: clean(value.notes),
+        ...(value.origin === undefined ? {} : { origin: value.origin }),
         ...(value.red === undefined ? {} : { red: { step: value.red.step, run: value.red.run, ...(value.red.head === undefined ? {} : { head: value.red.head }) } }),
         steps,
         ...(value.knownMessages === undefined ? {} : { knownMessages: value.knownMessages }),
@@ -460,11 +466,24 @@ export const draftIds = (root) => {
     return existsSync(dir) ? readdirSync(dir).filter((name) => name.endsWith('.yaml')).map((name) => name.slice(0, -'.yaml'.length)).sort() : [];
 };
 
+/** A draft written for a target design (`origin: design`): red while its design is not met, green once it is. */
+export const isDesignDraft = (spec) => spec?.draft === true && spec.origin === DESIGN_ORIGIN;
+
 /**
- * The step a draft must fail at while the bug is there: the step its red run proved, before that its last step. Undefined for
- * a test in caw/tests.
+ * The step a draft must fail at while the bug is there: the step its red run proved, before that its last step. In a design
+ * draft the step its design is for: the last step with `design:`, undefined while it has none. Undefined for a test in caw/tests.
  */
-export const redStep = (spec) => (spec?.draft === true ? spec.red?.step ?? spec.steps.at(-1)?.id : undefined);
+export const redStep = (spec) => {
+    if (spec?.draft !== true) return undefined;
+    if (spec.red !== undefined) return spec.red.step;
+    return isDesignDraft(spec) ? spec.steps.findLast(({ design }) => design !== undefined)?.id : spec.steps.at(-1)?.id;
+};
+
+/**
+ * The step whose check a recording of a draft must keep failing: only a draft from caw reproduce. A design draft is recorded
+ * like a test (its checks pass); its red is the design not met.
+ */
+export const checkRedStep = (spec) => (isDesignDraft(spec) ? undefined : redStep(spec));
 
 // A known message is a fixed text or a pattern `{pattern}`, e.g. for a dialog showing a checksum or the time.
 const knownMessagesOk = (value) => value === undefined || (Array.isArray(value) && value.every((message) => typeof message === 'string' || isPattern(message)));
@@ -879,6 +898,7 @@ export const renderTest = (spec) => {
         ...(spec.environments === undefined ? {} : { environments: spec.environments }),
         ...(spec.start === undefined ? {} : { start: spec.start }),
         ...(spec.notes === '' || spec.notes === undefined ? {} : { notes: spec.notes }),
+        ...(spec.origin === undefined ? {} : { origin: spec.origin }),
         ...(spec.red === undefined ? {} : { red: spec.red }),
     });
     for (const key of ['environments', 'red']) {
@@ -1001,15 +1021,17 @@ const writeDraft = (root, spec) => {
 
 /**
  * Sets or removes one step's `design:` in the description, as a node edit: comments, order and line endings stay. Only for a
- * person's explicit request (caw_design link); the file is checked as a whole before it is written.
+ * person's explicit request (caw_design link); the file is checked as a whole before it is written. A test in caw/tests, else
+ * the draft of that id in caw/drafts (a design draft gets its design this way).
  * @param file the design relative to the caw folder, or null to remove it
  * @returns { file: the test file relative to the project, changed }
  */
 export const setStepDesign = (root, id, step, file) => {
-    const label = `${TEST_DIR}/${id}.yaml`;
-    // A plain file name: the test is looked up in caw/tests, never elsewhere.
-    if (typeof id !== 'string' || !/^\w[\w.-]*$/.test(id) || !existsSync(testPath(root, id))) throw new CawError('test-missing', t('config.test.notFound', { path: label }));
-    const path = testPath(root, id);
+    // A plain file name: the test is looked up in caw/tests and caw/drafts, never elsewhere.
+    if (typeof id !== 'string' || !/^\w[\w.-]*$/.test(id) || !testExists(root, id)) throw new CawError('test-missing', t('config.test.notFound', { path: `${TEST_DIR}/${id}.yaml` }));
+    const draft = !existsSync(testPath(root, id));
+    const label = `${draft ? DRAFT_DIR : TEST_DIR}/${id}.yaml`;
+    const path = draft ? draftPath(root, id) : testPath(root, id);
     const raw = readFileSync(path, 'utf8');
     const doc = parseDocument(raw.replaceAll('\r\n', '\n'), { schema: 'core', merge: false, version: '1.2' });
     const node = doc.get('steps', true)?.items?.find((item) => isMap(item) && item.get('id') === step);
@@ -1017,7 +1039,7 @@ export const setStepDesign = (root, id, step, file) => {
     if (file === null) node.delete('design');
     else node.set('design', file);
     const text = doc.toString(STRINGIFY);
-    parseTest(text, label, { description: true });
+    parseTest(text, label, draft ? { draft: true } : { description: true });
     return { file: label, changed: writeIfChanged(path, text, raw) };
 };
 

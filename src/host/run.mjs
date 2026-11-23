@@ -32,7 +32,7 @@ import { isPublicKey, spawnerKey } from './decision-proof.mjs';
 import { liveListeners } from '../shared/attach.mjs';
 import { describeCode } from './code-source.mjs';
 import { CONFIG_FILE, CONTEXT_FILE, DRAFT_DIR, ENV_FILE, PROJECT_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
-import { humanFields, redStep, renderPlan, renderTest, retryProblems, writeTest } from './test-file.mjs';
+import { checkRedStep, humanFields, renderPlan, renderTest, retryProblems, writeTest } from './test-file.mjs';
 import { PLAN_FILE, composeTest, heardProblems, planView, readPlan, replaceStep, samePlanStep, sessionFollowsOwnPlan, withNoteIds } from './test-plan.mjs';
 import { codeText, createAgentHandler, hiddenAnswer, hiddenError, locatorFor } from './agent-commands.mjs';
 import { locatorLabel } from './locator.mjs';
@@ -522,11 +522,12 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     const creating = replay === undefined && repair === undefined;
     /**
      * Recording a draft from caw reproduce: the step that must fail while the bug is there, the last step of the plan (which
-     * may still change), or the repaired step if it is the draft's red one. Undefined for a test and in a test run.
+     * may still change), or the repaired step if it is the draft's red one. Undefined for a test, a design draft (recorded like
+     * a test, its red is its design not met) and in a test run.
      */
     const redOf = () => {
-        if (redStep(givenSpec) === undefined || replay !== undefined) return undefined;
-        if (repairing !== undefined && range === undefined) return repairing.id === redStep(givenSpec) ? repairing.id : undefined;
+        if (checkRedStep(givenSpec) === undefined || replay !== undefined) return undefined;
+        if (repairing !== undefined && range === undefined) return repairing.id === checkRedStep(givenSpec) ? repairing.id : undefined;
         return spec.steps.at(-1)?.id;
     };
     // A reproduction is named as such, also when it starts from a test's step (--from).

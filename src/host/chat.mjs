@@ -37,7 +37,8 @@ const TALK_KINDS = ['discussing', 'developing'];
 /**
  * A result card: what happened as its title, details and consequence below, and its tone (fail, warn, next, info, ask) as
  * icon and colour; optionally rows ([{ label, text, code }] as a key/value list) and the bug fix phase it belongs to (phase:
- * reproduced, red, fix, green or promoted, shown as a bar over the card). As one line for the log and the waiting line:
+ * reproduced, red, fix, green or promoted, shown as a bar over the card), with phases: 'design' a design draft's (draft, red,
+ * build, green or adopted). As one line for the log and the waiting line:
  * "<title>: <text> <muted>".
  */
 export const resultText = ({ title, text, muted }) => [`${title}${/[.?!:]$/.test(title) || (!text && !muted) ? '' : ':'}`, text, muted].filter(Boolean).join(' ');
@@ -630,7 +631,7 @@ details.activity li{overflow-wrap:anywhere}
 .message.r-fail{box-shadow:inset 0 2px 0 var(--fail)}.r-fail>strong .i{color:var(--fail)}.message.r-warn{box-shadow:inset 0 2px 0 var(--warn)}.r-warn>strong .i{color:var(--warn)}
 .plan>strong .i{color:var(--accent-text)}.advice>strong .i{color:var(--agent)}.decision>strong .i{color:var(--pass)}.tokens>strong .i{color:var(--warn)}
 .message.failure{box-shadow:inset 0 2px 0 var(--fail)}.failure>strong .i{color:var(--fail)}
-/* The guided bug fix: its phases over a card, done ones with a tick, the current one in the accent, the rest dimmed. */
+/* The guided bug fix and the target design: their phases over a card, done ones with a tick, the current one in the accent, the rest dimmed. */
 .message.phases{flex-direction:row;flex-wrap:wrap;align-items:center;gap:6px 3px;margin:0;padding:0;list-style:none}.phases li{display:flex;align-items:center;gap:3px}
 .phases li:not(:last-child)::after{content:"›"/"";color:var(--faint);font-size:12px}.phases .bdg{gap:2px;padding:0 7px}.phases .bdg .i{width:11px;height:11px}
 .phases [aria-current] .bdg{background:var(--accent-soft);color:var(--accent-text);box-shadow:inset 0 0 0 1px var(--accent)}.phases .later .bdg{background:none;color:var(--faint);box-shadow:inset 0 0 0 1px var(--line)}
@@ -826,9 +827,10 @@ const clock=(at)=>{if(!at)return null;const d=new Date(at);return el('small','',
 const whoLine=(who,at,extra)=>{const line=el('span','who '+(who==='claude'?'c':'h'));const name=el('span','',who==='claude'?${JSON.stringify(AGENT_NAME)}:T['chat.page.you']);name.dataset.who=who;line.append(ic(who==='claude'?'agent':'you'),name);if(extra)line.append(extra);const time=clock(at);if(time)line.append(time);return line;};
 const head=(glyph,title,meta)=>{const strong=el('strong');strong.append(ic(glyph),el('span','',title));if(meta)strong.append(el('span','meta',meta));return strong;};
 const card=(cls)=>el('div','message card '+cls);
-// The guided bug fix's phases as an ordered list over its cards: where the person stands on the way to the promoted test.
-const PHASES=['reproduced','red','fix','green','promoted'];
-const phaseBar=(phase)=>{const at=PHASES.indexOf(phase);const ol=el('ol','message phases');ol.setAttribute('aria-label',T['chat.page.phases']);PHASES.forEach((name,i)=>{const li=el('li',i<at?'done':i>at?'later':'now');const badge=el('span','bdg');if(i<at)badge.append(ic('check'));badge.append(T['chat.page.phase.'+name]);if(i===at)li.setAttribute('aria-current','step');li.append(badge);ol.append(li);});return ol;};
+// The phases of the guided bug fix, or of a design draft (phases: 'design'), as an ordered list over its cards: where the
+// person stands on the way to the adopted test.
+const PHASES={fix:['reproduced','red','fix','green','promoted'],design:['draft','red','build','green','adopted']};
+const phaseBar=(phase,flow)=>{const names=flow==='design'?PHASES.design:PHASES.fix;const at=names.indexOf(phase);const ol=el('ol','message phases');ol.setAttribute('aria-label',T[flow==='design'?'chat.page.phasesDesign':'chat.page.phases']);names.forEach((name,i)=>{const li=el('li',i<at?'done':i>at?'later':'now');const badge=el('span','bdg');if(i<at)badge.append(ic('check'));badge.append(T['chat.page.phase.'+name]);if(i===at)li.setAttribute('aria-current','step');li.append(badge);ol.append(li);});return ol;};
 // "Starting Claude": a spinner and the time since, until anything else arrives.
 let starting=null;
 const elapsed=(row)=>{const s=Math.max(0,Math.floor((Date.now()-Number(row.dataset.t0))/1000));row.querySelector('small').textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');};
@@ -913,7 +915,7 @@ window.addMessage=(who,text,about,at)=>{
   // Claude's own question (ask-operator): the head says who asks.
   if(who==='question'){const box=card('question');box.append(head('agent',fill('chat.page.agentAsks',{agent:${JSON.stringify(AGENT_NAME)}})),el('p','txt',text));place(box);return;}
   // What happened and waits for a button: the head says what, the tone gives icon and colour.
-  if(who==='result'){const glyph={fail:'x',warn:'alert',next:'play',info:'info',ask:'help'}[about.tone]??'info';const box=card('result r-'+(about.tone??'info'));box.append(head(glyph,about.title));if(about.text)box.append(el('p','txt',about.text));if(about.rows){const kv=el('dl','kv');for(const row of about.rows){const dd=el('dd');dd.append(row.code?el('code','',row.text):row.text);kv.append(el('dt','',row.label),dd);}box.append(kv);}if(about.muted)box.append(el('p','muted',about.muted));if(about.phase)place(phaseBar(about.phase));place(box);return;}
+  if(who==='result'){const glyph={fail:'x',warn:'alert',next:'play',info:'info',ask:'help'}[about.tone]??'info';const box=card('result r-'+(about.tone??'info'));box.append(head(glyph,about.title));if(about.text)box.append(el('p','txt',about.text));if(about.rows){const kv=el('dl','kv');for(const row of about.rows){const dd=el('dd');dd.append(row.code?el('code','',row.text):row.text);kv.append(el('dt','',row.label),dd);}box.append(kv);}if(about.muted)box.append(el('p','muted',about.muted));if(about.phase)place(phaseBar(about.phase,about.phases));place(box);return;}
   if(who==='intro'){const box=card('intro');box.append(head('info',T['chat.page.intro']),el('p','txt',text));place(box);return;}
   if(who==='notice'){const item=el('div','message notice');item.append(ic('info'),el('span','txt',text));place(item);return;}
   const item=el('div','message '+who);
