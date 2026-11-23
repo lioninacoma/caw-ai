@@ -31,7 +31,7 @@ When a command stops, the terminal shows the reason first, then for an invalid c
 
 ```
 ✕ create-ticket@s2: a step goes after the test as <test>@S<n>, e.g. order@S3.
-  Usage: caw record <test> [--env <name>] [--role <role>]  or  caw record <test>@<S4> [--env <name>] [--agent local|docker | --attach [<key>]]
+  Usage: caw record <test> [--env <name>] [--role <role>] [--headless]  or  caw record <test>@<S4> [--env <name>] [--agent local|docker | --attach [<key>]]
   (code: usage, exit 3)
 ```
 

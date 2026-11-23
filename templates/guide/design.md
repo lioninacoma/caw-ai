@@ -30,7 +30,7 @@ of, left of, inside). Its looks (fonts, colors, backgrounds, paddings, radii, bo
 and sizes are not compared, nor the gap from the element before it into the area and out of it. Outside it everything stays
 exact. Use it only when the person agreed that this part may look as the app's framework draws it (a design system the draft
 could not use); a draft from the app (below) needs none. The deviation lines read as before; in a linked design, adding such
-an area changes the file and `caw audit` reports it as a weakening that names the added areas.
+an area changes the file and `caw audit` reports it as a weakening that says how many areas were added.
 
 **A learned look.** `look: true` on a step (also only the person's: never set or remove it yourself; caw may suggest steps to
 the person after `record`) learns that step's look and then fails with kind `visual` when it changes. A look learns when

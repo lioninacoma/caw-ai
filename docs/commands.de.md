@@ -31,7 +31,7 @@ Bricht ein Befehl ab, steht im Terminal zuerst der Grund, bei einem ungültigen 
 
 ```
 ✕ create-ticket@s2: Ein Schritt steht als <test>@S<n> hinter dem Test, etwa bestellung@S3.
-  Aufruf: caw record <test> [--env <name>] [--role <rolle>]  oder  caw record <test>@<S4> [--env <name>] [--agent local|docker | --attach [<key>]]
+  Aufruf: caw record <test> [--env <name>] [--role <rolle>] [--headless]  oder  caw record <test>@<S4> [--env <name>] [--agent local|docker | --attach [<key>]]
   (code: usage, exit 3)
 ```
 
