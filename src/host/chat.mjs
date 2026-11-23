@@ -690,8 +690,8 @@ body:not(:has(#card:not(:empty))):is([data-state=running],[data-state=pausing],[
 #choices{display:none;flex-direction:column;gap:8px}
 :is([data-state=choosing],[data-state=deciding],[data-state=reviewing],[data-state=discussing],[data-state=developing],[data-state=planning]) #choices{display:flex}
 .acts{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:8px}.acts>.btn,.acts>.more{flex:0 0 auto}.acts>.btn-p{flex:1 1 100%}
-#choices .btn,#next .btn{white-space:normal;height:auto;min-height:38px;padding:9px 15px;line-height:1.25;text-align:center}
-#choices .rest>.btn{flex:1 1 auto}#choices .rest>.btn-p{flex:1 1 100%;min-height:42px;font-size:14px}
+#choices .btn,#next .btn{white-space:normal;height:auto;min-height:36px;padding:9px 15px;line-height:1.25;text-align:center}
+#choices .rest>.btn{flex:1 1 auto}#choices .rest>.btn-p{flex:1 1 100%;font-size:14px}
 #choices button.sure{background:var(--fail);color:var(--on-accent);border-color:transparent}
 #choices button:disabled{cursor:progress;opacity:.55}#choices button.busy{opacity:1}
 #choices button.busy::before{content:"";width:10px;height:10px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:caw-spin .9s linear infinite}

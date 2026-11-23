@@ -8,10 +8,11 @@ import { CHAT_KEYS, workbenchHtml } from '../src/host/workbench.mjs';
 import { badgeOf, benchFacts, benchSettings, titleOf } from '../src/host/run.mjs';
 import { languageSource } from '../src/shared/i18n.mjs';
 
-test('workbench: without an own choice the step list collapses in narrow windows, a choice always wins', () => {
+test('workbench: the steps are hidden unless the person chose them open; without an own choice a failed step shows them', () => {
     const free = workbenchHtml({ appUrl: 'about:blank', title: 't' });
     assert.match(free, /let autoSteps=true;/);
-    assert.match(free, /innerWidth<1500/);
+    assert.match(free, /<body class="[^"]*fold-steps/, 'hidden by default');
+    assert.doesNotMatch(workbenchHtml({ appUrl: 'about:blank', title: 't', prefs: { steps: 'open' } }), /<body class="[^"]*fold-steps/);
     assert.match(free, /@media \(max-width:999px\)/, 'stacked only below 1000px');
     for (const steps of ['open', 'closed']) assert.match(workbenchHtml({ appUrl: 'about:blank', title: 't', prefs: { steps } }), /let autoSteps=false;/);
     assert.match(workbenchHtml({ appUrl: 'about:blank', title: 't', prefs: { steps: 'closed' } }), /<body class="[^"]*fold-steps/);
@@ -19,7 +20,8 @@ test('workbench: without an own choice the step list collapses in narrow windows
 
 test('workbench: the chip at the top right (REC, PLAY, PAUSE) is there but off without a run; recording pulses only without F10', () => {
     const html = workbenchHtml({ appUrl: 'about:blank', title: 't' });
-    assert.match(html, /<span id="state" class="pill" role="status"><\/span><span id="transport" class="tp" role="img"><i><\/i><span><\/span><\/span><button type="button" class="ib" id="more"/, 'right of the pill, before ⋯');
+    assert.match(html, /<span id="notice" role="status" hidden><\/span><span id="transport" class="tp" role="img"><i><\/i><span><\/span><\/span><button type="button" class="ib" id="more"/, 'right of the facts, before ⋯');
+    assert.doesNotMatch(html, /class="pill"|id="browserState"/, 'one status display: the panel');
     assert.match(html, /#transport\{display:none\}/, 'no chip without a run');
     assert.match(html, /chip\.className='tp'\+\(mode===null\?'':' on '\+\(\{record:'rec',play:'play',pause:'pause'\}\)\[mode\]\)/);
     assert.match(html, /\.still \*,\.still \*::before,\.still \*::after\{animation:none!important/, 'F10 also stops the recording pulse');

@@ -591,7 +591,7 @@ test('Chat: caw\'s notices and Claude starting are entries of their own, the tok
     chat.human.closed();
     chat.notice('Zu spät');
     chat.starting('Zu spät');
-    assert.deepEqual(shown, [['notice', 'Gespeichert', undefined], ['starting', 'Starte Claude', undefined], ['tokens', 'Das kostet Token.', { kind: 'tokens', text: 'Einmal pro Lauf.' }], ['human', 'Weiter', undefined]]);
+    assert.deepEqual(shown, [['notice', 'Gespeichert', undefined], ['starting', 'Starte Claude', undefined], ['tokens', 'Das kostet Token.', { kind: 'tokens', text: 'Einmal pro Lauf.' }], ['human', 'Weiter', { answer: true }]]);
 });
 
 test('Chat: a card with checkboxes answers with the ticked ones it offered; closing answers with nothing ticked', async () => {
