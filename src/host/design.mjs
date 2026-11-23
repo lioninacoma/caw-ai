@@ -2,8 +2,8 @@
 // structure: the same controls, the same view lines and a few computed styles per control. A design comes from a person (Claude
 // Design, Figma), the attached Claude Code session writes it with caw_design; caw itself never fetches anything.
 
-import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 import { t } from '../shared/i18n.mjs';
 import { controlsProbe } from './effects.mjs';
@@ -91,15 +91,29 @@ export const designProblem = (kind, data) => {
 };
 
 /**
- * Writes a design file under caw/design. The folders on the way must not be links, and an existing file is replaced only if it
- * is a regular file: nothing ends up outside caw/design.
+ * Writes a design page under caw/design (caw_design put), checked as a whole first.
  * @returns { file, kind, bytes, replaced }
  */
 export const writeDesign = (cawDir, name, data) => {
     const kind = designKind(name);
     if (kind === null) throw new Error(t('run.mcp.designName'));
-    const problem = designProblem(kind, data);
-    if (problem !== null) throw new Error(problem);
+    return { kind, ...writeDesignFile(cawDir, name, data, { html: true }) };
+};
+
+/**
+ * Writes a file under caw/design: a design page or a file beside it (a snapshot's stylesheet, font or image). The folders on the
+ * way must not be links, and an existing file is replaced only if it is a regular file: nothing ends up outside caw/design.
+ * @param html true: a design page, checked like caw_design put checks it
+ * @returns { file, bytes, replaced }
+ */
+export const writeDesignFile = (cawDir, name, data, { html = false } = {}) => {
+    const segments = typeof name === 'string' ? name.split('/') : [];
+    if (segments.length < 2 || segments[0] !== DESIGN_DIR || !segments.slice(1).every((segment) => SEGMENT.test(segment))) throw new Error(t('run.mcp.designName'));
+    if (html) {
+        if (designKind(name) === null) throw new Error(t('run.mcp.designName'));
+        const problem = designProblem('html', data);
+        if (problem !== null) throw new Error(problem);
+    }
     const root = join(cawDir, DESIGN_DIR);
     const path = resolve(cawDir, name);
     if (!inside(root, path)) throw new Error(t('run.mcp.designName'));
@@ -115,7 +129,7 @@ export const writeDesign = (cawDir, name, data) => {
     const replaced = existsSync(path);
     if (replaced && (lstatSync(path).isSymbolicLink() || !lstatSync(path).isFile())) throw new Error(t('run.mcp.designLink', { file: name }));
     writeFileSync(path, data);
-    return { file: name, kind, bytes: data.length, replaced };
+    return { file: name, bytes: data.length, replaced };
 };
 
 /** The files in caw/design, relative to the caw folder, with their kind; links and other files are left out. */
@@ -504,6 +518,47 @@ export const structureFrom = ({ controls = [], aria = '', layout, texts = [] }) 
     return { lines: [...new Set([...controlLines, ...maskedView(aria, texts)])], styles, elements: layout === undefined ? [] : layoutElements(placed, layout) };
 };
 
+// How long a page may take at most to settle before it is measured or snapshot (a click's ripple, a fade, a label moving), and
+// how long the DOM must stay unchanged after the animations. Measured on ExtJS Material: a ripple and a floating label end within 1 s.
+const SETTLE_TIMEOUT_MS = 3000;
+const SETTLE_QUIET_MS = 300;
+
+/**
+ * Runs in the browser: waits until the animations and transitions that end have ended (endless ones, spinners, are left
+ * alone) and the DOM has not changed for `quietMs`, at most `timeoutMs` in all.
+ */
+export async function settleProbe({ timeoutMs, quietMs }) {
+    const deadline = Date.now() + timeoutMs;
+    const timeout = (ms) => new Promise((done) => { setTimeout(done, Math.max(0, ms)); });
+    const ending = () => document.getAnimations().filter((animation) => animation.playState === 'running' && animation.effect?.getComputedTiming().endTime !== Infinity);
+    let last = Date.now();
+    const observer = new MutationObserver(() => { last = Date.now(); });
+    observer.observe(document.documentElement, { subtree: true, childList: true, attributes: true, characterData: true });
+    try {
+        while (Date.now() < deadline) {
+            const running = ending();
+            if (running.length > 0) {
+                await Promise.race([Promise.all(running.map((animation) => animation.finished.catch(() => {}))), timeout(deadline - Date.now())]);
+                continue;
+            }
+            const still = Date.now() - last;
+            if (still >= quietMs) return;
+            await timeout(Math.min(quietMs - still, deadline - Date.now()));
+        }
+    } finally {
+        observer.disconnect();
+    }
+}
+
+/** Waits until the page has settled (settleProbe); a page that does not answer is measured as it is. */
+export const settle = async (page) => {
+    try {
+        await (typeof page.mainFrame === 'function' ? page.mainFrame() : page).evaluate(settleProbe, { timeoutMs: SETTLE_TIMEOUT_MS, quietMs: SETTLE_QUIET_MS });
+    } catch {
+        // measured as it is
+    }
+};
+
 /**
  * Reads the structure of a page or frame.
  * @param secrets values that must not appear (the view goes into result.json)
@@ -591,12 +646,58 @@ export const compareStructure = (target, actual, options) => {
  * nothing outside caw/design is read and nothing goes out.
  * @returns the page; the caller closes its context
  */
-export const renderDesign = async (browser, html, viewport = DEFAULT_VIEWPORT) => {
+export const renderDesign = async (browser, html, viewport = DEFAULT_VIEWPORT, { cawDir, file } = {}) => {
     const context = await browser.newContext({ viewport, javaScriptEnabled: false, offline: true, serviceWorkers: 'block' });
-    await context.route(/^(?!data:|about:)/, (route) => route.abort());
+    if (cawDir === undefined || file === undefined) {
+        await context.route(/^(?!data:|about:)/, (route) => route.abort());
+        const page = await context.newPage();
+        await page.setContent(html, { waitUntil: 'load', timeout: RENDER_TIMEOUT_MS });
+        return page;
+    }
+    // With its file: the page at an address of its own, so that what it links relatively (a snapshot's stylesheets, fonts and
+    // images, design/assets/…) is served from caw/design. Nothing else is read, nothing goes out.
+    const address = `${DESIGN_ORIGIN}/${file}`;
+    await context.route(/.*/, async (route) => {
+        const url = route.request().url();
+        if (url === address) return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: html });
+        const served = designAsset(cawDir, url);
+        return served === null ? route.abort() : route.fulfill({ status: 200, contentType: served.type, body: readFileSync(served.path) });
+    });
     const page = await context.newPage();
-    await page.setContent(html, { waitUntil: 'load', timeout: RENDER_TIMEOUT_MS });
+    await page.goto(address, { waitUntil: 'load', timeout: RENDER_TIMEOUT_MS });
     return page;
+};
+
+// The address a design page is rendered at; .invalid never resolves, every request to it is answered from caw/design.
+const DESIGN_ORIGIN = 'http://design.caw.invalid';
+export const ASSET_TYPES = {
+    '.css': 'text/css', '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.otf': 'font/otf', '.eot': 'application/vnd.ms-fontobject',
+    '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp',
+    '.avif': 'image/avif', '.ico': 'image/x-icon', '.bmp': 'image/bmp',
+};
+
+/** A file a rendered design asks for: under caw/design, a regular file and no link, of a kind in ASSET_TYPES; else null. */
+const designAsset = (cawDir, url) => {
+    let path;
+    try {
+        const parsed = new URL(url);
+        if (parsed.origin !== DESIGN_ORIGIN) return null;
+        path = decodeURIComponent(parsed.pathname).slice(1);
+    } catch {
+        return null;
+    }
+    const segments = path.split('/');
+    if (segments.length < 2 || segments[0] !== DESIGN_DIR || !segments.slice(1).every((segment) => SEGMENT.test(segment))) return null;
+    const type = ASSET_TYPES[extname(path).toLowerCase()];
+    if (type === undefined) return null;
+    const root = join(cawDir, DESIGN_DIR);
+    const full = resolve(cawDir, path);
+    try {
+        if (!inside(root, full) || !inside(realpathSync(root), realpathSync(full)) || lstatSync(full).isSymbolicLink() || !lstatSync(full).isFile()) return null;
+    } catch {
+        return null;
+    }
+    return { path: full, type };
 };
 
 /** A judged design in one line, as evidence and note. */
@@ -627,9 +728,11 @@ export const createDesignJudge = ({ cawDir, launch, read, secrets = () => [] }) 
             if (path === null) return { file, verdict: 'missing', note: t('session.design.noFile', { file }) };
             browser ??= await launch();
             const html = await read(path);
-            const rendered = await renderDesign(browser, html, viewport ?? DEFAULT_VIEWPORT);
+            const rendered = await renderDesign(browser, html, viewport ?? DEFAULT_VIEWPORT, { cawDir, file });
             try {
                 const target = await structureOf(rendered, { texts });
+                // A click's ripple or a moving label is not the screen: measured once it settled (ExtJS Material, settleProbe).
+                await settle(page);
                 const actual = await structureOf(page, { secrets: secrets(), texts });
                 const { met, ...found } = compareStructure(target, actual);
                 return { file, verdict: met ? 'met' : 'not-met', ...found };

@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 
 import { t } from '../shared/i18n.mjs';
-import { compareDetailed, designPath, renderDesign, structureOf } from './design.mjs';
+import { compareDetailed, designPath, renderDesign, settle, structureOf } from './design.mjs';
 
 /** The config's visual settings with the defaults. */
 export const visualSettings = (config = {}) => ({ screenshots: false, ...(config.visual ?? {}), ignore: config.visualIgnore ?? [] });
@@ -280,10 +280,11 @@ export const designComparison = async ({ cawDir, file, viewport, page, capture, 
     if (path === null) return null;
     const browser = await launch();
     try {
-        const rendered = await renderDesign(browser, readFileSync(path, 'utf8'), viewport);
+        const rendered = await renderDesign(browser, readFileSync(path, 'utf8'), viewport, { cawDir, file });
         try {
             const design = await rendered.screenshot({ scale: 'css', fullPage: true });
             const target = await structureOf(rendered);
+            await settle(page);
             const actual = await structureOf(page, { secrets });
             const scroll = await page.evaluate(() => ({ x: scrollX, y: scrollY })).catch(() => ({ x: 0, y: 0 }));
             const { png } = await capture();

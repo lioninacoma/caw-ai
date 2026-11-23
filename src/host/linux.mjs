@@ -52,15 +52,17 @@ const COMMAND_OPTIONS = {
     open: ['--env', '--role', '--overlay', '--start', '--reset', '--agent', '--attach', '--agent-timeout', '--max-actions', '--step-timeout', '--design'],
     // bisect always runs headless, without chat and learning, and always starts the environment: nothing to switch.
     bisect: ['--env', '--tests-from', '--step-timeout'],
+    // design snapshot: headless to the entry of a step like open, then the screen as a design page.
+    design: ['--env', '--name', '--overlay', '--start', '--step-timeout', '--json'],
 };
 // --start: start the environment (its start command) and, with --overlay, the parts' local code servers if they do not answer, and
 // stop at the end what caw started. --reset runs the environment's reset before the first test, --no-reset never.
-const SWITCHES = new Set(['--explain', '--headless', '--no-chat', '--learn', '--strict', '--promote', '--all', '--read-only', '--start', '--reset', '--no-reset', '--design']);
+const SWITCHES = new Set(['--json', '--explain', '--headless', '--no-chat', '--learn', '--strict', '--promote', '--all', '--read-only', '--start', '--reset', '--no-reset', '--design']);
 /** One example value per option, for the message when the value is missing. */
 const VALUE_EXAMPLES = {
     '--env': 'local', '--role': 'admin', '--agent': 'local', '--agent-timeout': '60m',
     '--max-actions': '100', '--step-timeout': '30s', '--report': 'junit=caw-junit.xml', '--retry-env': '1', '--url': 'http://localhost:5173', '--from': 'caw/.explore.json',
-    '--tests-from': 'refs/bisect/bad',
+    '--tests-from': 'refs/bisect/bad', '--name': 'order-form',
 };
 /** Where Claude works: started locally, in Docker or as the developer's Claude Code session. */
 /** Where caw starts its own agent; the person's own session answers with --attach instead. */
@@ -166,6 +168,8 @@ export const parseRunArgs = (command, args) => {
         else if (flag === '--max-actions') options.maxActions = Number(value);
         else if (flag === '--role') options.role = value;
         else if (flag === '--tests-from') options.testsFrom = value;
+        else if (flag === '--name') options.name = value;
+        else if (flag === '--json') options.json = true;
         else if (flag === '--step-timeout') options.stepTimeoutSec = parseDuration(flag, value) / 1000;
         else if (flag === '--report') {
             const match = /^(junit|summary|json)=(.+)$/.exec(value);

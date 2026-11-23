@@ -1757,3 +1757,64 @@ ${finishOf(ids)}`;
         rmSync(tddRoot, { recursive: true, force: true });
     }
 });
+
+// ---- N25: a draft from the app (guide topic design, "Draft from the app"): the session takes a snapshot of the screen at the
+// entry of the pending step with caw_design snapshot, which is met against the same state; it adds the new look only inside
+// the snapshot's markup (Archive bold, as the app will do it) and links that draft; a headless run judges it not met at the
+// entry (red: exactly the one style), the restyle switch builds it, the next run judges it met.
+
+const SNAP_ID = 'rec-design-snapshot';
+const snapRoot = join(native, 'design-snapshot');
+
+scenario('N25', 'Draft from the app: caw_design snapshot at the pending step\'s entry is met against the same state → the new part added in the snapshot\'s markup → red with exactly that style → restyle switch → met', async () => {
+    const agent = (plan, ids, commands) => `A='caw agent'
+${tag}
+${planOf(plan)}
+$A plan --file /tmp/p.yaml > /dev/null
+${commands}
+${finishOf(ids)}`;
+    rmSync(snapRoot, { recursive: true, force: true });
+    mkdirSync(join(snapRoot, 'caw/tests'), { recursive: true });
+    writeFileSync(join(snapRoot, 'caw.config.json'), readFileSync(join(native, 'caw.config.json')));
+    const mcp = sessionMcpHandler({ root: snapRoot });
+    await mcp({ jsonrpc: '2.0', id: 0, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {} } });
+    let id = 1;
+    const tool = async (name, args) => (await mcp({ jsonrpc: '2.0', id: id++, method: 'tools/call', params: { name, arguments: args } })).result;
+    const pendingDesign = () => newestRunOf(snapRoot, SNAP_ID).result?.pendingDesign;
+    try {
+        await restyleSwitch(false);
+        // 1. The reach recorded headless, the step the draft is for added pending.
+        writeFileSync(join(snapRoot, 'caw/tests', `${SNAP_ID}.yaml`), `id: ${SNAP_ID}\nenvironments: [test]\nwrites: true\n${REACH_PLAN}\n`);
+        const reach = await record(snapRoot, [SNAP_ID, ...recordArgs, '--headless'], { interactive: false, containerCommand: ['bash', '-c', agent(REACH_PLAN, ['S1'], S1_COMMANDS)] });
+        verify('reach recorded headless: exit 0', reach === 0, String(reach));
+        writeFileSync(join(snapRoot, 'caw/tests', `${SNAP_ID}.yaml`), `${readFileSync(join(snapRoot, 'caw/tests', `${SNAP_ID}.yaml`), 'utf8').trimEnd()}\n${ARCHIVE_STEP}\n`);
+
+        // 2. The snapshot at the entry of S2: written with its folder, and met against the same state.
+        const snap = await tool('caw_design', { action: 'snapshot', test: SNAP_ID, step: 'S2', env: 'test' });
+        verify('caw_design snapshot: written under caw/design with its assets folder', snap.isError !== true && snap.structuredContent?.file === `caw/design/${SNAP_ID}-S2.html` && existsSync(join(snapRoot, 'caw/design', `${SNAP_ID}-S2.html`)), snap.content[0].text);
+        const snapHtml = readFileSync(join(snapRoot, 'caw/design', `${SNAP_ID}-S2.html`), 'utf8');
+        verify('the snapshot has no scripts and the Archive button as the app shows it', !/<script/i.test(snapHtml) && /<button id="archive">Archive<\/button>/.test(snapHtml), snapHtml.slice(0, 400));
+        const linked = await tool('caw_design', { action: 'link', test: SNAP_ID, step: 'S2', file: `design/${SNAP_ID}-S2.html`, personAsked: true });
+        verify('the snapshot linked to S2', linked.isError !== true, linked.content[0].text);
+        const same = await runQuietly(SNAP_ID, ['--headless'], snapRoot);
+        verify('the snapshot judged at the entry of S2 against the same state: met, nothing differs', same.code === 0 && pendingDesign()?.verdict === 'met'
+            && ['missing', 'styleDiffs', 'layoutDiffs', 'textDiffs'].every((key) => (pendingDesign()[key] ?? []).length === 0), JSON.stringify(pendingDesign()));
+
+        // 3. The draft: only the new part, inside the snapshot's markup, as the app will draw it; linked instead of the snapshot.
+        const draft = snapHtml.replace('<button id="archive">', '<button id="archive" style="font-weight:700">');
+        const put = await tool('caw_design', { action: 'put', file: 'design/n25-archive.html', content: draft });
+        verify('the draft written', put.isError !== true, put.content[0].text);
+        await tool('caw_design', { action: 'link', test: SNAP_ID, step: 'S2', file: 'design/n25-archive.html', personAsked: true });
+
+        // 4. Red: exactly the new style differs; 5. built: met.
+        const red = await runQuietly(SNAP_ID, ['--headless'], snapRoot);
+        verify('red: not met at the entry, exactly the bold Archive', red.code === 0 && pendingDesign()?.verdict === 'not-met'
+            && JSON.stringify(pendingDesign()?.styleDiffs) === JSON.stringify(['button "Archive": font-weight 700 → 400']) && (pendingDesign()?.missing ?? []).length === 0 && (pendingDesign()?.layoutDiffs ?? []).length === 0, JSON.stringify(pendingDesign()));
+        await restyleSwitch(true);
+        const green = await runQuietly(SNAP_ID, ['--headless'], snapRoot);
+        verify('built: the draft met at the entry', green.code === 0 && pendingDesign()?.verdict === 'met', JSON.stringify(pendingDesign()));
+    } finally {
+        await restyleSwitch(false).catch(() => {});
+        rmSync(snapRoot, { recursive: true, force: true });
+    }
+});
