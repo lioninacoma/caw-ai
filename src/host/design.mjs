@@ -592,6 +592,31 @@ export const structureOf = async (page, { secrets = [], look = null, texts = [] 
     return structureFrom({ controls, aria: redacted.slice(0, ariaLines).join('\n'), layout, texts });
 };
 
+// The control kinds a view line's role is read as (controlsProbe names a <select> by its tag, ARIA calls it a combobox).
+const CONTROL_KINDS = { combobox: ['combobox', 'select'], link: ['link', 'a'], textbox: ['textbox', 'input', 'textarea'], searchbox: ['searchbox', 'input'] };
+
+/**
+ * Missing or extra lines as the report and the card show them: a view line without its list dash and the colon before its
+ * children; one naming the same element as a control line of the list is told once, by the control. Only how they read: the
+ * comparison used the lines as they are.
+ */
+const readableLines = (lines) => {
+    const controls = lines.filter((line) => !line.startsWith('- '));
+    const sameElement = (plain) => {
+        const [role, ...rest] = plain.split(' ');
+        return (CONTROL_KINDS[role] ?? [role]).some((kind) => {
+            const as = [kind, ...rest].join(' ');
+            return controls.some((control) => control === as || control.startsWith(`${as} `));
+        });
+    };
+    const shown = lines.flatMap((line) => {
+        if (!line.startsWith('- ')) return [line];
+        const plain = line.slice(2).replace(/:$/, '');
+        return sameElement(plain) ? [] : [plain];
+    });
+    return [...new Set(shown)];
+};
+
 /**
  * Target against actual, with every deviation as an item for the comparison page (open --design): its kind (missing, text,
  * style, layout), its line, and where its element is in the design and in the app (`design`, `app`: boxes in CSS px of the
@@ -626,6 +651,8 @@ export const compareDetailed = (target, actual, { tolerance = LAYOUT_TOLERANCE_P
     missing = missing.filter((line) => !wasTold(line));
     extra = extra.filter((line) => !nowTold(line));
     for (const element of gone) if (!missing.some((line) => line.includes(`"${element.text}"`))) missing.push(element.shown);
+    missing = readableLines(missing);
+    extra = readableLines(extra);
     const layoutFound = layoutItems(layoutMeasures(elements, present), tolerance, present);
     const layoutDiffs = layoutFound.map(({ text }) => text);
     // A missing line's element in the design: a control or an element by its key, else a text the line names.

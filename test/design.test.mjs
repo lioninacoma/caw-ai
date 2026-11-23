@@ -91,13 +91,15 @@ test('structure comparison: missing lines and differing styles are not met; extr
     });
     const result = compareStructure(target, actual);
     assert.deepEqual(result.missing, []);
-    assert.deepEqual(result.extra, ['a "Sign out"', '- link "Sign out"']);
+    assert.deepEqual(result.extra, ['a "Sign out"'], 'the view line of the same element is told once, by its control');
     assert.deepEqual(result.styleDiffs, ['button "Save": color #ffffff → #000000']);
     assert.equal(result.met, false);
     const same = compareStructure(target, { ...actual, styles: { ...actual.styles, 'button "Save"': target.styles['button "Save"'] } });
     assert.equal(same.met, true, 'only extra lines left');
     const without = compareStructure(target, structureFrom({ controls: [{ line: 'list "Todos" rows' }], aria: '' }));
-    assert.deepEqual(without.missing, ['button "Save"', 'input "Title" required', '- heading "Errand" [level=#]', '- button "Save"']);
+    assert.deepEqual(without.missing, ['button "Save"', 'input "Title" required', 'heading "Errand" [level=#]'], 'view lines without the list dash');
+    const detail = structureFrom({ controls: [{ line: 'select "Move to"' }, { line: 'button "Save"' }], aria: '- combobox "Move to": Tomorrow\n- button "Save"\n- link "← All todos":\n  - img' });
+    assert.deepEqual(compareStructure(detail, structureFrom({ controls: [], aria: '' })).missing, ['select "Move to"', 'button "Save"', 'link "← All todos"'], 'a combobox is its select, no colon before children');
 });
 
 test('the same control twice is told apart for its styles', () => {
@@ -274,7 +276,7 @@ test('rendered: layout, texts and looks of a design; the app with other data mee
         // Each deviation fails with a line that says what differs.
         const deviations = [
             [{ noteClass: 'btn' }, ['button "Save note": background-color #5f8f6b → #e5533a']],
-            [{ saveNote: 'Save Note' }, ['button "Save note"', '- button "Save note"']],
+            [{ saveNote: 'Save Note' }, ['button "Save note"']],
             [{ heading: 'Notes' }, ['Text: heading "Note" → "Notes"']],
             [{ headingFont: 'Arial' }, ['heading "Note": font-family Georgia → Arial']],
             [{ noteMargin: 'calc(1.2rem + 24px)' }, ['Abstand button "Save" → block "Note": 19px → 43px']],
@@ -491,7 +493,7 @@ test('the judge: met, missing file; its own browser closes', async (t) => {
         await page.setContent('<!doctype html><body><button>Stop</button></body>');
         const notMet = await judge.judge({ file: 'design/a.html' }, page);
         assert.equal(notMet.verdict, 'not-met');
-        assert.deepEqual(notMet.missing, ['button "Go"', '- button "Go"']);
+        assert.deepEqual(notMet.missing, ['button "Go"']);
         assert.equal(launched, 1, 'one design browser per run');
     } finally {
         await judge.close();
