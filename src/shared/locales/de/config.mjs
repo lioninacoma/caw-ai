@@ -153,7 +153,7 @@ export default {
     'config.report.warning.retry': 'Wiederholung',
     'config.report.warning.effect': 'Wirkung',
     'config.report.warning.note': 'Hinweis',
-    'config.report.warning.design': 'Entwurf',
+    'config.report.warning.design': 'Zielbild',
     'config.report.decision.adopted': 'übernommen',
     'config.report.decision.discarded': 'verworfen',
     'config.report.decision.shown': 'angezeigt',

@@ -327,7 +327,7 @@ test('Test run of a design draft: its pending step\'s design not met at the entr
     const again = harness({ outcomes: [entryRun(notMet, 'r-2')], answers: ['close'] });
     await runFlow({ spec: { ...pendingDraft, red: { step: 'S2', run: 'r-red' } }, handover: false, canFix: true, openSandbox: async () => 'box', ...again, guide: { env: 'test' } });
     assert.equal(again.questions[0].card.title, 'S2 erfüllt sein Zielbild noch nicht');
-    assert.deepEqual(again.questions[0].labels, ['Weiter umsetzen lassen', 'Erneut testen', 'Lauf beenden']);
+    assert.deepEqual(again.questions[0].labels, ['Von Claude Code weiter umsetzen lassen', 'Erneut testen', 'Lauf beenden']);
     assert.deepEqual(again.adopted, []);
 });
 

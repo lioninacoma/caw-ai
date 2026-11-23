@@ -694,7 +694,7 @@ test('Test run: a design not met offers to open the window at that step with its
     const h = harness({ outcomes: [failing('S2', { reason, kind: 'design' })], answers: ['open-design'] });
     assert.equal(await runFlow({ spec, handover: false, canFix: true, openSandbox: async () => assert.fail('no Claude without a click'), openDesign, ...h }), EXIT.fail, 'the run failed; opening only shows it');
     assert.deepEqual(h.questions[0].options, ['ask', 'open-design', 'close']);
-    assert.equal(h.questions[0].labels[1], 'Mit Entwurf öffnen');
+    assert.equal(h.questions[0].labels[1], 'Mit Zielbild öffnen');
     assert.equal(h.decisions[0].id, 'design.unmet');
     assert.equal(h.decisions[0].options.find(({ id }) => id === 'open-design').gate, 'free');
     assert.deepEqual(opened, ['S2']);

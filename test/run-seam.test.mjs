@@ -295,7 +295,7 @@ test('Seam: the comparison page\'s "have the agent build it" asks in the chat as
         const code = await runFlow({ spec, through: 'S2', handover: true, canFix: true, execute: h.execute, adopt: h.adopt, log: () => {}, openSandbox: async () => { opened += 1; return null; } });
         assert.equal(code, EXIT.pass);
         await asked;
-        const question = h.decisions.find(({ text }) => /umsetzen lassen, bis er Entwurf design\/form\.html erfüllt/.test(text ?? ''));
+        const question = h.decisions.find(({ text }) => /umsetzen lassen, bis er Zielbild design\/form\.html erfüllt/.test(text ?? ''));
         assert.ok(question !== undefined, h.decisions.map(({ text }) => text).join('\n'));
         assert.deepEqual(question.options, ['ask', 'close'], 'the design card\'s options');
         assert.equal(question.labels[1], 'Nicht jetzt', 'declining only closes the question, the window stays: no "End run"');

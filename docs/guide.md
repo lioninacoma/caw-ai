@@ -422,7 +422,7 @@ The draft turns the bug into a test that proves the fix: red before, green after
 
 **Guided in the workbench.** With a window the chat leads through these steps in one process, each in a new window, and the
 chat so far goes along; "Later" on any card ends the run there, and the terminal still names the next command. A bar over
-each card shows the phases Reproduced › Red › Fix › Green › Promoted: done ones ticked, the current one highlighted.
+each card shows the phases Reproduced › Red › Fix › Green › Adopted: done ones ticked, the current one highlighted.
 
 - `caw reproduce` reproduced: the card offers **Record red**, the recording of the draft as with `caw record <id>`.
 - Saved red: the card **Now fix the bug** lists the red step, its expected result, its check and, when known, the cause the
