@@ -1529,14 +1529,18 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         const problem = await externalProblem();
         if (problem !== null) await stop(replay.steps.length, t('session.replay.end'), 'external', problem);
     }
-    // The first pending step's target design, at its entry (the state the run ended in, healthy): a preview while the screen is
-    // built, for the person and the session. It fails nothing; once recorded, the step is judged after its check like any other.
+    // The first pending step's target design at its entry (the state the run ended in, healthy): a design shows the screen after
+    // its step, so only its controls are looked for here, how far the screen is built. It fails nothing; once recorded, the step
+    // is judged after its check like any other. A step with needs: they say it (run.mjs checks them), no design browser.
     let pendingDesign;
     const healthy = broken === null && [...results.values()].every(({ status, kind }) => status === 'pass' || LOOK_KINDS.has(kind));
     if (replay.pendingDesign !== undefined && judgeDesign !== undefined && healthy) {
         const { step, ...design } = replay.pendingDesign;
-        const judged = await judgeDesign({ ...design, step, texts: varying() }, session.page()).catch((error) => ({ file: design.file, verdict: 'error', note: t('session.design.error', { file: design.file, error: firstLine(error) }) }));
-        pendingDesign = { step, ...judged };
+        if (replay.needs?.step === step) pendingDesign = { step, file: design.file };
+        else {
+            const judged = await judgeDesign({ ...design, step, texts: varying(), entry: true }, session.page()).catch((error) => ({ file: design.file, verdict: 'error', note: t('session.design.error', { file: design.file, error: firstLine(error) }) }));
+            pendingDesign = { step, ...judged };
+        }
     }
     // Per step the requests of its last attempt, evidence for classifying a failure.
     const requests = new Map([...netMarks].map(([id, { from, end }]) => [id, session.network.since(from, end)]));

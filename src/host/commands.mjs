@@ -1167,7 +1167,7 @@ export const runOne = async (root, options, deps = {}, loaded = undefined) => {
     // After the result, so the pending steps are not mistaken for a failure; a batch names them in its table instead.
     if (pending.length > 0 && !quiet) ui.info(t('cli.pendingSteps', { ids: pending.join(', '), count: pending.length, test, step: pending[0], target }));
     // A draft proven red that passes now: the bug is fixed, promoting proves it against all other tests. A design draft once
-    // its design is met at its recorded step (met at a pending step's entry, it is recorded first).
+    // its design is met after the check of its recorded step (a design shows the screen after its step).
     const shown = !quiet && !handover && spec.draft === true && spec.red !== undefined && code === EXIT.pass && existsSync(draftPath(root, test));
     if (shown && !isDesignDraft(spec)) ui.info(t('cli.draftGreen', { test, step: spec.red.step, target }));
     const recorded = spec.steps.find(({ id }) => id === spec.red?.step)?.recording !== undefined;

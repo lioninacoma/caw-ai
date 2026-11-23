@@ -9,7 +9,7 @@ import { cutReplay, positionalActions, replayOf, replayToEntry, replayUpToStale,
 import { LEARN_RUNS, isEffectCause } from './effects.mjs';
 import { locatorLabel, locatorText } from './locator.mjs';
 import { isDesignDraft, redStep, staleSteps } from './test-file.mjs';
-import { designMet, designRed, designRedOf, redOf } from './bugfix.mjs';
+import { designAtEntry, designMet, designReady, designRed, designRedOf, redOf } from './bugfix.mjs';
 import { LOOK_LEARN_RUNS, withAdoptedLooks, withLooks } from './visual.mjs';
 import { decide as decideOn } from './decisions.mjs';
 import { samePlanStep } from './test-plan.mjs';
@@ -701,7 +701,7 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
                     const design = isDesignDraft(current);
                     const shown = design ? designRedOf(current, verdict) : undefined;
                     const proof = design
-                        ? resultCard('info', t('run.flow.designRedTitle', { id }), t('run.flow.designRedText', { id, file: shown.design, count: shown.deviations.length }), t('run.flow.designRedMuted', { command: commandOn(env, current.id) }))
+                        ? resultCard('info', t('run.flow.designRedTitle', { id }), t(designAtEntry(verdict, id) ? 'run.flow.designRedEntryText' : 'run.flow.designRedText', { id, file: shown.design, count: shown.deviations.length }), t('run.flow.designRedMuted', { command: commandOn(env, current.id) }))
                         : resultCard('info', t('run.flow.redTitle', { id }), t('run.flow.redText', { id }), t('run.flow.redMuted', { command: commandOn(env, current.id) }));
                     const context = { test: current.id, step: id, run: runId, ...(design ? { origin: 'design', deviations: shown.deviations.length } : {}) };
                     choice = await decide(chat, 'red.proof', context, guide === undefined ? proof : inPhase('red', proof, design), [adoptButton(current.steps.length), DISCARD]);
@@ -1084,7 +1084,8 @@ export const runFlow = async (options) => {
                         restartFirst = rerun && retest.restart;
                         return rerun ? windowAfter() : { outcome: t('run.guide.later', { command: laterCommand(guide, current.id) }) };
                     }
-                    const text = design ? t(known ? 'run.flow.designStillRedText' : 'run.flow.designRedText', { id, file: red.design, count: red.deviations.length }) : t(known ? 'run.flow.stillRedText' : 'run.flow.redText', { id });
+                    const entryKey = designAtEntry(verdict, id) ? 'EntryText' : 'Text';
+                    const text = design ? t(known ? `run.flow.designStillRed${entryKey}` : `run.flow.designRed${entryKey}`, { id, file: red.design, count: red.deviations.length }) : t(known ? 'run.flow.stillRedText' : 'run.flow.redText', { id });
                     await decide(chat, 'red.still', { test: current.id, step: id }, resultCard('info', title, text, t(design ? 'run.flow.designStillRedMuted' : 'run.flow.stillRedMuted', { command: commandOn(env, current.id) })), [ONLY_CLOSE]);
                     return undefined;
                 }
@@ -1117,14 +1118,16 @@ export const runFlow = async (options) => {
                 // A proven red draft passes: the bug is fixed (a design draft: its design is met). Adopting it promotes the
                 // draft, after every other test on the environment passed too, while this window waits.
                 const design = isDesignDraft(current);
+                // A design draft whose pending red step has its design's controls at its entry: a design shows the screen after its
+                // step, so the step is recorded next; the run after that judges it, green only then.
+                if (!failed && guide !== undefined && current.red !== undefined && design && designReady(current, verdict)) {
+                    const id = current.red.step;
+                    const record = laterCommand(guide, current.id, '', 'record');
+                    await decide(chat, 'design.record', { test: current.id, step: id, origin: 'design' }, inPhase('build', resultCard('next', t('run.guide.designReadyTitle', { id }), t('run.guide.designReadyText', { id }), t('run.guide.laterHint', { command: record })), true), [ONLY_CLOSE]);
+                    return { outcome: t('run.guide.later', { command: record }) };
+                }
                 if (!failed && guide !== undefined && current.red !== undefined && (design ? designMet(current, verdict) : verdict.status === 'pass')) {
                     const id = current.red.step;
-                    // Met at its entry while the step is still pending: it is recorded next, adopting comes after that.
-                    if (design && current.steps.find((step) => step.id === id)?.recording === undefined) {
-                        const record = laterCommand(guide, current.id, '', 'record');
-                        await decide(chat, 'design.record', { test: current.id, step: id, origin: 'design' }, inPhase('green', resultCard('next', t('run.guide.designPendingTitle', { id }), t('run.guide.designPendingText', { id }), t('run.guide.laterHint', { command: record })), true), [ONLY_CLOSE]);
-                        return { outcome: t('run.guide.later', { command: record }) };
-                    }
                     const green = design
                         ? resultCard('next', t('run.guide.designGreenTitle', { id }), t('run.guide.designGreenText', { test: current.id }))
                         : resultCard('next', t('run.guide.greenTitle', { id }), t('run.guide.greenText', { test: current.id }));

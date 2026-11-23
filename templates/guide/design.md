@@ -60,12 +60,13 @@ the card of a design not met does (`design.unmet`, option `ask`); on yes you get
 build exactly that. The test file stays as it is; there is nothing to fix in the step. When the first pending step's `needs`
 are all on the page at the end of a run, caw says it is ready to record: `caw record <test>@S<n> --env <env>`.
 
-**A pending step's design.** A pending step is not judged after its check (it has none yet). Instead, a run that ends healthy
-at the pending tail judges the first pending step's design at that step's entry, the state the run ended in: `result.json`
-and `caw_status` (`result.pendingDesign`: `step`, `file`, `verdict`, `missing`, `textDiffs`, `styleDiffs`, `layoutDiffs`,
-`extra`), the terminal and the chat ("Target design of S4 at its entry: …"). It fails nothing and changes no exit code; once
-the step is recorded, it is judged after its check like any other. The entry is the screen before the step's own actions: a
-design of their result (an opened dialog, a saved message) can only be met there as far as it shows the same screen.
+**A pending step's design.** A design always shows the screen after its step, so it is judged only after the step's check:
+a pending step (it has no check yet) is never "met". Instead, a run that ends healthy at the pending tail looks at the first
+pending step's entry, the state the run ended in, only for the design's controls (its fields, buttons, … as control lines;
+when the step has `needs:`, those decide instead): `result.json` and `caw_status` (`result.pendingDesign`: `step`, `file`,
+`verdict` `not-ready` with `missing`, or `ready`), the terminal and the chat ("Target design of S4 at its entry: still
+missing: …", "Target design of S4: its controls are there at its entry …"). It fails nothing and changes no exit code. With
+the controls there, record the step; from then on it is judged after its check like any other.
 
 ## Draft from the app
 
@@ -85,7 +86,8 @@ markup, so the new part is built with the framework's own classes and components
    origin without CORS, frames, shadow DOM, scrolled content shown from the top). The snapshot judged against the same state
    is met with no deviation and renders offline exactly like the app (measured on errand and on ExtJS 6.5 Modern with the
    Material theme: 0 deviations, 0 differing pixels).
-2. **Draft:** give the snapshot to whoever drafts (you, or the person's design session) with the rule: change only what is
+2. **Draft:** the snapshot is the screen at the step's entry, a design the screen after the step: draft what the step leaves
+   (a saved note, an opened dialog). Give the snapshot to whoever drafts (you, or the person's design session) with the rule: change only what is
    new, inside the snapshot's markup, with the classes and markup the app already uses for the same kind of element (copy an
    existing field, button or card and change its texts); no `<style>` of its own, no `style` attributes of its own, no
    fonts or colors of its own. Copy an element **in the state it will have**: frameworks write state into the markup (ExtJS:
@@ -180,18 +182,22 @@ restarting their dev server, test users.
 3. **The design's step:** add the step(s) that do what the design shows at the end of the test (next free number; they stay
    pending), the last one ending on the designed screen, and link the design to it: `caw_design` `{action: "link", test,
    step, file, personAsked: true}`. `caw_validate` again.
-4. **Build until met:** change the application's code. If the dev server must restart to serve the change, ask the person
-   to restart it (with `start` in the config, `caw_start` with `start: true` does it). Then `caw_start` `{command: "run",
-   test, headless: true}`, `caw_status` with `wait` until it ends, and read `result.pendingDesign`: build exactly what
-   `missing`, `textDiffs`, `styleDiffs` and `layoutDiffs` name (data never counts, topic above). Repeat until `verdict` is
-   `met`. To look at it together, `caw_start` `{command: "open", test, step, design: true}` shows the design over the app.
+4. **Build:** change the application's code to what the design shows after the step. If the dev server must restart to serve
+   the change, ask the person to restart it (with `start` in the config, `caw_start` with `start: true` does it). Then
+   `caw_start` `{command: "run", test, headless: true}`, `caw_status` with `wait` until it ends, and read
+   `result.pendingDesign`: build what `missing` names (the design's controls, or the step's `needs`) until `verdict` is
+   `ready`. The rest of the design is judged only after the step: to compare meanwhile, `caw_start` `{command: "open", test,
+   step, design: true}` shows the design over the app at the step's entry.
 5. **Record the whole test:** `caw_start` `{command: "record", test, headless: true}` (re-recording from a step is refused
-   without a window). The check run after it judges the design after the step's check; not met there, build and record again.
-   A decision that needs the person waits for their consent through `caw_decide`, or they answer in the window.
+   without a window). The check run after it judges the design after the step's check. Not met there, the step fails with
+   kind `design` and nothing is adopted: its `design` in the check run's `result.json` (`steps`) names what still deviates;
+   close the decision (`caw_decide`, `close`), build exactly what `missing`, `textDiffs`, `styleDiffs` and `layoutDiffs` name
+   (data never counts, topic above) and record again. A decision that needs the person waits for their consent through
+   `caw_decide`, or they answer in the window.
 6. **Prove it:** `caw_start` `{command: "run", test, headless: true, strict: true}`. Report "green, design met" only when the
    run passed with nothing pending and the step's `design` in `result.json` (`steps`) has `verdict: "met"` with `missing`,
-   `textDiffs`, `styleDiffs` and `layoutDiffs` all empty; name the run and its report as evidence. Not met: back to 4 (the
-   recording stays, unless the steps changed).
+   `textDiffs`, `styleDiffs` and `layoutDiffs` all empty; name the run and its report as evidence. Not met: build what it
+   names, run again (the recording stays, unless the steps changed).
 
 ## Build a draft with TDD
 
@@ -209,15 +215,18 @@ Follow `next`.
    true}`. Then add the step the design is for at the end (it stays pending; a step that can be walked already may be in the
    draft before recording) and link it: `caw_design` `{action: "link", test, step, file, personAsked: true}`. Otherwise never
    edit the draft: its recordings and `red` are caw's.
-3. **Red:** `caw_start` `{command: "run", test, headless: true}`. The run judges the design at the pending step's entry (after
-   its check once it is recorded); not met with every step before passed, caw saves `red` into the draft. Met already: the draft
-   shows nothing missing; tell the person.
-4. **Build:** `next` is `{do: "build-design", red: {step, design, deviations}, then}`: change the app's code until the
-   deviations are gone (data never counts). Ask the person to restart their dev server when it must serve the change
-   (`caw_start` with `start: true` when the config has a `start` command). Then `then`, `caw_status` with `wait`; repeat.
-5. **Green:** a run judged the design met. While its step is pending, `next` records the draft headless (the recording is
-   adopted under the usual rules; a `human` decision waits for the person's consent through `caw_decide`), then
-   `{command: "run", test, promote: true}`.
+3. **Red:** `caw_start` `{command: "run", test, headless: true}`. A design shows the screen after its step: while the step is
+   pending the run only looks at its entry for the design's controls (or the step's `needs`); still missing with every step
+   before passed, caw saves `red` into the draft. Once the step is recorded, a design not met after its check is red the same
+   way. The controls there already at the entry: `next` records the step; the run after that judges the design.
+4. **Build:** `next` is `{do: "build-design", red: {step, design, deviations}, then}`: change the app's code until what is
+   missing, later what deviates, is gone (data never counts). Ask the person to restart their dev server when it must serve
+   the change (`caw_start` with `start: true` when the config has a `start` command). Then `then`, `caw_status` with `wait`;
+   repeat. Once the controls are there at the pending step's entry, `next` records the draft headless (the recording is
+   adopted under the usual rules; a `human` decision waits for the person's consent through `caw_decide`); then `next` runs
+   it again and the design is judged after the step: build on until it is met.
+5. **Green:** a run after the red one judged the design met after the step's check (never before the step is recorded);
+   `next` is `{command: "run", test, promote: true}`.
 6. **Adopt:** promoting is the person's decision (`fix.green`, gate `human`): ask them, or they click
    "{{label:run.button.promote}}" in the window. Then phase `adopted`: show them `next.designReport`, the design report (red at
    which step with how many deviations, green in which run, the changed files, the other tests).

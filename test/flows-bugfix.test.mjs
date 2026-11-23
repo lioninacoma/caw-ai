@@ -251,6 +251,9 @@ const designDraft = { id: 'note', draft: true, origin: 'design', steps: [stepOf(
 const pendingDraft = { ...designDraft, steps: [stepOf('S1'), { ...designStep, recording: undefined }], expectations: [{ id: 'S1' }] };
 const notMet = { file: 'design/note.html', verdict: 'not-met', missing: ['button "Save note"'], textDiffs: ['text: heading "Note" → "Notes"'], styleDiffs: ['button "Save": background-color #5f8f6b → #e5533a'], layoutDiffs: [], extra: [] };
 const met = { file: 'design/note.html', verdict: 'met', missing: [], textDiffs: [], styleDiffs: [], layoutDiffs: [], extra: [] };
+// At the pending step's entry only the design's controls count.
+const notReady = { file: 'design/note.html', verdict: 'not-ready', missing: ['textbox "Note"', 'button "Save note"'] };
+const ready = { file: 'design/note.html', verdict: 'ready', missing: [] };
 // Recorded: the check of S2 passed, its design not met fails it with kind design. Pending: judged at its entry, the run passes.
 const designRun = (judged, runId = 'r-red', concluded = {}) => {
     const ok = judged.verdict === 'met';
@@ -315,32 +318,44 @@ test('Recording a design draft headless: the red proof is saved on its own; a de
     assert.equal(already.adopted[0].spec.red, undefined);
 });
 
-test('Test run of a design draft: its pending step\'s design not met at the entry is the red proof, written after the run; guided, the card to build comes', async () => {
-    const headless = harness({ outcomes: [entryRun(notMet)] });
+test('Test run of a design draft: its design\'s controls missing at the pending step\'s entry are the red proof, written after the run; guided, the card to build comes', async () => {
+    const headless = harness({ outcomes: [entryRun(notReady)] });
     assert.equal(await runFlow({ spec: pendingDraft, handover: false, canFix: false, head: () => 'abc1234', ...headless }), EXIT.pass, 'a pending step fails nothing');
     assert.deepEqual(headless.adopted[0].spec.red, { step: 'S2', run: 'r-red', head: 'abc1234' });
 
-    const h = harness({ outcomes: [entryRun(notMet)], answers: ['later'] });
+    const h = harness({ outcomes: [entryRun(notReady)], answers: ['later'] });
     await runFlow({ spec: pendingDraft, handover: false, canFix: true, openSandbox: async () => 'box', head: () => 'abc1234', ...h, guide: { env: 'test' } });
     assert.equal(h.questions[0].card.title, 'S2 erfüllt sein Zielbild noch nicht: der Test fängt, was fehlt');
     assert.equal(h.questions[0].card.phase, 'build');
+    assert.deepEqual(h.questions[0].card.rows.slice(1), [
+        { label: 'Zielbild', text: 'design/note.html', code: true },
+        { label: 'Fehlt', text: 'textbox "Note"' },
+        { label: 'Fehlt', text: 'button "Save note"' },
+    ]);
     assert.deepEqual(h.said[0], { outcome: 'Später weiter mit caw run note --env test.' });
     assert.deepEqual(h.adopted[0].spec.red, { step: 'S2', run: 'r-red', head: 'abc1234' });
 
-    // Known red, still not met: the card says so, offers building on and keeps the first proof.
-    const again = harness({ outcomes: [entryRun(notMet, 'r-2')], answers: ['close'] });
+    // Not guided: the card says what is still missing at the entry.
+    const plain = harness({ outcomes: [entryRun(notReady, 'r-2')], answers: ['close'] });
+    await runFlow({ spec: { ...pendingDraft, red: { step: 'S2', run: 'r-red' } }, handover: false, canFix: true, env: 'test', openSandbox: async () => 'box', ...plain });
+    assert.equal(plain.questions[0].card.text, 'Die Schritte vor S2 bestehen; an seinem Einstieg fehlen noch 2 Bedienelement(e) von design/note.html.');
+
+    // Known red, still missing: the card says so, offers building on and keeps the first proof.
+    const again = harness({ outcomes: [entryRun(notReady, 'r-2')], answers: ['close'] });
     await runFlow({ spec: { ...pendingDraft, red: { step: 'S2', run: 'r-red' } }, handover: false, canFix: true, openSandbox: async () => 'box', ...again, guide: { env: 'test' } });
     assert.equal(again.questions[0].card.title, 'S2 erfüllt sein Zielbild noch nicht');
     assert.deepEqual(again.questions[0].labels, ['Von Claude Code weiter umsetzen lassen', 'Ich setze selbst um', 'Erneut testen', 'Lauf beenden']);
     assert.deepEqual(again.adopted, []);
 });
 
-test('Test run of a red design draft: met at its pending step\'s entry, the card says to record it next; met after its check, adopting writes the design report', async () => {
+test('Test run of a red design draft: its controls there at the pending step\'s entry, the card says to record it now (never green before); met after its check, adopting writes the design report', async () => {
     const red = { step: 'S2', run: 'r-red', head: 'abc1234' };
-    const pending = harness({ outcomes: [entryRun(met, 'r-met')] });
+    const pending = harness({ outcomes: [entryRun(ready, 'r-ready')] });
     await runFlow({ spec: { ...pendingDraft, red }, handover: false, canFix: true, openSandbox: async () => assert.fail('no agent'), ...pending, guide: { env: 'test', promote: async () => assert.fail('S2 is not recorded') } });
-    assert.equal(pending.questions[0].card.title, 'Zielbild am Einstieg von S2 erfüllt');
-    assert.equal(pending.questions[0].card.phase, 'green');
+    assert.equal(pending.questions[0].card.title, 'S2 hat die Bedienelemente seines Zielbilds: jetzt aufnehmen');
+    assert.match(pending.questions[0].card.text, /^Ein Zielbild zeigt den Bildschirm nach seinem Schritt: caw beurteilt es, sobald S2 aufgenommen ist\./);
+    assert.equal(pending.questions[0].card.phase, 'build');
+    assert.equal(pending.questions[0].card.phases, 'design');
     assert.deepEqual(pending.questions[0].options, ['close']);
     assert.deepEqual(pending.said[0], { outcome: 'Später weiter mit caw record note --env test.' });
 

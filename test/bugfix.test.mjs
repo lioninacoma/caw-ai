@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { designMet, designOf, designRed, designRedOf, deviationsOf, fixPhase, fixState, redOf, reproductionOf } from '../src/host/bugfix.mjs';
+import { designMet, designOf, designReady, designRed, designRedOf, deviationsOf, fixPhase, fixState, redOf, reproductionOf } from '../src/host/bugfix.mjs';
 import { stepHash, writeTest } from '../src/host/test-file.mjs';
 
 const stepOf = (id, expect) => {
@@ -98,13 +98,16 @@ const designed = { id: 'S3', name: 'Notiz', do: 'Öffne die Notiz.', expect: 'Di
 const designDraft = { id: 'note', draft: true, origin: 'design', writes: false, notes: '', steps: [stepOf('S1', 'Da.'), stepOf('S2', 'Liste.'), designed], expectations: [] };
 const notMet = { file: 'design/note.html', verdict: 'not-met', missing: ['button "Save note"'], textDiffs: ['text: heading "Note" → "Notes"'], styleDiffs: [], layoutDiffs: ['gap button "Save" → block "Note": 19px → 43px'], extra: ['link "Hilfe"'] };
 const met = { file: 'design/note.html', verdict: 'met', missing: [], textDiffs: [], styleDiffs: [], layoutDiffs: [], extra: [] };
+// At the entry of the pending step only the design's controls count: still missing, or all there.
+const notReady = { file: 'design/note.html', verdict: 'not-ready', missing: ['textbox "Note"', 'button "Save note"'] };
+const ready = { file: 'design/note.html', verdict: 'ready', missing: [] };
 const before = [{ id: 'S1', status: 'pass' }, { id: 'S2', status: 'pass' }];
-// S3 pending: judged at its entry. Recorded: judged after its check, failing with kind design while not met.
+// S3 pending: its controls looked for at its entry. Recorded: judged after its check, failing with kind design while not met.
 const atEntry = (runId, judged, status = 'pass') => ({ runId, status, results: before, steps: [...before, { id: 'S3', status: 'pending' }], pendingDesign: { step: 'S3', ...judged } });
 const afterCheck = (runId, judged) => ({ runId, status: judged.verdict === 'met' ? 'pass' : 'fail', results: [...before, { id: 'S3', status: judged.verdict === 'met' ? 'pass' : 'fail' }], steps: [...before, { id: 'S3', status: judged.verdict === 'met' ? 'pass' : 'fail', ...(judged.verdict === 'met' ? {} : { kind: 'design' }), design: judged }] });
 
-test('designRed, designMet: the red step\'s design judged at its entry or after its check, everything before it passed', () => {
-    assert.deepEqual(designOf(atEntry('r', notMet), 'S3'), { step: 'S3', ...notMet });
+test('designRed, designReady, designMet: red while the controls are missing at the entry or the design is not met after the check; met only after the check', () => {
+    assert.deepEqual(designOf(atEntry('r', notReady), 'S3'), { step: 'S3', ...notReady });
     assert.deepEqual(designOf(afterCheck('r', notMet), 'S3'), notMet);
     assert.equal(designOf({ results: before }, 'S3'), undefined, 'not judged');
     assert.deepEqual(deviationsOf(notMet), [
@@ -112,23 +115,30 @@ test('designRed, designMet: the red step\'s design judged at its entry or after 
         { kind: 'text', text: 'text: heading "Note" → "Notes"' },
         { kind: 'layout', text: 'gap button "Save" → block "Note": 19px → 43px' },
     ], 'controls only in the app fail nothing');
-    assert.equal(designRed(designDraft, atEntry('r', notMet)), true);
+    assert.equal(designRed(designDraft, atEntry('r', notReady)), true, 'controls missing at the entry');
+    assert.equal(designRed(designDraft, atEntry('r', ready)), false);
     assert.equal(designRed(designDraft, afterCheck('r', notMet)), true);
-    assert.equal(designMet(designDraft, atEntry('r', met)), true);
+    assert.equal(designReady(designDraft, atEntry('r', ready)), true, 'the controls are there: record the step');
+    assert.equal(designReady(designDraft, atEntry('r', notReady)), false);
+    // A design shows the screen after its step: never met at the entry, also not from an older result that said so.
+    assert.equal(designMet(designDraft, atEntry('r', ready)), false);
+    assert.equal(designMet(designDraft, atEntry('r', met)), false);
     assert.equal(designMet(designDraft, afterCheck('r', met)), true);
     // A step before it failed: proves nothing. The red step failed its check: neither red nor green by its design.
-    assert.equal(designRed(designDraft, { ...atEntry('r', notMet), results: [{ id: 'S1', status: 'pass' }, { id: 'S2', status: 'fail' }] }), false);
+    assert.equal(designRed(designDraft, { ...atEntry('r', notReady), results: [{ id: 'S1', status: 'pass' }, { id: 'S2', status: 'fail' }] }), false);
+    assert.equal(designReady(designDraft, { ...atEntry('r', ready), results: [{ id: 'S1', status: 'pass' }, { id: 'S2', status: 'fail' }] }), false);
     const checkFailed = afterCheck('r', notMet);
     checkFailed.steps[2] = { ...checkFailed.steps[2], kind: 'check' };
     assert.equal(designRed(designDraft, checkFailed), false);
-    assert.equal(designRed({ ...designDraft, origin: undefined }, atEntry('r', notMet)), false, 'a draft from caw reproduce');
-    assert.deepEqual(designRedOf(designDraft, atEntry('r', notMet)), {
+    assert.equal(designRed({ ...designDraft, origin: undefined }, atEntry('r', notReady)), false, 'a draft from caw reproduce');
+    assert.deepEqual(designRedOf(designDraft, atEntry('r', notReady)), {
         step: 'S3', name: 'Notiz', expect: 'Die Notiz ist zu sehen.', design: 'design/note.html',
-        deviations: ['missing: button "Save note"', 'text: text: heading "Note" → "Notes"', 'layout: gap button "Save" → block "Note": 19px → 43px'],
+        deviations: ['missing: textbox "Note"', 'missing: button "Save note"'],
     });
+    assert.deepEqual(designRedOf(designDraft, afterCheck('r', notMet)).deviations, ['missing: button "Save note"', 'text: text: heading "Note" → "Notes"', 'layout: gap button "Save" → block "Note": 19px → 43px']);
 });
 
-test('fixPhase of a design draft: draft until a run judged its design not met, red until a later run judged it met, green, adopted', () => {
+test('fixPhase of a design draft: draft, red while its controls are missing at the entry, record once they are there, green only after recording, adopted', () => {
     const record = { tool: 'caw_start', command: 'record', test: 'note', headless: true };
     const run = { tool: 'caw_start', command: 'run', test: 'note', headless: true };
     // Written, nothing recorded: record the steps up to the screen first.
@@ -136,24 +146,30 @@ test('fixPhase of a design draft: draft until a run judged its design not met, r
     assert.deepEqual(fixPhase({ id: 'note', draft: unrecorded }), { origin: 'design', phase: 'draft', next: record });
     // Recorded up to the screen, no step with a design yet: the person links it.
     assert.deepEqual(fixPhase({ id: 'note', draft: { ...designDraft, steps: designDraft.steps.slice(0, 2) } }), { origin: 'design', phase: 'draft', next: { do: 'link-design', test: 'note' } });
-    // The design's step pending: a run judges it at its entry and proves it red.
+    // The design's step pending: a run looks for its controls at its entry and proves it red.
     assert.deepEqual(fixPhase({ id: 'note', draft: designDraft }), { origin: 'design', phase: 'draft', next: run });
+    // Its controls there already: nothing to be red at the entry, the step is recorded; the run after it judges the design.
+    assert.deepEqual(fixPhase({ id: 'note', draft: designDraft, runs: [atEntry('2026-11-23T08-00-00-000Z-note', ready)] }), { origin: 'design', phase: 'draft', next: record });
     const proven = { ...designDraft, red: { step: 'S3', run: '2026-11-23T09-00-00-000Z-note', head: 'abc1234' } };
-    const redRun = atEntry('2026-11-23T09-00-00-000Z-note', notMet);
+    const redRun = atEntry('2026-11-23T09-00-00-000Z-note', notReady);
     const build = { do: 'build-design', red: designRedOf(proven, redRun), then: run, decision: 'fix.guide' };
     assert.deepEqual(fixPhase({ id: 'note', draft: proven, runs: [redRun] }), { origin: 'design', phase: 'red', next: build });
-    // A later run that did not judge the design (an open) keeps the red run's deviations; one still not met shows its own.
+    assert.deepEqual(build.red.deviations, ['missing: textbox "Note"', 'missing: button "Save note"'], 'what is still missing');
+    // A later run that did not judge the design (an open) keeps the red run's deviations; one still missing some shows its own.
     const opened = { runId: '2026-11-23T10-00-00-000Z-note', status: 'pass', results: before };
-    assert.deepEqual(fixPhase({ id: 'note', draft: proven, runs: [opened, redRun] }).next.red.deviations.length, 3);
-    const closer = atEntry('2026-11-23T11-00-00-000Z-note', { ...notMet, missing: [], textDiffs: [] });
-    assert.deepEqual(fixPhase({ id: 'note', draft: proven, runs: [closer, opened, redRun] }).next.red.deviations, ['layout: gap button "Save" → block "Note": 19px → 43px']);
-    // Met at its entry: green, and S3 is recorded next.
-    const metRun = atEntry('2026-11-23T12-00-00-000Z-note', met);
-    assert.deepEqual(fixPhase({ id: 'note', draft: proven, runs: [metRun, closer, redRun] }), { origin: 'design', phase: 'green', next: record });
-    // Recorded and met after its check: green, adopt next.
+    assert.deepEqual(fixPhase({ id: 'note', draft: proven, runs: [opened, redRun] }).next.red.deviations.length, 2);
+    const closer = atEntry('2026-11-23T11-00-00-000Z-note', { ...notReady, missing: ['button "Save note"'] });
+    assert.deepEqual(fixPhase({ id: 'note', draft: proven, runs: [closer, opened, redRun] }).next.red.deviations, ['missing: button "Save note"']);
+    // The controls there at its entry: still red (nothing judged met yet), S3 is recorded next.
+    const readyRun = atEntry('2026-11-23T12-00-00-000Z-note', ready);
+    assert.deepEqual(fixPhase({ id: 'note', draft: proven, runs: [readyRun, closer, redRun] }), { origin: 'design', phase: 'red', next: record });
+    // Recorded: judged after its check. Not met: build on with its deviations; met: green, adopt next.
     const recordedRed = { ...proven, steps: [proven.steps[0], proven.steps[1], { ...stepOf('S3', 'Die Notiz ist zu sehen.'), design: 'design/note.html' }] };
-    assert.deepEqual(fixPhase({ id: 'note', draft: recordedRed, runs: [afterCheck('2026-11-23T13-00-00-000Z-note', met), metRun, redRun] }), { origin: 'design', phase: 'green', next: { tool: 'caw_start', command: 'run', test: 'note', promote: true, decision: 'fix.green' } });
-    assert.equal(fixPhase({ id: 'note', draft: recordedRed, runs: [afterCheck('2026-11-23T14-00-00-000Z-note', notMet), metRun] }).phase, 'red', 'not met again after its check');
+    assert.deepEqual(fixPhase({ id: 'note', draft: recordedRed, runs: [readyRun, redRun] }), { origin: 'design', phase: 'red', next: run }, 'recorded since: the next run judges it');
+    const after = afterCheck('2026-11-23T13-00-00-000Z-note', notMet);
+    assert.deepEqual(fixPhase({ id: 'note', draft: recordedRed, runs: [after, readyRun, redRun] }), { origin: 'design', phase: 'red', next: { do: 'build-design', red: designRedOf(recordedRed, after), then: run, decision: 'fix.guide' } });
+    assert.deepEqual(fixPhase({ id: 'note', draft: recordedRed, runs: [afterCheck('2026-11-23T14-00-00-000Z-note', met), after, readyRun, redRun] }), { origin: 'design', phase: 'green', next: { tool: 'caw_start', command: 'run', test: 'note', promote: true, decision: 'fix.green' } });
+    assert.equal(fixPhase({ id: 'note', draft: recordedRed, runs: [afterCheck('2026-11-23T15-00-00-000Z-note', notMet), readyRun] }).phase, 'red', 'not met again after its check');
     // Adopted: the design report names it.
     assert.deepEqual(fixPhase({ id: 'note', promoted: true, designReport: '.caw/runs/r/design-report.md' }), { origin: 'design', phase: 'adopted', next: { done: true, designReport: '.caw/runs/r/design-report.md' } });
 });
@@ -172,14 +188,16 @@ test('fixState of a design draft: runs from disk with their judged designs; adop
     writeTest(root, { ...designDraft, red: { step: 'S3', run: '2026-11-23T09-00-00-000Z-note' } });
     // result.json has no runId: the folder names the run.
     const withoutId = ({ runId: _id, ...rest }) => rest;
-    const result = (runId, judged) => withoutId(atEntry(runId, judged));
-    run('2026-11-23T09-00-00-000Z-note', result('2026-11-23T09-00-00-000Z-note', notMet));
+    run('2026-11-23T09-00-00-000Z-note', withoutId(atEntry('2026-11-23T09-00-00-000Z-note', notReady)));
     const redState = fixState(root, 'note');
     assert.equal(redState.phase, 'red');
-    assert.equal(redState.next.red.deviations.length, 3);
-    run('2026-11-23T10-00-00-000Z-note', result('2026-11-23T10-00-00-000Z-note', met), { 'design-report.md': '# Zielbild-Bericht' });
+    assert.equal(redState.next.red.deviations.length, 2);
+    run('2026-11-23T10-00-00-000Z-note', withoutId(atEntry('2026-11-23T10-00-00-000Z-note', ready)));
+    assert.deepEqual([fixState(root, 'note').phase, fixState(root, 'note').next.command], ['red', 'record'], 'the controls are there: record S3');
+    writeTest(root, { ...designDraft, steps: [designDraft.steps[0], designDraft.steps[1], { ...stepOf('S3', 'Die Notiz ist zu sehen.'), design: 'design/note.html' }], red: { step: 'S3', run: '2026-11-23T09-00-00-000Z-note' } });
+    run('2026-11-23T11-00-00-000Z-note', withoutId(afterCheck('2026-11-23T11-00-00-000Z-note', met)), { 'design-report.md': '# Zielbild-Bericht' });
     assert.equal(fixState(root, 'note').phase, 'green');
     rmSync(join(root, 'caw', 'drafts', 'note.yaml'));
     writeTest(root, { ...designDraft, draft: undefined, origin: undefined });
-    assert.deepEqual(fixState(root, 'note'), { origin: 'design', phase: 'adopted', next: { done: true, designReport: '.caw/runs/2026-11-23T10-00-00-000Z-note/design-report.md' } });
+    assert.deepEqual(fixState(root, 'note'), { origin: 'design', phase: 'adopted', next: { done: true, designReport: '.caw/runs/2026-11-23T11-00-00-000Z-note/design-report.md' } });
 });

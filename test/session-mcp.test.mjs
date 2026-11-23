@@ -826,7 +826,7 @@ test('caw_design put with stylesFrom: the draft\'s own stylesheets are replaced 
     assert.match(missing.content[0].text, /schreib sie erst mit put/);
 });
 
-test('a design draft for the session: caw_design links its step, caw_list and caw_status name origin, phase and next from draft over red to green', async (t) => {
+test('a design draft for the session: caw_design links its step, caw_list and caw_status name origin, phase and next from draft over red and recording to green', async (t) => {
     const root = project(t);
     const { call } = session(root);
     const runs = join(root, '.caw', 'runs');
@@ -846,21 +846,21 @@ test('a design draft for the session: caw_design links its step, caw_list and ca
     assert.equal(linked.structuredContent.testFile, 'caw/drafts/note.yaml');
     assert.deepEqual((await call('caw_design', { action: 'list' })).structuredContent.links, [{ test: 'note', draft: true, step: 'S3', design: 'design/note.html', exists: true }]);
     assert.deepEqual((await draftOf()).next, { tool: 'caw_start', command: 'run', test: 'note', headless: true });
-    // A run judged S3 not met at its entry and saved the red proof: build it.
+    // A run found the design's controls missing at the entry of S3 and saved the red proof: build it.
     const results = [{ id: 'S1', status: 'pass' }, { id: 'S2', status: 'pass' }];
-    const judged = (verdict, missing = []) => ({ step: 'S3', file: 'design/note.html', verdict, missing, textDiffs: [], styleDiffs: [], layoutDiffs: [], extra: [] });
-    run('2026-11-23T09-00-00-000Z-note', { status: 'pass', results, steps: [...results, { id: 'S3', status: 'pending' }], pendingDesign: judged('not-met', ['heading "Note"']) });
+    const judged = (verdict, missing = []) => ({ step: 'S3', file: 'design/note.html', verdict, missing });
+    run('2026-11-23T09-00-00-000Z-note', { status: 'pass', results, steps: [...results, { id: 'S3', status: 'pending' }], pendingDesign: judged('not-ready', ['button "Save note"']) });
     const draft = (await import('../src/host/test-file.mjs')).loadDraft(root, 'note');
     writeTest(root, { ...draft, red: { step: 'S3', run: '2026-11-23T09-00-00-000Z-note' } });
     const status = (await call('caw_status')).structuredContent;
     assert.equal(status.origin, 'design');
     assert.equal(status.phase, 'red');
-    assert.deepEqual(status.next, { do: 'build-design', red: { step: 'S3', name: 'Notiz', expect: 'Die Notiz.', design: 'design/note.html', deviations: ['missing: heading "Note"'] }, then: { tool: 'caw_start', command: 'run', test: 'note', headless: true }, decision: 'fix.guide' });
-    assert.deepEqual(status.result.pendingDesign.missing, ['heading "Note"']);
-    // Met at its entry: green, S3 is recorded next.
-    run('2026-11-23T10-00-00-000Z-note', { status: 'pass', results, steps: [...results, { id: 'S3', status: 'pending' }], pendingDesign: judged('met') });
-    assert.deepEqual([(await call('caw_status')).structuredContent.phase, (await call('caw_status')).structuredContent.next], ['green', { tool: 'caw_start', command: 'record', test: 'note', headless: true }]);
-    assert.equal((await draftOf()).phase, 'green');
+    assert.deepEqual(status.next, { do: 'build-design', red: { step: 'S3', name: 'Notiz', expect: 'Die Notiz.', design: 'design/note.html', deviations: ['missing: button "Save note"'] }, then: { tool: 'caw_start', command: 'run', test: 'note', headless: true }, decision: 'fix.guide' });
+    assert.deepEqual(status.result.pendingDesign.missing, ['button "Save note"']);
+    // Its controls there at the entry: not green yet (a design shows the screen after its step), S3 is recorded next.
+    run('2026-11-23T10-00-00-000Z-note', { status: 'pass', results, steps: [...results, { id: 'S3', status: 'pending' }], pendingDesign: judged('ready') });
+    assert.deepEqual([(await call('caw_status')).structuredContent.phase, (await call('caw_status')).structuredContent.next], ['red', { tool: 'caw_start', command: 'record', test: 'note', headless: true }]);
+    assert.equal((await draftOf()).phase, 'red');
 });
 
 test('caw_start: promote names both reports, fix-report.md of a bug draft and design-report.md of a design draft', async (t) => {

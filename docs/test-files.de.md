@@ -121,8 +121,9 @@ git). Nur Entwürfe dürfen `red` tragen; in `caw/tests` lehnt `validate` es ab.
 **Ein Zielbild-Entwurf** ist für ein Zielbild geschrieben ([Leitfaden](guide.de.md#einen-entwurf-testgetrieben-umsetzen)) und trägt
 `origin: design` (nur in `caw/drafts`, und keinen anderen Wert). Sein roter Schritt ist der letzte Schritt mit `design:`; solange
 keiner verknüpft ist, gibt es nichts, woran er rot sein könnte. Er wird wie ein Test aufgenommen: Seine Prüfungen bestehen. Sein
-`red` sagt, dass ein Lauf das Zielbild dieses Schritts als nicht erfüllt beurteilt hat, während alle Schritte davor bestanden,
-nach der Prüfung des Schritts oder, solange der Schritt offen ist, an seinem Einstieg. Ein neuer Plan behält dieses `red`, solange
+`red` sagt, dass ein Lauf, während alle Schritte davor bestanden, am Einstieg des noch offenen Schritts Bedienelemente des
+Zielbilds (oder die `needs` des Schritts) vermisst hat, oder das Zielbild nach der Prüfung des Schritts als nicht erfüllt
+beurteilt hat. Ein Zielbild zeigt den Bildschirm nach seinem Schritt: erfüllt ist es erst nach der Prüfung. Ein neuer Plan behält dieses `red`, solange
 der rote Schritt sein Zielbild und sein erwartetes Ergebnis behält. `--promote` braucht das erfüllte Zielbild und übernimmt den
 Test ohne `origin` und `red`; der Lauf bekommt `design-report.md`.
 

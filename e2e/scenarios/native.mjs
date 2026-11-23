@@ -1590,7 +1590,9 @@ ${finishOf(['S1'])}`;
 // ---- N23: "write a test for this design", the recipe of guide topic design as a scripted session. The person's request
 // covers linking the design and building the screen; "building" is the fixture's restyle switch (Archive bold), restarting
 // the dev server is the person's (here: the switch). Reach first (S1 recorded headless), then S2 pending with its design:
-// run judges it at S2's entry (pendingDesign) until met, record --headless the whole test, run --strict green, design met.
+// a design shows the screen after its step, so at S2's entry run only looks for its controls (pendingDesign ready); record
+// --headless the whole test before it is built: the check run judges the design after S2, not met, nothing adopted; built,
+// recorded again, run --strict green, design met.
 
 const DESIGN_TDD = 'rec-design-tdd';
 const DESIGN_TDD_FILE = 'design/n23-archive.html';
@@ -1606,7 +1608,7 @@ const ARCHIVE_STEP = `
 const S2_COMMANDS = `$A click '#archive'
 $A check S2 "document.getElementById('status').textContent==='Archived'"`;
 
-scenario('N23', 'Recipe "write a test for this design": reach recorded headless, the pending step\'s design judged at its entry until built, record --headless, run --strict green with the design met', async () => {
+scenario('N23', 'Recipe "write a test for this design": reach recorded headless, the pending step\'s controls there at its entry, record --headless refused while the design is not met after the step, built, recorded, run --strict green with the design met', async () => {
     const agent = (plan, ids, commands) => `A='caw agent'
 ${tag}
 ${planOf(plan)}
@@ -1636,20 +1638,22 @@ ${finishOf(ids)}`;
         const linked = await tool('caw_design', { action: 'link', test: DESIGN_TDD, step: 'S2', file: DESIGN_TDD_FILE, personAsked: true });
         verify('caw_design link: S2 has the design', linked.isError !== true && loadTest(native, DESIGN_TDD).steps[1].design === DESIGN_TDD_FILE, linked.content[0].text);
 
-        // 3. Not built yet: the run passes with S2 pending and names what differs at S2's entry.
+        // 3. At S2's entry only the design's controls count: Show message, Delete all and Archive are there. Never met there.
         const unbuilt = await runQuietly(DESIGN_TDD, ['--headless']);
         const before = newestRunOf(native, DESIGN_TDD).result;
-        verify('pending S2: exit 0, its design judged at its entry, not met', unbuilt.code === 0 && before?.pendingDesign?.step === 'S2' && before.pendingDesign.verdict === 'not-met', `${unbuilt.code} ${JSON.stringify(before?.pendingDesign)}`);
-        verify('the deviation names the style to build', (before?.pendingDesign?.styleDiffs ?? []).includes('button "Archive": font-weight 700 → 400'), JSON.stringify(before?.pendingDesign));
+        verify('pending S2: exit 0, the design\'s controls there at its entry (ready), not judged met', unbuilt.code === 0 && before?.pendingDesign?.step === 'S2' && before.pendingDesign.verdict === 'ready'
+            && (before.pendingDesign.missing ?? []).length === 0, `${unbuilt.code} ${JSON.stringify(before?.pendingDesign)}`);
 
-        // 4. Built (the dev server restarted with the change): met at the entry.
-        await restyleSwitch(true);
-        const built = await runQuietly(DESIGN_TDD, ['--headless']);
-        const after = newestRunOf(native, DESIGN_TDD).result;
-        verify('built: the design of S2 met at its entry', built.code === 0 && after?.pendingDesign?.verdict === 'met', `${built.code} ${JSON.stringify(after?.pendingDesign)}`);
-
-        // 5. The whole test recorded without a window, then the strict run: green and the design met with nothing differing.
+        // 4. Recorded before it is built: the check run judges the design after S2, not met; nothing is adopted.
         const whole = `${REACH_PLAN}${ARCHIVE_STEP}`;
+        const early = await record(native, [DESIGN_TDD, ...recordArgs, '--headless'], { interactive: false, containerCommand: ['bash', '-c', agent(whole, ['S1', 'S2'], `${S1_COMMANDS}\n${S2_COMMANDS}`)] });
+        const checked = (newestRunOf(native, DESIGN_TDD).result?.steps ?? []).find((step) => step.id === 'S2');
+        verify('recorded unbuilt: not adopted, S2 still pending', early !== 0 && loadTest(native, DESIGN_TDD).steps[1].recording === undefined, String(early));
+        verify('the check run names the style to build after S2', checked?.design?.verdict === 'not-met' && (checked.design.styleDiffs ?? []).includes('button "Archive": font-weight 700 → 400'), JSON.stringify(checked));
+
+        // 5. Built (the dev server restarted with the change), the whole test recorded without a window, then the strict run:
+        // green and the design met with nothing differing.
+        await restyleSwitch(true);
         const recorded = await record(native, [DESIGN_TDD, ...recordArgs, '--headless'], { interactive: false, containerCommand: ['bash', '-c', agent(whole, ['S1', 'S2'], `${S1_COMMANDS}\n${S2_COMMANDS}`)] });
         verify('whole test recorded headless: exit 0, S2 recorded', recorded === 0 && loadTest(native, DESIGN_TDD).steps[1].recording !== undefined, String(recorded));
         const strict = await runQuietly(DESIGN_TDD, ['--headless', '--strict']);
@@ -1667,16 +1671,17 @@ ${finishOf(ids)}`;
 
 // ---- N24: guided target-image TDD, "build it with TDD" as a scripted session (guide topic design, "Build a draft with TDD").
 // A project of its own on the native app, so adopting runs only its one other test: the session writes a design draft
-// (origin: design), records the reach headless, adds the design's step pending and links it; a headless run judges its design
-// not met at its entry and saves the red proof; "building" is the restyle switch (Archive bold, the dev server restarted with
-// the change); a run judges it met (green), the whole draft is recorded headless (the red proof stays), --promote adopts it
-// with design-report.md. Every phase as caw_list or caw_status names it.
+// (origin: design), records the reach headless, adds the design's step pending and links it; a headless run finds the
+// design's controls at S2's entry (Archive is there, only its look is new): nothing to be red there, next records S2; the
+// whole draft recorded headless, its check run judges the design after S2 not met and saves the red proof; "building" is the
+// restyle switch (Archive bold, the dev server restarted with the change); a run judges it met after S2 (green), --promote
+// adopts it with design-report.md. Every phase as caw_list or caw_status names it.
 
 const TDD_ID = 'rec-design-draft';
 const TDD_FILE = 'design/n24-archive.html';
 const tddRoot = join(native, 'design-tdd');
 
-scenario('N24', 'Guided target-image TDD: design draft → reach recorded headless → design linked → run red at the pending step\'s entry (saved) → restyle switch → green → record --headless keeps the proof → --promote adopts with design-report.md', async () => {
+scenario('N24', 'Guided target-image TDD: design draft → reach recorded headless → design linked → controls there at the pending step\'s entry → record --headless: red after the step (saved) → restyle switch → green → --promote adopts with design-report.md', async () => {
     const agent = (plan, ids, commands) => `A='caw agent'
 ${tag}
 ${planOf(plan)}
@@ -1719,36 +1724,38 @@ ${finishOf(ids)}`;
         row = await listed();
         verify('caw_list: next runs it headless to prove red', row?.next?.command === 'run' && row.next.headless === true, JSON.stringify(row));
 
-        // 4. Red: S2 pending, its design judged not met at its entry; the run passes and saves the proof into the draft.
+        // 4. S2 pending: at its entry only the design's controls count, and Archive is there. Nothing to be red at, never green
+        // before S2 is recorded: next records it.
         const unbuilt = await runQuietly(TDD_ID, ['--headless'], tddRoot);
+        const atEntry = newestRunOf(tddRoot, TDD_ID).result?.pendingDesign;
+        verify('S2 pending: exit 0, the controls there at its entry, no red proof', unbuilt.code === 0 && atEntry?.verdict === 'ready' && loadTest(tddRoot, TDD_ID).red === undefined, `${unbuilt.code} ${JSON.stringify(atEntry)}`);
+        row = await listed();
+        verify('caw_list: still a draft, next records it headless', row?.phase === 'draft' && row.next?.command === 'record' && row.next.headless === true, JSON.stringify(row));
+
+        // 5. The whole draft recorded without a window: its check run judges the design after S2, not met, and that is the red
+        // proof, saved with the recording by caw.
+        const runsBefore = new Set(runDirsOf(tddRoot, TDD_ID));
+        const recorded = await record(tddRoot, [TDD_ID, ...recordArgs, '--headless'], { interactive: false, containerCommand: ['bash', '-c', agent(`${REACH_PLAN}${ARCHIVE_STEP}`, ['S1', 'S2'], `${S1_COMMANDS}\n${S2_COMMANDS}`)] });
         const proven = loadTest(tddRoot, TDD_ID);
-        verify('red: exit 0 (S2 pending), the proof saved at S2 with its run', unbuilt.code === 0 && proven.red?.step === 'S2' && new RegExp(`Z-${TDD_ID}$`).test(proven.red?.run ?? ''), `${unbuilt.code} ${JSON.stringify(proven.red)}`);
+        verify('draft recorded headless: exit 0, S2 recorded, origin kept, red at S2 with its run', recorded === 0 && proven.steps[1].recording !== undefined && proven.origin === 'design'
+            && proven.red?.step === 'S2' && new RegExp(`Z-${TDD_ID}$`).test(proven.red?.run ?? ''), `${recorded} ${JSON.stringify(proven.red)}`);
+        const savedBy = runDirsOf(tddRoot, TDD_ID).filter((name) => !runsBefore.has(name)).flatMap((name) => {
+            const file = join(tddRoot, '.caw/runs', name, 'result.json');
+            return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')).decisions ?? [] : [];
+        }).find((decision) => decision.id === 'red.proof' && decision.option === 'adopt');
+        verify('the red proof saved by caw, named in the decision log', savedBy?.by === 'auto', JSON.stringify(savedBy));
         const red = await status();
         verify('caw_status: phase red, next build-design with the style to build', red.origin === 'design' && red.phase === 'red' && red.next?.do === 'build-design'
             && (red.next.red?.deviations ?? []).includes('style: button "Archive": font-weight 700 → 400') && red.next.decision === 'fix.guide', JSON.stringify(red.next));
         const early = await run(tddRoot, [TDD_ID, '--promote', ...target]);
-        verify('--promote while S2 is pending: exit 4, the draft stays', early === 4 && existsSync(draftFile), String(early));
+        verify('--promote while the design is not met: exit 1, the draft stays', early === 1 && existsSync(draftFile), String(early));
 
-        // 5. Built (the dev server restarted with the change): a run judges it met, green; S2 is recorded next.
+        // 6. Built (the dev server restarted with the change): a run judges it met after S2, green; next adopts.
         await restyleSwitch(true);
         const built = await runQuietly(TDD_ID, ['--headless'], tddRoot);
-        const green = await status();
-        verify('green: exit 0, next records the draft headless', built.code === 0 && green.phase === 'green' && green.next?.command === 'record' && green.next.headless === true, `${built.code} ${JSON.stringify(green.next)}`);
-        verify('the red proof stays', loadTest(tddRoot, TDD_ID).red?.run === proven.red.run);
-
-        // 6. The whole draft recorded without a window: S2 recorded, origin and red proof kept; next adopts. S2 is recorded for
-        // the first time: the status "Archived" it shows is its baseline, adopted by caw and named in the decision log.
-        const runsBefore = new Set(runDirsOf(tddRoot, TDD_ID));
-        const recorded = await record(tddRoot, [TDD_ID, ...recordArgs, '--headless'], { interactive: false, containerCommand: ['bash', '-c', agent(`${REACH_PLAN}${ARCHIVE_STEP}`, ['S1', 'S2'], `${S1_COMMANDS}\n${S2_COMMANDS}`)] });
-        const whole = loadTest(tddRoot, TDD_ID);
-        verify('draft recorded headless: exit 0, S2 recorded, origin and red kept', recorded === 0 && whole.steps[1].recording !== undefined && whole.origin === 'design' && whole.red?.run === proven.red.run, `${recorded} ${JSON.stringify(whole.red)}`);
-        const adoptedBy = runDirsOf(tddRoot, TDD_ID).filter((name) => !runsBefore.has(name)).flatMap((name) => {
-            const file = join(tddRoot, '.caw/runs', name, 'result.json');
-            return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')).decisions ?? [] : [];
-        }).find((decision) => decision.id === 'recording.adopt' && decision.option === 'adopt');
-        verify('S2\'s newly known "Archived" is its baseline: adopted by caw, named in the log', adoptedBy?.by === 'auto' && (adoptedBy.known ?? []).includes('Archived') && (whole.knownMessages ?? []).includes('Archived'), JSON.stringify(adoptedBy));
         const ready = await status();
-        verify('caw_status: green, next promotes (the person\'s decision)', ready.phase === 'green' && ready.next?.promote === true && ready.next.decision === 'fix.green', JSON.stringify(ready.next));
+        verify('green: exit 0, caw_status next promotes (the person\'s decision)', built.code === 0 && ready.phase === 'green' && ready.next?.promote === true && ready.next.decision === 'fix.green', `${built.code} ${JSON.stringify(ready.next)}`);
+        verify('the red proof stays', loadTest(tddRoot, TDD_ID).red?.run === proven.red.run);
 
         // 7. Adopt: the draft with its design met and tdd-page green; the test moves, the run gets the design report.
         const promoted = await run(tddRoot, [TDD_ID, '--promote', ...target]);
@@ -1769,14 +1776,15 @@ ${finishOf(ids)}`;
 });
 
 // ---- N25: a draft from the app (guide topic design, "Draft from the app"): the session takes a snapshot of the screen at the
-// entry of the pending step with caw_design snapshot, which is met against the same state; it adds the new look only inside
-// the snapshot's markup (Archive bold, as the app will do it) and links that draft; a headless run judges it not met at the
-// entry (red: exactly the one style), the restyle switch builds it, the next run judges it met.
+// entry of the pending step with caw_design snapshot. That is the screen after S1, so linked to S1 it is met against the same
+// state (a design shows the screen after its step); it adds the new look only inside the snapshot's markup (Archive bold, as
+// the app will do it) and links that draft to S1; a headless run judges it not met after S1 (red: exactly the one style), the
+// restyle switch builds it, the next run judges it met.
 
 const SNAP_ID = 'rec-design-snapshot';
 const snapRoot = join(native, 'design-snapshot');
 
-scenario('N25', 'Draft from the app: caw_design snapshot at the pending step\'s entry is met against the same state → the new part added in the snapshot\'s markup → red with exactly that style → restyle switch → met', async () => {
+scenario('N25', 'Draft from the app: caw_design snapshot at the pending step\'s entry, linked to the step before, is met against the same state → the new part added in the snapshot\'s markup → red with exactly that style → restyle switch → met', async () => {
     const agent = (plan, ids, commands) => `A='caw agent'
 ${tag}
 ${planOf(plan)}
@@ -1790,7 +1798,8 @@ ${finishOf(ids)}`;
     await mcp({ jsonrpc: '2.0', id: 0, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {} } });
     let id = 1;
     const tool = async (name, args) => (await mcp({ jsonrpc: '2.0', id: id++, method: 'tools/call', params: { name, arguments: args } })).result;
-    const pendingDesign = () => newestRunOf(snapRoot, SNAP_ID).result?.pendingDesign;
+    // The design of S1 as the newest run judged it after S1's check.
+    const s1Design = () => (newestRunOf(snapRoot, SNAP_ID).result?.steps ?? []).find((step) => step.id === 'S1')?.design;
     try {
         await restyleSwitch(false);
         // 1. The reach recorded headless, the step the draft is for added pending.
@@ -1804,25 +1813,25 @@ ${finishOf(ids)}`;
         verify('caw_design snapshot: written under caw/design with its assets folder', snap.isError !== true && snap.structuredContent?.file === `caw/design/${SNAP_ID}-S2.html` && existsSync(join(snapRoot, 'caw/design', `${SNAP_ID}-S2.html`)), snap.content[0].text);
         const snapHtml = readFileSync(join(snapRoot, 'caw/design', `${SNAP_ID}-S2.html`), 'utf8');
         verify('the snapshot has no scripts and the Archive button as the app shows it', !/<script/i.test(snapHtml) && /<button id="archive">Archive<\/button>/.test(snapHtml), snapHtml.slice(0, 400));
-        const linked = await tool('caw_design', { action: 'link', test: SNAP_ID, step: 'S2', file: `design/${SNAP_ID}-S2.html`, personAsked: true });
-        verify('the snapshot linked to S2', linked.isError !== true, linked.content[0].text);
+        const linked = await tool('caw_design', { action: 'link', test: SNAP_ID, step: 'S1', file: `design/${SNAP_ID}-S2.html`, personAsked: true });
+        verify('the snapshot linked to S1, whose end is the entry of S2', linked.isError !== true, linked.content[0].text);
         const same = await runQuietly(SNAP_ID, ['--headless'], snapRoot);
-        verify('the snapshot judged at the entry of S2 against the same state: met, nothing differs', same.code === 0 && pendingDesign()?.verdict === 'met'
-            && ['missing', 'styleDiffs', 'layoutDiffs', 'textDiffs'].every((key) => (pendingDesign()[key] ?? []).length === 0), JSON.stringify(pendingDesign()));
+        verify('the snapshot judged after S1 against the same state: met, nothing differs', same.code === 0 && s1Design()?.verdict === 'met'
+            && ['missing', 'styleDiffs', 'layoutDiffs', 'textDiffs'].every((key) => (s1Design()[key] ?? []).length === 0), JSON.stringify(s1Design()));
 
         // 3. The draft: only the new part, inside the snapshot's markup, as the app will draw it; linked instead of the snapshot.
         const draft = snapHtml.replace('<button id="archive">', '<button id="archive" style="font-weight:700">');
         const put = await tool('caw_design', { action: 'put', file: 'design/n25-archive.html', content: draft });
         verify('the draft written', put.isError !== true, put.content[0].text);
-        await tool('caw_design', { action: 'link', test: SNAP_ID, step: 'S2', file: 'design/n25-archive.html', personAsked: true });
+        await tool('caw_design', { action: 'link', test: SNAP_ID, step: 'S1', file: 'design/n25-archive.html', personAsked: true });
 
-        // 4. Red: exactly the new style differs; 5. built: met.
+        // 4. Red: S1 fails with kind design, exactly the new style differs; 5. built: met.
         const red = await runQuietly(SNAP_ID, ['--headless'], snapRoot);
-        verify('red: not met at the entry, exactly the bold Archive', red.code === 0 && pendingDesign()?.verdict === 'not-met'
-            && JSON.stringify(pendingDesign()?.styleDiffs) === JSON.stringify(['button "Archive": font-weight 700 → 400']) && (pendingDesign()?.missing ?? []).length === 0 && (pendingDesign()?.layoutDiffs ?? []).length === 0, JSON.stringify(pendingDesign()));
+        verify('red: not met after S1, exactly the bold Archive', red.code === 1 && s1Design()?.verdict === 'not-met'
+            && JSON.stringify(s1Design()?.styleDiffs) === JSON.stringify(['button "Archive": font-weight 700 → 400']) && (s1Design()?.missing ?? []).length === 0 && (s1Design()?.layoutDiffs ?? []).length === 0, JSON.stringify(s1Design()));
         await restyleSwitch(true);
         const green = await runQuietly(SNAP_ID, ['--headless'], snapRoot);
-        verify('built: the draft met at the entry', green.code === 0 && pendingDesign()?.verdict === 'met', JSON.stringify(pendingDesign()));
+        verify('built: the draft met after S1', green.code === 0 && s1Design()?.verdict === 'met', JSON.stringify(s1Design()));
     } finally {
         await restyleSwitch(false).catch(() => {});
         rmSync(snapRoot, { recursive: true, force: true });

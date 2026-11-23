@@ -987,29 +987,32 @@ test('the replay carries the designs of recorded steps and the needs of the firs
     assert.deepEqual(designed.pendingDesign, { step: 'S3', file: 'design/s3.html', viewport: { width: 390, height: 844 } }, 'the first pending step, at the recorded size');
 });
 
-test('design of the first pending step: judged at its entry when the run ended healthy, with the run tag as data; it fails nothing', async () => {
-    const playPending = async ({ failS2 = false } = {}) => {
+test('design of the first pending step: its controls looked for at its entry when the run ended healthy, with the run tag as data; it fails nothing; with needs no design browser', async () => {
+    const playPending = async ({ failS2 = false, needs } = {}) => {
         const given = [];
         const judgeDesign = async (design) => {
             given.push(design);
-            return { file: design.file, verdict: 'not-met', missing: [], extra: [], styleDiffs: [], layoutDiffs: ['Abstand a → b: 8px → 32px'], textDiffs: [] };
+            return { file: design.file, verdict: 'not-ready', missing: ['button "Speichern"'] };
         };
         const handler = async (command) => (command.action === 'check' ? { pass: !(failS2 && command.id === 'S2'), value: true } : 'ok');
         const clock = fakeClock();
         const played = await playReplay({
-            replay: { steps: TWO_STEPS, designs: {}, pendingDesign: { step: 'S3', file: 'design/s3.html', viewport: { width: 390, height: 844 } } },
+            replay: { steps: TWO_STEPS, designs: {}, pendingDesign: { step: 'S3', file: 'design/s3.html', viewport: { width: 390, height: 844 } }, ...(needs === undefined ? {} : { needs }) },
             handler, session: { ...fakeSession(), warn: () => {} }, base: 'https://portal.example', stepTimeoutMs: 1000, sleep: clock.sleep, now: clock.now, judgeDesign, runTag: 'CAW-2026112212000000',
         });
         return { played, given };
     };
     const { played, given } = await playPending();
-    assert.deepEqual(given, [{ file: 'design/s3.html', viewport: { width: 390, height: 844 }, step: 'S3', texts: ['CAW-2026112212000000', 'caw-2026112212000000'] }]);
-    assert.equal(played.pendingDesign.step, 'S3');
-    assert.equal(played.pendingDesign.verdict, 'not-met');
+    assert.deepEqual(given, [{ file: 'design/s3.html', viewport: { width: 390, height: 844 }, step: 'S3', texts: ['CAW-2026112212000000', 'caw-2026112212000000'], entry: true }]);
+    assert.deepEqual(played.pendingDesign, { step: 'S3', file: 'design/s3.html', verdict: 'not-ready', missing: ['button "Speichern"'] });
     assert.ok([...played.results.values()].every(({ status }) => status === 'pass'), 'no step fails for it');
     const failed = await playPending({ failS2: true });
     assert.deepEqual(failed.given, [], 'a run that did not end healthy does not reach the entry');
     assert.equal(failed.played.pendingDesign, undefined);
+    // Needs say whether the step is ready (run.mjs checks them): the design is not rendered.
+    const needed = await playPending({ needs: { step: 'S3', locators: ["getByRole('button', { name: 'Speichern' })"] } });
+    assert.deepEqual(needed.given, []);
+    assert.deepEqual(needed.played.pendingDesign, { step: 'S3', file: 'design/s3.html' });
 });
 
 /** Plays two checks that pass; S1 has a design that the judge decides. */
