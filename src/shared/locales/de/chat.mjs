@@ -29,7 +29,6 @@ export default {
     'chat.status.preparing.label': 'caw arbeitet',
     'chat.status.advising.text': '{agent} untersucht, nur lesend.',
     'chat.status.advising.label': '{agent} arbeitet',
-    'chat.status.developing.text': 'Wähl eine Option oder schreib {agent}.',
     'chat.status.closed.text': 'Der Lauf ist beendet.',
     'chat.status.starting.label': '{agent} startet',
 
