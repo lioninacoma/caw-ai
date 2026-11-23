@@ -993,7 +993,9 @@ echo '{"expectations":[{"id":"S4","status":"fail","note":"Application error","ev
     verify('Code changed, rest the same', readFileSync(appFile, 'utf8') === pricesScript(40000));
     verify('Test file unchanged except comparison values', noNet(read()) === noNet(withFees));
     const logs = runDirs().filter((name) => !before.has(name)).map((name) => join(fake, '.caw/runs', name, 'agent/claude-fix.log')).filter(existsSync).map((path) => readFileSync(path, 'utf8')).join('\n');
-    verify('Repair saw the assessment, wrong location rejected, fail without plan', /REPAIR-APP=[1-9]/.test(logs) && /EDIT-REJECTED=1/.test(logs) && /ADVISE Exit=0/.test(logs) && /FINISH Exit=0/.test(logs) && /Verdict accepted: fail/.test(logs), logs.slice(-600));
+    // "Verdict accepted" is printed only by an accepted finish (exit 0). The script's own line after it may be lost: caw removes
+    // the container as soon as it takes the verdict, before the agent has its answer.
+    verify('Repair saw the assessment, wrong location rejected, fail without plan', /REPAIR-APP=[1-9]/.test(logs) && /EDIT-REJECTED=1/.test(logs) && /ADVISE Exit=0/.test(logs) && /Verdict accepted: fail/.test(logs), logs.slice(-600));
     const reports = runDirs().filter((name) => !before.has(name)).map((name) => join(fake, '.caw/runs', name, 'report.md')).filter(existsSync).map((path) => readFileSync(path, 'utf8')).join('\n');
     verify('Report: applied to the code, with diff', /Loading timeout too short \(in den Code übernommen\)/.test(reports) && /```diff/.test(reports));
     verify('run passes afterwards', await run(fake, [ID, ...short]) === 0);

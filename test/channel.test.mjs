@@ -35,6 +35,35 @@ test('command and answer pass through the channel and leave nothing behind', asy
     assert.deepEqual(readdirSync(dir), []);
 });
 
+test('finish: the host takes the verdict before its answer reaches the agent; "Verdict accepted" is printed only for an accepted one, which then exits 0', async (t) => {
+    const { finish } = await import('../src/sandbox/commands.mjs');
+    const { EXIT } = await import('../src/shared/errors.mjs');
+    const dir = channel(t);
+    const agentDir = mkdtempSync(join(tmpdir(), 'caw-agent-'));
+    t.after(() => rmSync(agentDir, { recursive: true, force: true }));
+    const before = { sandbox: process.env.CAW_SANDBOX, dir: process.env.CAW_AGENT_DIR };
+    process.env.CAW_SANDBOX = '1';
+    process.env.CAW_AGENT_DIR = agentDir;
+    t.after(() => { for (const [key, value] of [['CAW_SANDBOX', before.sandbox], ['CAW_AGENT_DIR', before.dir]]) if (value === undefined) delete process.env[key]; else process.env[key] = value; });
+    const printed = [];
+    t.mock.method(console, 'log', (line) => { printed.push(line); });
+    const results = join(dir, 'e.json');
+    writeFileSync(results, '{"expectations":[]}');
+    const channelDir = join(agentDir, '.channel');
+    mkdirSync(channelDir);
+    // When the host accepts the verdict (run.mjs then removes the agent's container), the agent has no answer yet: whatever
+    // its script does after `caw agent finish` may never run.
+    let answeredAtVerdict;
+    const accept = () => { answeredAtVerdict = readdirSync(channelDir).some((name) => name.startsWith('res-')); return { status: 'fail' }; };
+    assert.equal(await serveUntil(channelDir, accept, finish(results)), EXIT.pass);
+    assert.equal(answeredAtVerdict, false);
+    assert.deepEqual(printed, ['Verdict accepted: fail']);
+    // Rejected: no such line.
+    const reject = () => { throw Object.assign(new Error('incomplete'), { code: 'finish-rejected' }); };
+    await assert.rejects(serveUntil(channelDir, reject, finish(results)), /incomplete/);
+    assert.deepEqual(printed, ['Verdict accepted: fail']);
+});
+
 test('host errors reach the client with their code', async (t) => {
     const dir = channel(t);
     const failing = () => { throw Object.assign(new Error('no'), { code: 'host-blocked' }); };
