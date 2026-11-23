@@ -470,7 +470,7 @@ const layoutItems = (measures, tolerance, actual) => {
 
 /**
  * Texts of the design that are not data and not in the app: one in the same place (after the same element) with the same
- * kind is a changed text, `heading "Note" → "Notes"`; others are missing.
+ * kind is a changed text, `text: heading "Note" → "Notes"`; others are missing.
  */
 const textChanges = (target, actual) => {
     const keys = new Set(actual.map(({ key }) => key));
@@ -646,7 +646,7 @@ export const compareDetailed = (target, actual, { tolerance = LAYOUT_TOLERANCE_P
  * design is not met; extra lines are only reported, since a design usually leaves out the app's frame (navigation, header).
  * Data (layoutProbe) is compared only by place and font.
  * @returns { met, missing, extra, styleDiffs, layoutDiffs, textDiffs } with lines as `button "Save": color #ffffff → #000000`,
- *          `gap heading "Note" → textarea "Note": 8px → 32px`, `text heading "Note" → "Notes"`
+ *          `gap heading "Note" → textarea "Note": 8px → 32px`, `text: heading "Note" → "Notes"`
  */
 export const compareStructure = (target, actual, options) => {
     const found = compareDetailed(target, actual, options);

@@ -102,8 +102,8 @@ export const redOf = (draft, cause) => {
  * @param promoted  caw/tests has the test and it came from this draft (a fix report or a reproduction names it)
  * @param fixReport the fix report of the promotion, relative to the project
  * @param cause     the cause the reproduction suspected
- * @returns { phase, next } or undefined when there is no draft and nothing was promoted. 
-ext.decision names the window's card at
+ * @param designReport the design report of an adopted design draft, relative to the project
+ * @returns { phase, next } or undefined when there is no draft and nothing was promoted. next.decision names the window's card at
  *          that phase (decisions.mjs PHASE_DECISIONS): a run that waits on it is answered with caw_decide, not started anew
  */
 export const fixPhase = ({ id, draft, runs = [], promoted = false, fixReport, designReport, cause }) => {

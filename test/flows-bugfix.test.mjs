@@ -289,7 +289,7 @@ test('Recording a design draft guided: its design not met after the passed check
         { label: 'Schritt', text: 'S2 Summe' },
         { label: 'Zielbild', text: 'design/note.html', code: true },
         { label: 'Fehlt', text: 'button "Save note"' },
-        { label: 'Text', text: 'text: heading "Note" → "Notes"' },
+        { label: 'Text', text: 'heading "Note" → "Notes"' },
         { label: 'Stil', text: 'button "Save": background-color #5f8f6b → #e5533a' },
     ]);
     assert.deepEqual(build.options, ['fix-by-agent', 'fix-myself', 'later']);
