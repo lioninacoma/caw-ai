@@ -1462,7 +1462,7 @@ test('workbench: the comparison with the target design is a page of its own (F7,
     assert.deepEqual(first.cards, ['1 Stil:true', '2 Fehlt:false'], 'numbered, the first selected');
     assert.deepEqual(first.rail, ['S1 erfüllt', 'S2 2 Abw. *', 'S3 ausstehend']);
     assert.equal(first.build, false, 'nobody answers the build button yet');
-    // Side by side: both images at one scale (the readable minimum here), the selected deviation marked in both.
+    // Nebeneinander (here one above the other, see below): both images at one scale, the selected deviation marked in both.
     const marks = () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#cmpPanel .shot-s')].map((box) => [box.dataset.kind,
         [...box.querySelectorAll('.mk-box')].map((mark) => ({ i: mark.dataset.i, left: Math.round(parseFloat(mark.style.left)), top: Math.round(parseFloat(mark.style.top)), width: Math.round(parseFloat(mark.style.width)) }))])));
     const scales = () => page.evaluate(() => [...document.querySelectorAll('#cmpPanel .shot-in')].map((inner) => inner.getBoundingClientRect().width / 1280));
@@ -1477,7 +1477,8 @@ test('workbench: the comparison with the target design is a page of its own (F7,
     assert.deepEqual(await marks(), { app: [], design: [{ i: '1', left: at(100, -2), top: at(120, -2), width: at(200, 4) }] });
     assert.match(await page.locator('#cmpCards li:nth-child(2) small').textContent(), /Fehlt in der App/);
     await page.click('#cmpCards li:nth-child(1) .dev');
-    // Scrolling one image scrolls the other.
+    // Scrolling one image scrolls the other (once the card's own scrolling is over).
+    await pause(300);
     await page.evaluate(() => { document.querySelector('.shot-s[data-kind=app]').scrollTop = 60; });
     assert.ok(await until(() => page.evaluate(() => document.querySelector('.shot-s[data-kind=design]').scrollTop === document.querySelector('.shot-s[data-kind=app]').scrollTop)), 'scrolled together');
     // Tabs: a click, then the arrow keys go round them.
@@ -1554,8 +1555,8 @@ test('workbench: the comparison starts at the left edge of both images and scrol
     if (browser === null) return t.skip('no Chrome');
     const { bench, context } = await open(t);
     const page = bench.page;
-    // The size of the reported screenshot: side by side the 75 % images are wider than their columns.
-    await page.setViewportSize({ width: 1440, height: 900 });
+    // So narrow that even one above the other the 75 % images are wider than the panel.
+    await page.setViewportSize({ width: 1000, height: 900 });
     const maker = await context.newPage();
     await maker.setViewportSize({ width: 1280, height: 1600 });
     await maker.setContent('<body style="margin:0;background:#f4ece0"><h1 style="position:absolute;left:24px;top:60px;margin:0">Feed the raven</h1></body>');
@@ -1600,6 +1601,69 @@ test('workbench: the comparison starts at the left edge of both images and scrol
     await page.click('#cmpTab-diff');
     await pause(300);
     assert.deepEqual((await view()).map(({ left }) => left), [0, 0], 'differences only from the left edge');
+    return undefined;
+});
+
+test('workbench: in a narrow window side by side would fall below 75 %, so app and design stand one above the other in the full width; a wide window keeps them side by side', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench, context } = await open(t);
+    const page = bench.page;
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const maker = await context.newPage();
+    await maker.setViewportSize({ width: 1280, height: 1600 });
+    await maker.setContent('<body style="margin:0;background:#f4ece0"><h1 style="position:absolute;left:24px;top:60px;margin:0">Feed the raven</h1></body>');
+    const picture = { src: `data:image/png;base64,${(await maker.screenshot()).toString('base64')}`, width: 1280, height: 1600 };
+    await maker.close();
+    const high = { x: 100, y: 200, width: 160, height: 40 };
+    const low = { x: 300, y: 1300, width: 120, height: 40 };
+    await bench.viewport({ width: 1280, height: 800 });
+    await bench.design({
+        step: { id: 'S5', name: 'Notiz' }, file: 'design/note.html', viewport: { width: 1280, height: 800 }, run: '21-45-37', met: false, design: picture, app: picture, extra: [],
+        deviations: [{ kind: 'style', text: 'button "Save note": background-color', design: high, app: high }, { kind: 'text', text: 'text: heading "Note" → "Notes"', design: low, app: low }],
+        steps: [{ id: 'S5', name: 'Notiz', status: 'deviations', count: 2 }],
+    }, { open: true });
+    assert.ok(await until(() => page.evaluate(() => !document.getElementById('cmp').hidden)), 'open');
+    const layout = () => page.evaluate(() => ({
+        panel: Math.round(document.getElementById('cmpPanel').getBoundingClientRect().width),
+        shots: [...document.querySelectorAll('#cmpPanel .shot')].map((shot) => {
+            const box = shot.getBoundingClientRect();
+            const scroll = shot.querySelector('.shot-s');
+            return {
+                label: shot.querySelector('.shot-h b').textContent, scale: shot.querySelector('.shot-h .sc').textContent,
+                left: Math.round(box.left), right: Math.round(box.right), top: Math.round(box.top), bottom: Math.round(box.bottom), width: Math.round(box.width),
+                image: Math.round(shot.querySelector('.shot-in').getBoundingClientRect().width), view: scroll.clientWidth, scrollTop: Math.round(scroll.scrollTop),
+                marks: [...scroll.querySelectorAll('.mk-box')].map((mark) => `${mark.dataset.i}@${Math.round(parseFloat(mark.style.left))},${Math.round(parseFloat(mark.style.top))}`),
+            };
+        }),
+    }));
+    await pause(300);
+    // 1440 wide: a column beside the other would show the 1280 wide app below 75 %, so the images stand one above the other.
+    const narrow = await layout();
+    const [app, design] = narrow.shots;
+    assert.deepEqual([app.label, design.label], ['Anwendung', 'Zielbild'], 'labelled');
+    assert.ok(design.top >= app.bottom, `the design below the app: ${JSON.stringify(narrow)}`);
+    assert.ok(app.width === narrow.panel && design.width === narrow.panel, 'each in the full width');
+    const scale = app.image / 1280;
+    assert.ok(scale >= 0.75 && scale <= 1 && app.image <= app.view, `fits at a readable scale: ${JSON.stringify(narrow)}`);
+    assert.equal(design.image, app.image);
+    assert.equal(app.scale, `${Math.round(scale * 100)} %`);
+    assert.deepEqual(app.marks, [`0@${Math.round(100 * scale - 2)},${Math.round(200 * scale - 2)}`], 'the marker at the scale');
+    assert.deepEqual(design.marks, app.marks);
+    // A card scrolls both images to its element; scrolling one scrolls the other.
+    await page.click('#cmpCards li:nth-child(2) .dev');
+    await pause(300);
+    const low1 = await layout();
+    assert.ok(low1.shots.every((shot) => shot.scrollTop > 0 && shot.marks[0].startsWith('1@')), `scrolled to the element: ${JSON.stringify(low1)}`);
+    await page.evaluate(() => { document.querySelector('.shot-s[data-kind=app]').scrollTop = 40; });
+    assert.ok(await until(() => page.evaluate(() => document.querySelector('.shot-s[data-kind=design]').scrollTop === 40)), 'scrolled together');
+    // 2560 wide: a column holds the app at 75 % or more, so side by side again.
+    await page.setViewportSize({ width: 2560, height: 1440 });
+    await pause(300);
+    const wide = await layout();
+    const [app2, design2] = wide.shots;
+    assert.ok(app2.right <= design2.left && app2.top === design2.top, `side by side: ${JSON.stringify(wide)}`);
+    assert.ok(app2.image / 1280 >= 0.75 && app2.image <= app2.view, `at 75 % or more, whole: ${JSON.stringify(wide)}`);
+    assert.ok(app2.marks.length === 1 && design2.marks.length === 1, 'marked in both');
     return undefined;
 });
 

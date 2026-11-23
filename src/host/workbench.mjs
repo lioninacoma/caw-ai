@@ -336,6 +336,7 @@ body.capture #appBox.pinned #app{position:fixed!important;left:0!important;top:0
 .cmp-tabs [role=tab][aria-selected=true]{color:var(--accent-text);font-weight:600;box-shadow:inset 0 -2px 0 var(--accent)}
 #cmpPanel{flex:1;min-height:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 #cmpPanel[data-view=overlay]{grid-template-columns:minmax(0,1fr)}
+#cmpPanel[data-layout=stack]{grid-template-columns:minmax(0,1fr);grid-template-rows:repeat(2,minmax(0,1fr))}
 .shot{display:flex;flex-direction:column;gap:6px;min-width:0;min-height:0}
 .shot-h{display:flex;align-items:baseline;gap:8px;font-size:12px;color:var(--muted)}
 .shot-h b{font:600 11px/1 var(--font);letter-spacing:.08em;text-transform:uppercase;color:var(--text)}
@@ -368,7 +369,7 @@ body.capture #appBox.pinned #app{position:fixed!important;left:0!important;top:0
 .cmp-actions{margin-top:auto;display:flex;flex-direction:column;gap:8px;padding-top:6px}
 @media (max-width:999px){.cmp-body{flex-direction:column;overflow:auto}.cmp-rail,.cmp-rail.open{width:auto;flex-direction:row;flex-wrap:wrap;align-items:center;border-right:0;border-bottom:1px solid var(--line)}
 #cmpSteps{flex-direction:row;flex-wrap:wrap}#cmpRailToggle{display:none}.cmp-main{min-height:80vh}.cmp-side{width:auto;border-left:0;border-top:1px solid var(--line)}}
-@media (max-width:699px){#cmpPanel{grid-template-columns:minmax(0,1fr)}.cmp-top{padding:0 12px}.cmp-main{padding:14px 12px}}
+@media (max-width:699px){.cmp-top{padding:0 12px}.cmp-main{padding:14px 12px}}
 .drawer{display:none;flex:none;border-top:1px solid var(--line);background:var(--panel)}.drawer.open{display:block}
 .tabs{display:flex;align-items:center;gap:16px;height:34px;padding:0 14px;border-bottom:1px solid var(--line)}
 .tabs button[role=tab]{font:400 12px/1 var(--font);color:var(--muted);background:none;border:0;padding:0;height:100%;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
@@ -880,7 +881,8 @@ new ResizeObserver(fitApp).observe($('appBox'));
 // open or closed for reloads; the view (tab) and the rail stay per window. The workbench below stays laid out, so the app
 // keeps its size; it is inert while the page lies over it, and the page steps aside (cmpAside) while the host operates the app.
 const VIEWS=${json(COMPARE_VIEWS)};
-// Side by side at 100 %, or smaller down to this to fit the column; below it the columns scroll, both together.
+// Side by side at 100 %, or smaller down to this to fit the column. When a column would need less, app and design stand one
+// above the other in the full width, again down to this; below it they scroll sideways from the left edge, both together.
 const MIN_SCALE=0.75;
 // Room beside a deviation scrolled into view sideways.
 const REVEAL_MARGIN=16;
@@ -961,6 +963,10 @@ const marker=(shot,box,i,{dashed=false,dim=false,numbered=true}={})=>{const s=sh
   num.style.left=Math.max(2,box.x*s-2)+'px';num.style.top=(above>=2?above:(box.y+box.height)*s+5)+'px';
   num.dataset.i=String(i);num.setAttribute('aria-hidden','true');shot.inner.append(num);};
 const placeShots=()=>{if(cmp===null)return;
+  // The column side by side: half the panel less the gap, less the frame and the room each image keeps (see avail).
+  const panel=$('cmpPanel');
+  if(shots.length===2){const column=(panel.clientWidth-(parseFloat(getComputedStyle(panel).columnGap)||0))/2-4;panel.dataset.layout=column<MIN_SCALE*cmp.viewport.width?'stack':'side';}
+  else delete panel.dataset.layout;
   for(const shot of shots){const avail=Math.max(0,shot.scroll.clientWidth-2);shot.scale=Math.min(1,Math.max(MIN_SCALE,avail/cmp.viewport.width));const s=shot.scale;
     const width=Math.max(...shot.pics.map((pic)=>pic.width)),height=Math.max(...shot.pics.map((pic)=>pic.height));
     shot.inner.style.width=Math.round(width*s)+'px';shot.inner.style.height=Math.round(height*s)+'px';
