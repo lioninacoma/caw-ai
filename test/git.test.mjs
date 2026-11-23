@@ -207,11 +207,13 @@ test('caw audit: decisions this machine took outside the window since the merge 
     result(`${now}-bestellung`, [{ id: 'plan.approve', option: 'approve', by: 'auto' }, { id: 'recording.adopt', option: 'adopt', by: 'auto', known: ['Gespeichert'] }, { id: 'step.failed', option: 'close', by: 'session' }]);
     result('2020-01-01T00-00-00-000Z-bestellung', [{ id: 'recording.adopt', option: 'adopt', by: 'auto' }]);
     result(`${now}-andere`, [{ id: 'fix.green', option: 'promote', by: 'elicitation' }, { id: 'recording.adopt', option: 'adopt', by: 'window' }]);
+    result(`${now}-dritte`, [{ id: 'recording.adopt', option: 'adopt', by: 'terminal' }]);
     let printed = '';
     const print = (text) => { printed = text; };
     assert.equal(auditCommand(root, ['main', '--json'], { print }), 0);
-    assert.deepEqual(JSON.parse(printed).decided.map(({ test: id, decision, option, by }) => `${id} ${decision} ${option} ${by}`), ['bestellung recording.adopt adopt auto', 'andere fix.green promote elicitation']);
+    assert.deepEqual(JSON.parse(printed).decided.map(({ test: id, decision, option, by }) => `${id} ${decision} ${option} ${by}`), ['dritte recording.adopt adopt terminal', 'bestellung recording.adopt adopt auto', 'andere fix.green promote elicitation'], 'the terminal of record --headless too');
     assert.equal(auditCommand(root, ['main'], { print }), 0);
-    assert.match(printed, /### Außerhalb des Fensters entschieden \(2\)/);
+    assert.match(printed, /### Außerhalb des Fensters entschieden \(3\)/);
+    assert.match(printed, /vom Menschen im Terminal \(terminal\)/);
     assert.match(printed, /- `bestellung`: recording\.adopt: adopt \(auto\), Lauf \S+; Basis erstmals aufgenommener Schritte, ab jetzt bekannt: `Gespeichert`/);
 });

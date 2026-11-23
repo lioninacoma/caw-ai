@@ -572,7 +572,8 @@ export default {
     'run.guide.greenTitle': '{id} green: the bug is fixed',
     'run.guide.greenText': 'Adopting runs every other test on this environment; if they pass, {test} moves to caw/tests and the run gets a fix report.',
     'run.guide.promoting': 'The other tests on this environment are running',
-    'run.guide.promoted': 'Adopted: {files}. {others} other test(s) on {target} green. Fix report: {report}',
+    'run.guide.adoptedTitle': '{test} adopted',
+    'run.guide.promoted': 'Moved: {files}. {others} other test(s) on {target} green. Fix report: {report}',
     'run.guide.refusedTitle': 'Not adopted',
     'run.guide.refusedMuted': 'The draft {test} stays in caw/drafts.',
     'run.guide.buildTitle': 'Now build the target design',
@@ -592,5 +593,5 @@ export default {
     'run.guide.designPendingText': '{id} is not recorded yet: record the draft, then adopt it.',
     'run.guide.designGreenTitle': 'Target design met: {id}',
     'run.guide.designGreenText': 'Adopting runs every other test on this environment; if they pass, {test} moves to caw/tests and the run gets a design report.',
-    'run.guide.designAdopted': 'Adopted: {files}. {others} other test(s) on {target} green. Design report: {report}',
+    'run.guide.designAdopted': 'Moved: {files}. {others} other test(s) on {target} green. Design report: {report}',
 };

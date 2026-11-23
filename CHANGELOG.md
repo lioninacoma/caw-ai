@@ -93,6 +93,9 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 - The last hints for names from before 1.0, without compatibility: the environment keys `urls` and `overlay`, the role fields `loginEnv`, `passwordEnv` and `totpEnv`, `signIn.type "storageState"` and `agent.sandbox` are reported as unknown or invalid like any other, no longer with their new name; so are the date placeholders `{{today}}` and `{{todayIso}}` (now plain text) and `store` in `wait-ready`. The commands `explore`, `auth`, `mcp-agent`, `sandbox-run`, `firewall-check`, the agent commands at the top level (`caw click` …) and `caw help agent` are unknown commands, `caw overlay … --target`/`--app` unknown options, and `caw agent wait-ready` no longer looks at `--store`.
 
 ### Fixed
+- The guided fix ends on a card in its last phase (Adopted, with the bar) like the refusal does: "bug-x adopted" with the moved files, the other tests and the report, instead of a plain line.
+- Still red, the guided fix offers "I fix it myself" (or "I build it myself") again beside fixing again, testing again and ending; in German "Von Claude Code erneut beheben lassen" names the agent.
+- `caw audit` lists the decisions answered at the terminal of `record --headless` (`terminal`) under "Decided outside the window" too; its intro names the terminal.
 - A production environment on a loopback address is labelled as the deployed code (`Code: deployed`), not as "dev server â€¦, your current version".
 - `record --headless` without a plan names the command with a window with `--env` as given (`caw record <test> --env <env>`).
 - The comparison page's rail in a window narrower than 1000 px shows every step's name and status across the top: it had no toggle there and showed only marks while folded.

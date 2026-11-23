@@ -424,7 +424,7 @@ const guideFix = async (chat, { red, test, later, again = false, title, adviseFi
     const texts = GUIDE[design ? 'design' : 'fix'];
     const ask = { ...resultCard('next', title ?? t(texts.title), undefined, t(again ? texts.againMuted : 'run.guide.fixMuted')), rows: redRows(red) };
     let card = ask;
-    let options = again ? [texts.again, { ...RETEST, primary: false }, CLOSE] : [texts.byAgent, texts.myself, LATER];
+    let options = again ? [texts.again, texts.myself, { ...RETEST, primary: false }, CLOSE] : [texts.byAgent, texts.myself, LATER];
     // An applied change to the app: who restarts its server (null: not needed), and F5 works while its card waits.
     let restart = null;
     let applied = false;
@@ -1134,7 +1134,11 @@ export const runFlow = async (options) => {
                     learnFrom(concluded);
                     chat.progress(t('run.guide.promoting'));
                     const promoted = await guide.promote({ runId: concluded.runId });
-                    if (promoted.ok) return { outcome: t(design ? 'run.guide.designAdopted' : 'run.guide.promoted', promoted) };
+                    if (promoted.ok) {
+                        // The last phase, as the refusal shows it: the test moved, the report written.
+                        chat.result?.(inPhase(design ? 'adopted' : 'promoted', resultCard('info', t('run.guide.adoptedTitle', { test: current.id }), t(design ? 'run.guide.designAdopted' : 'run.guide.promoted', promoted)), design));
+                        return undefined;
+                    }
                     await decide(chat, 'fix.refused', { test: current.id }, inPhase(design ? 'adopted' : 'promoted', resultCard('fail', t('run.guide.refusedTitle'), closed(withoutDot(promoted.reason)), t('run.guide.refusedMuted', { test: current.id })), design), [ONLY_CLOSE]);
                     return undefined;
                 }

@@ -31,6 +31,7 @@ const harness = ({ outcomes, answers = [] }) => {
     const progress = [];
     const said = [];
     const calls = [];
+    const results = [];
     const queue = [...outcomes];
     const wishes = [...answers];
     const pick = (kind, text, options, card) => {
@@ -46,6 +47,7 @@ const harness = ({ outcomes, answers = [] }) => {
         discuss: async (text, options) => ({ choice: pick('discussing', text, options) }),
         notice: (text) => notices.push(text),
         progress: (text) => progress.push(text),
+        result: (card) => results.push(card),
     };
     return {
         questions,
@@ -54,6 +56,7 @@ const harness = ({ outcomes, answers = [] }) => {
         progress,
         said,
         calls,
+        results,
         execute: async ({ conclude, ...call }) => {
             calls.push(call);
             const { concluded = {}, ...outcome } = queue.shift();
@@ -188,8 +191,8 @@ test('Test run of a red draft guided: still red offers fixing again, testing aga
     assert.equal(h.calls.length, 2, 'testing again is a second run');
     const still = h.questions[0];
     assert.equal(still.card.title, 'S2 noch rot: der Fehler ist noch da');
-    assert.deepEqual(still.options, ['fix-by-agent', 'retest', 'close']);
-    assert.deepEqual(still.labels, ['Erneut beheben lassen', 'Erneut testen', 'Lauf beenden']);
+    assert.deepEqual(still.options, ['fix-by-agent', 'fix-myself', 'retest', 'close']);
+    assert.deepEqual(still.labels, ['Von Claude Code erneut beheben lassen', 'Ich behebe selbst', 'Erneut testen', 'Lauf beenden']);
     assert.equal(still.card.phase, 'fix');
     assert.equal(still.card.rows[0].text, 'S2 Summe');
     assert.match(still.card.muted, /Lass Claude Code noch einmal suchen/);
@@ -223,7 +226,8 @@ test('Test run of a red draft guided: green offers adopting; it learns first, th
     assert.equal(h.questions[0].card.phase, 'green');
     assert.deepEqual(order, ['learn', 'promote r-green'], 'learned baselines go into the draft before it moves');
     assert.equal(h.adopted.length, 1, 'nothing is written after promoting');
-    assert.deepEqual(h.said[0], { outcome: 'Übernommen: caw/tests/bug-x.yaml, caw/recordings/bug-x.yaml. 1 andere(r) Test(s) auf test grün. Fix-Bericht: .caw/runs/r-green/fix-report.md' });
+    assert.deepEqual(h.results, [{ kind: 'result', tone: 'info', title: 'bug-x übernommen', text: 'Verschoben: caw/tests/bug-x.yaml, caw/recordings/bug-x.yaml. 1 andere(r) Test(s) auf test grün. Fix-Bericht: .caw/runs/r-green/fix-report.md', phase: 'promoted' }], 'the success stands in its phase like the refusal');
+    assert.equal(h.said[0], undefined, 'the card says it, no second line');
 });
 
 test('Test run of a red draft guided: promoting refused says so on a card, the draft stays; later names the command', async () => {
@@ -327,7 +331,7 @@ test('Test run of a design draft: its pending step\'s design not met at the entr
     const again = harness({ outcomes: [entryRun(notMet, 'r-2')], answers: ['close'] });
     await runFlow({ spec: { ...pendingDraft, red: { step: 'S2', run: 'r-red' } }, handover: false, canFix: true, openSandbox: async () => 'box', ...again, guide: { env: 'test' } });
     assert.equal(again.questions[0].card.title, 'S2 erfüllt sein Zielbild noch nicht');
-    assert.deepEqual(again.questions[0].labels, ['Von Claude Code weiter umsetzen lassen', 'Erneut testen', 'Lauf beenden']);
+    assert.deepEqual(again.questions[0].labels, ['Von Claude Code weiter umsetzen lassen', 'Ich setze selbst um', 'Erneut testen', 'Lauf beenden']);
     assert.deepEqual(again.adopted, []);
 });
 
@@ -346,5 +350,5 @@ test('Test run of a red design draft: met at its pending step\'s entry, the card
     assert.equal(h.questions[0].card.title, 'Zielbild erfüllt: S2');
     assert.equal(h.questions[0].card.phases, 'design');
     assert.deepEqual(h.questions[0].labels, ['Übernehmen', 'Später']);
-    assert.deepEqual(h.said[0], { outcome: 'Übernommen: caw/tests/note.yaml, caw/recordings/note.yaml. 2 andere(r) Test(s) auf test grün. Zielbild-Bericht: .caw/runs/r-green/design-report.md' });
+    assert.deepEqual(h.results, [{ kind: 'result', tone: 'info', title: 'note übernommen', text: 'Verschoben: caw/tests/note.yaml, caw/recordings/note.yaml. 2 andere(r) Test(s) auf test grün. Zielbild-Bericht: .caw/runs/r-green/design-report.md', phase: 'adopted', phases: 'design' }]);
 });

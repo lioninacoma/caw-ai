@@ -84,11 +84,11 @@ export const runsWithResult = (root, name) => {
 
 // Answers that change a test, a recording, the config or the app's code, as a person clicks them in the window.
 const CHANGING = new Set(['adopt', 'accept', 'apply', 'use-target', 'adopt-look', 'forget-effect', 'ignore-errors', 'promote']);
-const OUTSIDE_WINDOW = new Set(['auto', 'session', 'elicitation']);
+const OUTSIDE_WINDOW = new Set(['auto', 'session', 'elicitation', 'terminal']);
 
 /**
  * The decisions taken outside the window that changed something: by caw itself (a run without a window), by the session
- * (caw_decide) or by the person in the session (elicitation). Newest first; for caw audit.
+ * (caw_decide), by the person in the session (elicitation) or at the terminal of a run without a window (terminal). Newest first; for caw audit.
  * @param since a date: only runs started at or after it
  * @returns [{ run, test, decision, option, by, known? }]: known, the messages adopted as the baseline of steps recorded for the first time
  */
