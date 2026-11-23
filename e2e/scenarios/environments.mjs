@@ -301,7 +301,7 @@ scenario('B1', 'Bootstrap from a blank folder through MCP: server caw with instr
             hello.serverInfo?.name === 'caw' && typeof hello.instructions === 'string' && hello.instructions.split('\n').length <= 12 && /caw_guide/.test(hello.instructions) && hello.capabilities?.tools?.listChanged === true,
             JSON.stringify({ serverInfo: hello.serverInfo, capabilities: hello.capabilities }));
         const names = async () => (await client.request('tools/list')).tools.map(({ name }) => name);
-        const core = ['caw_attach', 'caw_start', 'caw_status', 'caw_selection', 'caw_doctor', 'caw_validate', 'caw_list', 'caw_reproductions', 'caw_config', 'caw_design', 'caw_init', 'caw_role', 'caw_guide', 'caw'];
+        const core = ['caw_attach', 'caw_start', 'caw_status', 'caw_decide', 'caw_selection', 'caw_doctor', 'caw_validate', 'caw_list', 'caw_reproductions', 'caw_config', 'caw_design', 'caw_init', 'caw_role', 'caw_guide', 'caw'];
         const listed = await names();
         verify('(3) tools/list: the core tools, no caw_overlay, no caw_explore', JSON.stringify([...listed].sort()) === JSON.stringify([...core].sort()), listed.join(' '));
         const index = await client.callTool('caw_guide');
