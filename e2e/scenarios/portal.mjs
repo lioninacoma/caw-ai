@@ -7,8 +7,8 @@ import { join } from 'node:path';
 
 import { serveFolder } from '../../test/static-server.mjs';
 import {
-    approve, benchBack, count, decide, discard, finishOf, freePort, here, humans, keep, loadTest, open, parseTest,
-    planOf, print, quietTokens, record, renderTest, run, setLanguage, shoot, shootBench, showMyself, slash, startServer, stateOf, stepHash, tag, verify,
+    approve, benchBack, cardOf, count, decide, discard, finishOf, freePort, here, humans, keep, loadTest, open, parseTest,
+    history, planOf, print, quietTokens, record, renderTest, run, inChat, setLanguage, shoot, shootBench, showMyself, slash, startServer, stateOf, stepHash, tag, verify,
     writeTest,
 } from '../harness.mjs';
 
@@ -147,13 +147,15 @@ ${finishOf(['S1', 'S2', 'S3'])}`;
         verify('After Done: handing over, nothing left to click', after === 'handing|none' || after === 'closed', after);
     }, async (page) => {
         await stateOf(page, 'planning');
-        verify('Card of the first draft', await page.locator('.message.plan .step').count() === 1);
+        verify('Card of the first draft', await page.locator('#card .message.plan .step').count() === 1);
         await page.locator('#input').fill('Please be more precise');
         await page.keyboard.press('Enter');
-        await page.locator('.message.plan').nth(1).waitFor({ timeout: 30000 });
+        // The second draft takes the place of the first in the panel; the first stays as a line in the history.
+        await page.locator('#hist [data-who=plan]').nth(1).waitFor({ state: 'attached', timeout: 30000 });
         await stateOf(page, 'planning');
-        verify('Card shows three steps with ID', await page.locator('.message.plan').nth(1).locator('.step').count() === 3 && (await page.locator('.message.plan').nth(1).locator('.sid').first().textContent()) === 'S1');
-        verify('Card shows the notes', /Stay with your/.test(await page.locator('.message.plan').nth(1).locator('.notes').textContent()));
+        const plan = page.locator('#card .message.plan');
+        verify('Card shows three steps with ID', await plan.locator('.step').count() === 3 && (await plan.locator('.sid').first().textContent()) === 'S1');
+        verify('Card shows the notes', /Stay with your/.test(await plan.locator('.notes').textContent()));
         await shootBench(page, join(here, 'step-plan.png'));
         verify('Plan: big button Plan freigeben, no small one', await page.locator('#approve.big').isVisible() && (await page.locator('#approve').evaluate((node) => node.firstChild.textContent)) === 'Plan freigeben' &&!await page.locator('#toggle').isVisible());
         await page.locator('#approve').click();
@@ -185,8 +187,8 @@ scenario('B', 'Stale: open at its entry runs the steps before it and hands over,
     const before = existsSync(hits) ? readFileSync(hits, 'utf8') : '';
     const h = humans(async (page) => {
         await benchBack(page);
-        await page.locator('.message:is(.question,.result,.notice)', { hasText: /Der Lauf hat bestanden|Lauf bestanden/ }).waitFor({ timeout: 60000 });
-        verify('Progress in the chat', /S1 · 1\/\d+ /.test(await page.locator('details.activity').first().textContent()));
+        await inChat(page, /Der Lauf hat bestanden|Lauf bestanden/, 60000);
+        verify('Progress in the chat', /S1 · 1\/\d+ /.test(await page.locator('#hist details.activity').first().textContent()));
         await stateOf(page, 'developing');
         verify('After the handover: input open for developing', await page.locator('#form').isVisible());
     });
@@ -207,12 +209,12 @@ scenario('C', 'Failed run: offer, no Docker without a click', async () => {
     let dockerUsed = 0;
     const docker = { get label() { dockerUsed += 1; return 'spy'; } };
     const h = humans(async (page) => {
-        await page.locator('.message:is(.question,.result,.notice)', { hasText: 'S2 ist gescheitert' }).waitFor({ timeout: 60000 });
-        verify('Offer names the step', /S2 ist gescheitert.*click button "Verschwunden"/.test(await page.locator('.message:is(.question,.result,.notice)').last().textContent()));
+        await inChat(page, 'S2 ist gescheitert', 60000);
+        verify('Offer names the step', /S2 ist gescheitert.*click button "Verschwunden"/.test(await cardOf(page).textContent()));
         verify('Schritt beheben is the primary button', (await page.locator('#choices button.primary').textContent()) === 'Schritt beheben');
         await stateOf(page, 'discussing');
         verify('Input open', await page.locator('#form').isVisible());
-        verify('Partial actions: path with lead-in run', /frischen Browser/.test(await page.locator('.message:is(.question,.result,.notice)').last().textContent()));
+        verify('Partial actions: path with lead-in run', /frischen Browser/.test(await cardOf(page).textContent()));
         await page.waitForTimeout(300);
         await shootBench(page, join(here, 'step-offer.png'));
         await decide(page, 'Close');
@@ -250,8 +252,8 @@ ${finishOf(['S2'])}`;
     }, async (page) => {
         await stateOf(page, 'planning');
         verify('Fresh browser: S1 ran without Claude', (await page.context().pages()[0].locator('#ziel').textContent()) === 'Ziel erreicht');
-        verify('Progress in the chat', /S1 ·/.test(await page.locator('details.activity').first().locator('ol').textContent()));
-        const card = page.locator('.message.plan').last();
+        verify('Progress in the chat', /S1 ·/.test(await page.locator('#hist details.activity').first().locator('ol').textContent()));
+        const card = page.locator('#card .message.plan');
         verify('Card: S2 beheben, only S2', (await card.locator('strong').getAttribute('data-heading')) === 'S2 beheben' && await card.locator('.step').count() === 1 && (await card.locator('.sid').textContent()) === 'S2');
         verify('No change marker for an unchanged result', await card.locator('.changed').count() === 0);
         await page.locator('#approve').click();
@@ -286,7 +288,7 @@ ${finishOf(['S3'])}`;
     // S3 is the last step: record @S3 re-records only S3, without a check run first. S1 and S2 replay in Claude's window.
     const h = humans(async (page) => {
         await stateOf(page, 'planning');
-        const card = page.locator('.message.plan').last();
+        const card = page.locator('#card .message.plan');
         verify('Changed result marked, old one struck through', await card.locator('.changed').count() === 1 && /ist fertig/.test(await card.locator('.before').textContent()));
         await shootBench(page, join(here, 'step-change.png'));
         await page.locator('#approve').click();
@@ -318,7 +320,7 @@ $A eval "window.__nurBeimAufnehmen = 1"
 $A check S3 "window.__nurBeimAufnehmen === 1 && ${CASE_DONE}"
 ${finishOf(['S2', 'S3'])}`;
     const h = humans(approve, async (page) => {
-        await page.locator('.message:is(.question,.result,.notice)', { hasText: 'S3 ist gescheitert' }).waitFor({ timeout: 90000 });
+        await inChat(page, 'S3 ist gescheitert', 90000);
         // A failed check without failed requests: the assessment may lean either way, so only the offer itself is checked.
         verify('Offer for S3', await page.locator('#choices button', { hasText: 'Schritt beheben' }).count() === 1);
         await decide(page, 'Close');
@@ -355,7 +357,7 @@ echo '{"status":"error","reason":"Does not work this way"}' > /tmp/e.json; $A fi
         await decide(page, 'Schritt beheben');
     }, async (page) => {
         await approve(page);
-        await page.locator('.message:is(.question,.result,.notice)', { hasText: 'Keine neue Aufzeichnung für S2' }).waitFor({ timeout: 90000 });
+        await inChat(page, 'Keine neue Aufzeichnung für S2', 90000);
         await decide(page, 'Close');
     });
     const code = await run(fake, [ID, ...short], { interactive: true, containerCommand: ['bash', '-c', agent], onChatOpen: h.onChatOpen });
@@ -381,8 +383,8 @@ $A click '#spaeter'
 $A check S3 "${CASE_DONE} && ${CASE_TEXT}==='Vorgang $TAG'"
 ${finishOf(['S2', 'S3'])}`;
     const h = humans(async (page) => {
-        await page.locator('.message', { hasText: 'Plan ab S2 unverändert, Claude Code nimmt ab dort neu auf' }).waitFor({ timeout: 90000 });
-        verify('No plan card', await page.locator('.message.plan').count() === 0);
+        await inChat(page, 'Plan ab S2 unverändert, Claude Code nimmt ab dort neu auf', 90000);
+        verify('No plan card', await page.locator('#hist [data-who=plan]').count() === 0);
     }, async (page) => {
         await page.locator('#choices button.primary', { hasText: 'Testplan' }).waitFor({ timeout: 90000 });
         await decide(page, 'Testplan übernehmen');
@@ -438,7 +440,7 @@ echo '{"status":"error","reason":"Check refused"}' > /tmp/e.json; $A finish --fi
     };
     const first = humans(follow, async (page) => {
         await approve(page);
-        await page.locator('.message:is(.question,.result,.notice)', { hasText: 'Keine Aufzeichnung entstanden' }).waitFor({ timeout: 90000 });
+        await inChat(page, 'Keine Aufzeichnung entstanden', 90000);
         await decide(page, 'Close');
     });
     const refused = await record(fake, [ID, ...opts], { interactive: true, containerCommand: ['bash', '-c', weaker], onChatOpen: first.onChatOpen });
@@ -457,7 +459,7 @@ ${walk(`${CASE_TEXT}==='Vorgang $TAG'`, CASE_DONE)}
 ${finishOf(['S1', 'S2', 'S3'])}`;
     const second = humans(follow, approve, async (page) => {
         await page.locator('#choices button.primary', { hasText: 'Testplan' }).waitFor({ timeout: 90000 });
-        verify('Decision names the changed expected result', await page.locator('.message', { hasText: 'Geändertes Ergebnis in S3' }).count() > 0);
+        verify('Decision names the changed expected result', await history(page, 'Geändertes Ergebnis in S3').count() > 0);
         await decide(page, 'Testplan übernehmen');
     });
     const code = await record(fake, [ID, ...opts], { interactive: true, containerCommand: ['bash', '-c', changed], onChatOpen: second.onChatOpen });
@@ -531,7 +533,9 @@ const newestRun = () => {
     const [latest] = readdirSync(dir).filter((name) => name.includes(ID) && !name.endsWith('demonstration')).sort().reverse();
     return { result: JSON.parse(readFileSync(join(dir, latest, 'result.json'), 'utf8')), report: readFileSync(join(dir, latest, 'report.md'), 'utf8'), dir: join(dir, latest) };
 };
-const card = (page, n) => page.locator('.message.advice').nth(n);
+// The advice card that waits in the panel; the history has one line per advice card shown.
+const card = (page) => page.locator('#card .message.advice');
+const adviceNo = (page, n, timeout) => page.locator('#hist [data-who=advice]').nth(n).waitFor({ state: 'attached', timeout });
 const withS4 = (step, check, retry = '') => {
     const text = `  - id: S4\n    name: ${step.name}\n    do: ""\n    expect: ${step.expect}\n${retry}    recording:\n      hash: ${stepHash(step)}\n      after: S3\n      recordedOn: dev\n      recordedAt: 2026-11-06T09:00:00.000Z\n      locale: de-DE\n      timezone: Europe/Berlin\n      actions: []\n      check: ${JSON.stringify(check)}\n`;
     const at = good.indexOf('knownMessages');
@@ -546,11 +550,11 @@ scenario('M', 'run without --explain: chat next to the application, no advice, n
     let dockerUsed = 0;
     const docker = { get label() { dockerUsed += 1; return 'spy'; } };
     const h = humans(async (page) => {
-        await page.locator('.message:is(.question,.result,.notice)', { hasText: 'S2 ist gescheitert' }).waitFor({ timeout: 60000 });
+        await inChat(page, 'S2 ist gescheitert', 60000);
         const box = async (name) => page.page().locator(`iframe[name="${name}"]`).boundingBox();
         const [a, c] = await Promise.all([box('caw-app'), box('caw-chat')]);
         verify('Application and chat side by side in the workbench', a !== null && c !== null && (c.x + c.width <= a.x + 8 || a.x + a.width <= c.x + 8), JSON.stringify({ a, c }));
-        verify('No advice card', await page.locator('.message.advice').count() === 0);
+        verify('No advice card', await page.locator('#hist [data-who=advice]').count() === 0);
         await shoot(page, 'side-by-side');
         await decide(page, 'Close');
     });
@@ -589,24 +593,24 @@ EOF
 $A advise --file /tmp/a.json > /tmp/answer.json; echo "ADVISE Exit=$?"; tr -d '\\n ' < /tmp/answer.json; echo`;
     const h = humans(async (page) => {
         await stateOf(page, 'reviewing');
-        verify('First card shows retry before and after', /Wiederholung/.test(await card(page, 0).textContent()) && /Second attempt/.test(await card(page, 0).textContent()));
+        verify('First card shows retry before and after', /Wiederholung/.test(await card(page).textContent()) && /Second attempt/.test(await card(page).textContent()));
         await shoot(page, 'advice-test');
         await decide(page, 'Übernehmen');
-        await card(page, 1).waitFor({ timeout: 30000 });
+        await adviceNo(page, 1, 30000);
         await decide(page, 'Verwerfen');
-        await card(page, 2).waitFor({ timeout: 30000 });
+        await adviceNo(page, 2, 30000);
         await decide(page, 'Übernehmen');
-        await card(page, 3).waitFor({ timeout: 30000 });
+        await adviceNo(page, 3, 30000);
         await decide(page, 'Übernehmen');
-        await card(page, 4).waitFor({ timeout: 30000 });
+        await adviceNo(page, 4, 30000);
         await page.context().grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
-        await card(page, 4).locator('button.copy').click();
+        await card(page).locator('button.copy').click();
         await page.waitForTimeout(300);
-        const copied = await card(page, 4).locator('button.copy').textContent();
+        const copied = await card(page).locator('button.copy').textContent();
         verify('Copy reports back', /Kopiert|Markiert/.test(copied), copied);
         await shoot(page, 'advice-app');
         await decide(page, 'Weiter');
-        await page.locator('.message:is(.question,.result,.notice)', { hasText: 'S2 ist gescheitert' }).waitFor({ timeout: 60000 });
+        await inChat(page, 'S2 ist gescheitert', 60000);
         await decide(page, 'Close');
     });
     try {
@@ -639,12 +643,12 @@ echo '{"items":[{"about":"S4","side":"test","title":"More precise result","evide
 $A advise --file /tmp/a.json; echo "ADVISE Exit=$?"`;
     const h = humans(async (page) => {
         await stateOf(page, 'reviewing');
-        verify('Card shows before and after', /Fremder Fehler stoert nicht/.test(await card(page, 0).textContent()) && /nur als Warnung/.test(await card(page, 0).textContent()));
+        verify('Card shows before and after', /Fremder Fehler stoert nicht/.test(await card(page).textContent()) && /nur als Warnung/.test(await card(page).textContent()));
         await decide(page, 'Übernehmen');
-        await page.locator('.message:is(.question,.result,.notice)', { hasText: 'neu aufnehmen' }).waitFor({ timeout: 30000 });
+        await inChat(page, 'neu aufnehmen', 30000);
         verify('Neu aufnehmen is the primary button', (await page.locator('#choices button.primary').textContent()) === 'Neu aufnehmen');
         await decide(page, 'Close');
-        await page.locator('.message:is(.question,.result,.notice)', { hasText: /hat bestanden|Lauf bestanden/ }).waitFor({ timeout: 30000 });
+        await inChat(page, /hat bestanden|Lauf bestanden/, 30000);
         await decide(page, 'Close');
     });
     try {
@@ -674,9 +678,9 @@ $A advise --file /tmp/a.json; echo "ADVISE Exit=$?"`;
         await stateOf(page, 'reviewing');
         await decide(page, 'Übernehmen');
         // note is part of the hash: the step is then stale and a fix is offered.
-        await page.locator('.message:is(.question,.result,.notice)', { hasText: 'neu aufnehmen' }).waitFor({ timeout: 60000 });
+        await inChat(page, 'neu aufnehmen', 60000);
         await decide(page, 'Close');
-        await page.locator('.message:is(.question,.result,.notice)', { hasText: 'Keine neue Aufzeichnung für' }).waitFor({ timeout: 60000 });
+        await inChat(page, 'Keine neue Aufzeichnung für', 60000);
         await decide(page, 'Close');
     });
     const code = await record(fake, [`${ID}@S3`, ...opts], { interactive: true, containerCommand: ['bash', '-c', repair], adviseCommand: ['bash', '-c', advice], onChatOpen: h.onChatOpen });
@@ -697,8 +701,8 @@ scenario('R', 'Passed run: chat from the start, progress, input blocked during t
         verify('Input blocked in the test run', !await page.locator('#form').isVisible());
         await shoot(page, 'test-run');
         await benchBack(page);
-        await page.locator('.message:is(.question,.result,.notice)', { hasText: /Der Lauf hat bestanden|Lauf bestanden/ }).waitFor({ timeout: 60000 });
-        verify('Progress with a single total', /S3 · \d+\/\d+ /.test(await page.locator('details.activity').last().textContent()) && !/\d+\/\d+\/\d+/.test(await page.locator('details.activity').last().textContent()));
+        await inChat(page, /Der Lauf hat bestanden|Lauf bestanden/, 60000);
+        verify('Progress with a single total', /S3 · \d+\/\d+ /.test(await page.locator('#hist details.activity').last().textContent()) && !/\d+\/\d+\/\d+/.test(await page.locator('#hist details.activity').last().textContent()));
         await stateOf(page, 'developing');
         verify('After open: developing with open input', await page.locator('#form').isVisible());
         process.emit('SIGINT');
@@ -718,7 +722,7 @@ scenario('3', 'English UI: workbench, chat, steps and result in English', async 
             verify('Chat in English', (await page.locator('#status').textContent()).includes('Test run without Claude Code') && await page.evaluate(() => document.documentElement.lang) === 'en');
             verify('Workbench in English', await bench.evaluate(() => document.documentElement.lang) === 'en' && (await bench.locator('#steps > li[data-id=prep] .head .name').textContent()).includes('Preparation'));
             await benchBack(page);
-            await page.locator('.message:is(.question,.result,.notice)', { hasText: /The run passed|Run passed/ }).waitFor({ timeout: 60000 });
+            await inChat(page, /The run passed|Run passed/, 60000);
             await stateOf(page, 'developing');
             const german = await bench.evaluate(() => /[äöüß]|\b(und|nicht|Schritt|Lauf)\b/i.test(document.querySelector('header')?.innerText ?? ''));
             verify('Header without German', !german);
@@ -751,20 +755,20 @@ $A chat > /tmp/c2.json; echo "END=$(grep -c ended /tmp/c2.json)"`;
         await shoot(page, 'clarify');
         await page.locator('#input').fill('Why?');
         await page.keyboard.press('Enter');
-        await page.locator('.message', { hasText: 'das kostet Token' }).first().waitFor({ timeout: 30000 });
+        await inChat(page, 'das kostet Token', 30000);
         gate = (await page.locator('#choices button:not(#choicesMore)').allTextContents()).join('|');
         await shoot(page, 'token-notice');
         await decide(page, 'Ohne Claude Code weiter');
         await stateOf(page, 'discussing');
         await page.locator('#input').fill('Why?');
         await page.keyboard.press('Enter');
-        await page.locator('.message', { hasText: 'das kostet Token' }).nth(1).waitFor({ timeout: 30000 });
+        await page.locator('#hist [data-who=tokens]').nth(1).waitFor({ state: 'attached', timeout: 30000 });
         await decide(page, 'Nicht mehr fragen');
-        await page.locator('.message.claude', { hasText: 'The Senden button is missing, MODE=1' }).waitFor({ timeout: 90000 });
+        await page.locator('#thread .message.claude', { hasText: 'The Senden button is missing, MODE=1' }).waitFor({ timeout: 90000 });
         await stateOf(page, 'discussing');
         await page.locator('#input').fill('And now?');
         await page.keyboard.press('Enter');
-        await page.locator('.message.claude', { hasText: 'Second message: And now' }).waitFor({ timeout: 60000 });
+        await page.locator('#thread .message.claude', { hasText: 'Second message: And now' }).waitFor({ timeout: 60000 });
         await decide(page, 'Close');
     });
     // The real sandbox-run writes the log itself; the script replaces it and writes where the chat reads along.
@@ -794,8 +798,8 @@ $A check S3 "${CASE_DONE} && ${CASE_TEXT}==='$NR'"
 ${finishOf(['S3'])}`;
     const saved = hitCount('Speichern');
     const h = humans(async (page) => {
-        await page.locator('.message:is(.question,.result,.notice)', { hasText: 'S3 ist gescheitert' }).waitFor({ timeout: 60000 });
-        verify('Offer: in the same browser', /im selben Browser, ohne die Schritte davor/.test(await page.locator('.message:is(.question,.result,.notice)').last().textContent()));
+        await inChat(page, 'S3 ist gescheitert', 60000);
+        verify('Offer: in the same browser', /im selben Browser, ohne die Schritte davor/.test(await cardOf(page).textContent()));
         await decide(page, 'Schritt beheben');
         // Unchanged plan: no approval needed.
     }, async (page) => {
@@ -933,14 +937,14 @@ $A say "APP=$(grep -c '"side": "app"' /tmp/t.json) EVIDENCE=$(grep -c '"evidence
 $A chat > /dev/null`;
     const h = humans(async (page) => {
         await stateOf(page, 'discussing');
-        const text = await page.locator('.message:is(.question,.result,.notice)').last().textContent();
+        const text = await cardOf(page).textContent();
         verify('Chat: assessment application, clear', /Einschätzung: Fehler der Anwendung \(eindeutig\)/.test(text), text);
         verify('Chat: finding with duration and recording', /HTTP-X-Preise wurde nach \d+ ms abgebrochen, ohne Seitenwechsel, bei der Aufnahme 200/.test(text));
         verify('Chat: warning, Schritt beheben not the primary button', /nur verdecken/.test(text) && await page.locator('#choices button.primary', { hasText: 'Schritt beheben' }).count() === 0 && await page.locator('#choices button', { hasText: 'Schritt beheben' }).count() === 1);
         await shoot(page, 'assessment');
         await page.locator('#input').fill('What causes it?');
         await page.keyboard.press('Enter');
-        const said = page.locator('.message.claude', { hasText: 'APP=' });
+        const said = page.locator('#thread .message.claude', { hasText: 'APP=' });
         await said.waitFor({ timeout: 90000 });
         verify('Claude sees assessment, evidence and network', /APP=[1-9]\d* EVIDENCE=[1-9]\d* ABORTED=[1-9]\d* NAME=[1-9]/.test(await said.textContent()), await said.textContent());
         await decide(page, 'Close');
@@ -979,8 +983,8 @@ echo '{"expectations":[{"id":"S4","status":"fail","note":"Application error","ev
         await stateOf(page, 'discussing');
         await decide(page, 'Schritt beheben');
     }, async (page) => {
-        await card(page, 0).waitFor({ timeout: 120000 });
-        const text = await card(page, 0).textContent();
+        await adviceNo(page, 0, 120000);
+        const text = await card(page).textContent();
         verify('Card: file with line, diff, evidence', /prices\.js:5/.test(text) && /controller\.abort\(\), 1\)/.test(text) && /40000/.test(text) && /aborted after 1 ms/.test(text), text);
         verify('Card: Änderung übernehmen is the primary button', (await page.locator('#choices button.primary').textContent()) === 'Änderung übernehmen');
         verify('Nothing written yet', readFileSync(appFile, 'utf8').includes('abort(), 1);'));
@@ -1070,23 +1074,23 @@ ${finishOf(['S1'])}
         verify('Describe: own status and placeholder', /Klicks werden nicht aufgenommen/.test(await page.locator('#status').textContent().catch(() => '')) || /Was soll der Test tun/.test(await page.locator('#input').getAttribute('placeholder')));
         // Handing over without a word is refused: there is nothing to build a plan from.
         await page.locator('#toggle').click();
-        await page.locator('.message', { hasText: 'Noch nichts beschrieben' }).waitFor({ timeout: 30000 });
+        await inChat(page, 'Noch nichts beschrieben', 30000);
         await stateOf(page, 'describing');
         await page.locator('#input').fill('Klicke Weiter, dann muss das Ziel erscheinen.');
         await page.keyboard.press('Enter');
         // Every note is confirmed with the number the approval card will show, and the way on.
         // A progress line: in the activity list of the chat, not a message of its own.
-        const noted = await page.locator('details.activity li', { hasText: 'H1 notiert' }).textContent({ timeout: 30000 }).catch(() => '');
+        const noted = await page.locator('#hist details.activity li', { hasText: 'H1 notiert' }).textContent({ timeout: 30000 }).catch(() => '');
         verify('A note is confirmed with its number, page and the hand-over button', /^.*H1 notiert \(Seite \/.*\)\. Beschreib weiter oder „An Claude Code übergeben“\./.test(noted), noted);
         // A click while describing is not recorded; the next note carries the page it was written on.
         await app.locator('#weiter').click();
         await page.locator('#input').fill('Die Fachdaten laden langsam, hier oefter warten.');
         await page.keyboard.press('Enter');
-        await page.locator('details.activity li', { hasText: 'H2 notiert' }).waitFor({ state: 'attached', timeout: 30000 });
+        await page.locator('#hist details.activity li', { hasText: 'H2 notiert' }).waitFor({ state: 'attached', timeout: 30000 });
         await page.locator('#toggle').click();
     }, async (page) => {
         await stateOf(page, 'planning');
-        const planCard = page.locator('.message.plan').last();
+        const planCard = page.locator('#card .message.plan');
         verify('Card: the human words with what became of them', /nur für diese Aufnahme/.test(await planCard.locator(':scope > div.heard').textContent()) && /oefter warten." → als Hinweis an diesem Schritt/.test(await planCard.locator('.step .heard').textContent()));
         await page.locator('#approve').click();
     }, async (page) => {
@@ -1137,7 +1141,7 @@ ${finishOf(['S2'])}`;
     const appFrame = (bench) => bench.frames().find((frame) => frame.name() === 'caw-app');
     const h = humans(async (chat) => {
         const bench = workbenchOf(chat);
-        await chat.locator('.message:is(.question,.result,.notice)', { hasText: 'S2 ist gescheitert' }).waitFor({ timeout: 60000 });
+        await inChat(chat, 'S2 ist gescheitert', 60000);
         const app = appFrame(bench);
         verify('Workbench at the address of the application', new URL(bench.url()).origin === new URL(app.url()).origin && bench.url() === app.url(), `${bench.url()} ${app.url()}`);
         // As in the portal: the application accesses the top window and finds its own globals there.
@@ -1201,7 +1205,7 @@ scenario('2', 'Developing in a state: crosshair to Claude Code, reload without s
     rmSync(selection, { force: true });
     rmSync(prefs, { force: true });
     quietTokens();
-    const restored = (frame) => frame.locator('.message', { hasText: 'ist neu hergestellt' }).count();
+    const restored = (frame) => history(frame, 'ist neu hergestellt').count();
     const appOf = (bench) => bench.frames().find((frame) => frame.name() === 'caw-app');
     const h = humans(async (chat) => {
         const bench = chat.page();
@@ -1219,7 +1223,7 @@ scenario('2', 'Developing in a state: crosshair to Claude Code, reload without s
         await bench.waitForTimeout(500);
         await appOf(bench).locator('#ziel').click();
         await chat.locator('#chip.on').waitFor({ timeout: 20000 });
-        await chat.locator('.message', { hasText: '" hängt an deiner nächsten Frage hier im Chat' }).waitFor({ timeout: 20000 });
+        await inChat(chat, '" hängt an deiner nächsten Frage hier im Chat', 20000);
         const picked = existsSync(selection) ? JSON.parse(readFileSync(selection, 'utf8')) : null;
         verify('Selection for the session', picked?.test === ID && picked?.until === 'S2' && picked?.entry === 'S3' && typeof picked?.element?.label === 'string', JSON.stringify(picked)?.slice(0, 200));
         // Requests and console: opened from the count in the status line, closed again via the drawer's button.
@@ -1227,20 +1231,20 @@ scenario('2', 'Developing in a state: crosshair to Claude Code, reload without s
         const opened = await bench.locator('#drawer.open').count();
         await bench.locator('#drawerClose').click();
         verify('Drawer collapsed via its button', opened === 1 && await bench.locator('#drawer.open').count() === 0);
-        // Collapse steps and chat and expand them again, remembered in the settings.
-        await bench.locator('#chatFold').click();
-        await bench.locator('#stepsFold').click();
+        // Fold the panel and hide the steps (Schritte at the top left), and back, remembered in the settings.
+        if (await bench.locator('#stepsCard').isVisible()) await bench.locator('#stepsToggle').click();
+        await bench.locator('#chatFold').click({ force: true });
         await bench.waitForTimeout(400);
-        verify('Collapsed and remembered', await bench.locator('#chatStrip').isVisible() && await bench.locator('#stepsStrip').isVisible() && pref().chat === 'closed' && pref().steps === 'closed', JSON.stringify(pref()));
+        verify('Collapsed and remembered', await bench.locator('#chatStrip').isVisible() && !(await bench.locator('#stepsCard').isVisible()) && pref().chat === 'closed' && pref().steps === 'closed', JSON.stringify(pref()));
         await shoot(chat, 'collapsed');
         await bench.locator('#chatStrip').click();
-        await bench.locator('#stepsStrip').click();
+        await bench.locator('#stepsToggle').click();
         await bench.waitForTimeout(400);
         verify('Expanded again', await bench.locator('#chat').isVisible() && await bench.locator('#steps').isVisible() && pref().chat === 'open' && pref().steps === 'open', JSON.stringify(pref()));
         // F5 in the application: only the page reloads, chat and steps stay. After the handover reloading is part of the work:
         // no "left" note, no greyed-out steps, no chat message.
         const PICKED = '" hängt an deiner nächsten Frage hier im Chat';
-        const messages = await chat.locator('.message').count();
+        const messages = await history(chat).count();
         await appOf(bench).evaluate(() => { window.__cawBeforeReload = true; });
         await appOf(bench).locator('body').press('F5');
         const reloaded = Date.now() + 30000;
@@ -1249,22 +1253,22 @@ scenario('2', 'Developing in a state: crosshair to Claude Code, reload without s
         await bench.waitForTimeout(800);
         const states = await bench.locator('#steps > li[data-kind=step]').evaluateAll((items) => items.map((item) => item.dataset.state));
         const pageNew = await appOf(bench).evaluate(() => window.__cawBeforeReload === undefined);
-        verify('F5: page reloaded, workbench stays, no left marker, no message', pageNew && await chat.locator('.message', { hasText: PICKED }).count() === 1 && await chat.locator('.message').count() === messages && states[1] === 'pass' && await restored(chat) === 0 && await bench.locator('body.left-state').count() === 0 && !await bench.locator('#leftNote').isVisible(), JSON.stringify(states));
+        verify('F5: page reloaded, workbench stays, no left marker, no message', pageNew && await history(chat, PICKED).count() === 1 && await history(chat).count() === messages && states[1] === 'pass' && await restored(chat) === 0 && await bench.locator('body.left-state').count() === 0 && !await bench.locator('#leftNote').isVisible(), JSON.stringify(states));
         // Restore the state.
         await decide(chat, 'Neu öffnen');
         // While the state is restored the test runs again: reloading is locked as in a run, and free again afterwards.
         const locked = await bench.locator('#reload:disabled').waitFor({ state: 'attached', timeout: 10000 }).then(() => true, () => false);
-        await chat.locator('.message', { hasText: 'ist neu hergestellt' }).first().waitFor({ timeout: 60000 });
+        await inChat(chat, 'ist neu hergestellt', 60000);
         await bench.waitForTimeout(1500);
         verify('F5 locked while restoring, free again afterwards', locked && await bench.locator('#reload').isEnabled());
         verify('State restored', (await appOf(bench).locator('#ziel').textContent()) === 'Ziel erreicht' && await bench.locator('body.left-state').count() === 0);
         // Reload the whole workbench via the browser: chat history and steps come back, quietly as with F5.
         await bench.reload();
         const fresh = bench.frame({ name: 'caw-chat' });
-        await fresh.locator('.message', { hasText: PICKED }).waitFor({ timeout: 30000 });
+        await inChat(fresh, PICKED, 30000);
         await stateOf(fresh, 'developing');
         const back = await bench.locator('#steps > li[data-kind=step]').evaluateAll((items) => items.map((item) => item.dataset.state));
-        verify('Workbench reloaded: history and steps are back', await fresh.locator('.message', { hasText: PICKED }).count() === 1 && back.length === 3 && back[1] === 'pass' && await bench.locator('body.left-state').count() === 0, JSON.stringify(back));
+        verify('Workbench reloaded: history and steps are back', await history(fresh, PICKED).count() === 1 && back.length === 3 && back[1] === 'pass' && await bench.locator('body.left-state').count() === 0, JSON.stringify(back));
         await decide(fresh, 'Neu öffnen');
         const deadline = Date.now() + 60000;
         while (await restored(fresh) < 2 && Date.now() < deadline) await bench.waitForTimeout(300);

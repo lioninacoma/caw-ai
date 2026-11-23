@@ -9,8 +9,8 @@ import { setStepDesign, stepHash } from '../../src/host/test-file.mjs';
 import { sessionMcpHandler } from '../../src/host/session-mcp.mjs';
 import { liveListeners, unregisterListener } from '../../src/shared/attach.mjs';
 import {
-    appOf, benchBack, clickChoice, decide, endAction, finishOf, here, humans, lastDemonstration, loadTest, newestRunOf, open, parseTest, patchJson, planOf, print, record, reproduce, run,
-    runDirsOf, showMyself, slash, sleep, startServer, stateOf, tag, verify, writeTest,
+    appOf, benchBack, cardOf, clickChoice, decide, endAction, entries, finishOf, here, humans, lastDemonstration, loadTest, newestRunOf, open, parseTest, patchJson, planOf, print, record, reproduce, run,
+    history, inChat, runDirsOf, showMyself, slash, sleep, startServer, stateOf, tag, verify, writeTest,
 } from '../harness.mjs';
 
 const native = join(here, 'native');
@@ -83,7 +83,7 @@ const followAndAdopt = async (page) => {
         }
         // The check run after the recording failed: nothing to adopt, the scenario's checks report it.
         const close = page.locator('#choices button', { hasText: /Ohne Beheben beenden|Lauf beenden/ });
-        if (await page.locator('.message:is(.question,.result,.notice)', { hasText: /ist gescheitert|[Kk]eine (neue )?Aufzeichnung/ }).count().catch(() => 0) > 0 && await close.count().catch(() => 0) > 0) {
+        if (await entries(page, /ist gescheitert|[Kk]eine (neue )?Aufzeichnung/).count().catch(() => 0) > 0 && await close.count().catch(() => 0) > 0) {
             await clickChoice(page, close);
             return;
         }
@@ -262,9 +262,9 @@ scenario('N4', 'open <test>@S3: the steps before run, S3 does not; F1 "Öffnen�
         verify('F1 explains the entry', /bis zum Einstieg in S2/.test(await bench.locator('#sfoot').textContent()));
         await bench.locator('#sgo').click();
         // The chat asks before it replaces the state.
-        await chat.locator('.message:is(.question,.result,.notice)', { hasText: 'bis zum Einstieg in S2 öffnen?' }).waitFor({ timeout: 30000 });
+        await inChat(chat, 'bis zum Einstieg in S2 öffnen?', 30000);
         await decide(chat, 'S2 öffnen');
-        await chat.locator('.message', { hasText: 'Einstieg in n9-shadow S2 ist neu hergestellt' }).waitFor({ timeout: 60000 });
+        await inChat(chat, 'Einstieg in n9-shadow S2 ist neu hergestellt', 60000);
         const shadow = await appOf(bench).evaluate(() => `${document.querySelector('caw-rating').shadowRoot.querySelector('[role=status]').textContent}|${document.getElementById('status').textContent}`);
         verify('Other test at its entry: S1 ran, S2 did not', shadow === 'Thanks: Good|', shadow);
         await decide(chat, 'Beenden');
@@ -806,8 +806,8 @@ scenario('N11', 'Failures: renamed (similar name), covered (diagnosis with the m
     let dockerUsed = 0;
     const docker = { get label() { dockerUsed += 1; return 'spy'; } };
     const h = humans(async (page) => {
-        await page.locator('.message:is(.question,.result,.notice)', { hasText: 'S1 ist gescheitert' }).waitFor({ timeout: 60000 });
-        const text = await page.locator('.message:is(.question,.result,.notice)').last().textContent();
+        await inChat(page, 'S1 ist gescheitert', 60000);
+        const text = await cardOf(page).textContent();
         verify('Chat: the failed step with its locator label and the similar name', /button "Archive"/.test(text) && /Archive all/.test(text), text.slice(0, 400));
         verify('Repair offered', await page.locator('#choices button', { hasText: 'Schritt beheben' }).count() === 1);
         await decide(page, 'Close');
@@ -1045,7 +1045,7 @@ scenario('N16', 'Locator repair: learned effect, rename, run proposes "Archive a
         const h = humans(async (page) => {
             const use = page.locator('#choices button', { hasText: '„Archive all“ verwenden' });
             await use.waitFor({ state: 'attached', timeout: 90000 });
-            const text = await page.locator('.message:is(.question,.result,.notice)').last().textContent();
+            const text = await cardOf(page).textContent();
             verify('Chat: the failure names the proposal', /S1 ist gescheitert/.test(text) && /stattdessen button "Archive all" vor/.test(text), text.slice(0, 500));
             await clickChoice(page, use);
         }, async () => {});
@@ -1118,7 +1118,7 @@ const reproduceHeadless = async () => {
     verify('(1) reproduced: exit 0, the draft in caw/drafts', reproduced === 0 && id === FIX_ID && existsSync(join(fixRoot, repro.draft.file)), `${reproduced} ${JSON.stringify(repro?.draft)}`);
     return id;
 };
-const findCard = (chat, text) => chat.locator('.message:is(.question,.result,.notice,.decision)', { hasText: text }).waitFor({ timeout: 120000 });
+const findCard = (chat, text) => inChat(chat, text, 120000);
 /** The check run of the recording: S2 fails as expected, caw saves the draft with its proof, the bug is captured in a test. */
 const adoptRed = async (chat) => {
     await findCard(chat, 'S2 scheitert wie erwartet: der Test fängt den Fehler');
@@ -1274,7 +1274,7 @@ $A advise --file /tmp/a.json; echo "ADVISE Exit=$?"`;
             await switchBug(false);
             await decide(chat, /beheben lassen/);
             await findCard(chat, 'Übernommen: Summe aus den Preisen');
-            const listed = await chat.locator('.message.notice', { hasText: 'Übernommen: Summe aus den Preisen' }).last().textContent();
+            const listed = await history(chat, 'Übernommen: Summe aus den Preisen').last().textContent();
             verify('(2) the applied change is listed with its file, no card to apply it', /src\/total\.mjs/.test(listed) && await chat.locator('#choices button', { hasText: 'Änderung übernehmen' }).count() === 0, listed);
             verify('(2) the advice task carried the red step (task.fix)', /task\.fix: S2 Die Summe zeigt Total: 5\./.test(listed), listed);
             // Applied, caw tests again on its own: the window closes for the new run without another click.
@@ -1384,7 +1384,7 @@ scenario('N17', 'Visual layer: step screenshots, learned look by style lines cha
         const h = humans(async (page) => {
             const adopt = page.locator('#choices button', { hasText: 'Neuen Look übernehmen' });
             await adopt.waitFor({ state: 'attached', timeout: 90000 });
-            const text = await page.locator('.message:is(.question,.result,.notice)').last().textContent();
+            const text = await cardOf(page).textContent();
             verify('Chat: the look changed, a bold button more, the card names S1 and S2', /sieht anders aus als gelernt/.test(text)
                 && /1 button mehr mit .*font-weight 700/.test(text) && /Aussehen von S1, S2 weicht/.test(text), text.slice(0, 700));
             await clickChoice(page, adopt);
@@ -1486,7 +1486,7 @@ ${finishOf(['S1', 'S2'])}`;
             verify('the card explains it: no server data or lists, caw cannot be sure', /keine Daten vom Server und keine Listen/.test(explained) && /Sicher ist das nicht/.test(explained), explained);
             await chat.getByRole('checkbox', { name: 'S2 Formular' }).check();
             await clickChoice(chat, adopt);
-            await chat.locator('.message', { hasText: 'look: true bei S2' }).waitFor({ timeout: 30000 });
+            await inChat(chat, 'look: true bei S2', 30000);
         };
         // Windows: follow the test plan, the recording (approve the plan), the check run with the card.
         const h = humans(followAndAdopt, followAndAdopt, checkRun);
@@ -1598,7 +1598,7 @@ ${finishOf(['S1'])}`;
             verify('recording.adopt: adopting is human (the plan is not the file\'s), discarding free', waiting.options.find(({ id: option }) => option === 'adopt')?.gate === 'human' && waiting.options.find(({ id: option }) => option === 'discard')?.gate === 'free', JSON.stringify(waiting.options));
             const answered = await tool('caw_decide', { decision: 'recording.adopt', option: 'discard' });
             verify('caw_decide discard: answered by the session', answered.structuredContent.state === 'answered' && answered.structuredContent.by === 'session', JSON.stringify(answered.structuredContent));
-            await chat.locator('.message', { hasText: 'von der Session beantwortet' }).waitFor({ timeout: 30000 });
+            await inChat(chat, 'von der Session', 30000);
         };
         const h = humans(follow, plan, checkRun);
         await record(native, [DECIDE, ...recordArgs], { interactive: true, containerCommand: ['bash', '-c', agent], onChatOpen: h.onChatOpen });

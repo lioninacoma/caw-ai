@@ -13,7 +13,7 @@ import {
     ACTION_ENVIRONMENTS, APP_TOTP, AUTH_ENVIRONMENTS, ENVIRONMENTS, ENV_FILE, LIFECYCLE_ENVIRONMENTS, LIFECYCLE_PORTS, NETWORK_ENVIRONMENTS, SPA_PORT, baseConfig, makeStale, removeActionTests, removeLifecycleTests, removeNetworkTests,
     writeNetworkTests, writeProject, writeSpaTest,
 } from '../spa/project.mjs';
-import { benchBack, decide, endAction, here, humans, loadTest, newestRunOf, stateOf, open as openCommand, print, quietTokens, record as recordCommand, run, runDirsOf, startServer, verify } from '../harness.mjs';
+import { benchBack, decide, inChat, endAction, here, humans, loadTest, newestRunOf, stateOf, open as openCommand, print, quietTokens, record as recordCommand, run, runDirsOf, startServer, verify } from '../harness.mjs';
 import { composeStack, exec, httpAlias, installPacked, mcpClient, packTarball, preflightPorts } from '../infra.mjs';
 
 const spaDir = join(here, 'spa');
@@ -581,7 +581,7 @@ scenario('S3', 'Baselines are learned by every run outside CI: in the window wit
     const before = files('see-tickets');
     const plain = withoutLearned('see-tickets');
     const watcher = humans(async (chat) => {
-        await chat.locator('.message.notice', { hasText: 'Baselines saved for steps' }).waitFor({ timeout: 90000 });
+        await inChat(chat, 'Baselines saved for steps', 90000);
         verify('(1) the chat says which steps get baselines', true);
         await endAction(chat, 'closeWindow', { timeout: 30000 });
     });
@@ -847,7 +847,7 @@ scenario('U6', 'Viewport: headless replay uses the recorded 600×800 and takes t
         // The spa project's team language is English.
         await decide(chat, 'Open again');
         sizes.push(['open again', await bench.locator('#appBox.pinned').waitFor({ state: 'attached', timeout: 30000 }).then(() => 1, () => 0)]);
-        await chat.locator('.message', { hasText: /restored \(runTag/ }).first().waitFor({ timeout: 90000 });
+        await inChat(chat, /restored \(runTag/, 90000);
         sizes.push(['restored', await pinned(bench)]);
         await decide(chat, 'End run');
     });
@@ -1169,10 +1169,10 @@ scenario('S2c', 'open --attach: waits in header and chat, links after the handov
         seen.workbench = await bench.locator('body:not(.solo)').count();
         // (1) Nobody listens yet: the header and the chat say whom the window waits for.
         seen.waitingFact = await bench.locator('#facts li', { hasText: 'Waiting for' }).waitFor({ timeout: 30000 }).then(() => true, () => false);
-        seen.waitingLine = await chat.locator('.message', { hasText: 'type /caw-attach' }).first().waitFor({ timeout: 10000 }).then(() => true, () => false);
+        seen.waitingLine = await inChat(chat, 'type /caw-attach', 10000).then(() => true, () => false);
         // (2) The session attaches: the window connects by itself.
         seen.key = (await tools.caw_attach.call({})).data?.key;
-        seen.connected = await chat.locator('.message', { hasText: `connected (session ${seen.key})` }).first().waitFor({ timeout: 30000 }).then(() => true, () => false);
+        seen.connected = await inChat(chat, `connected (session ${seen.key})`, 30000).then(() => true, () => false);
         seen.connectedFact = await bench.locator('#facts li', { hasText: seen.key }).waitFor({ timeout: 10000 }).then(() => true, () => false);
         // (3) It reads its task: no "working" without a question. Its chat returns at once.
         let status = await tools.caw_status.call({ wait: 60 });

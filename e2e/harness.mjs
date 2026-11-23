@@ -121,6 +121,18 @@ export const endAction = async (page, id, { timeout = 90000 } = {}) => {
     if (!(await button.isVisible()) && await page.locator('#nextMore').isVisible()) await page.locator('#nextMore').click({ timeout: 10000 });
     await button.click({ timeout: 10000 });
 };
+/**
+ * The chat's entries, optionally by their text: in the panel the card that waits, the conversation under it and the last lines
+ * while something runs; and the history (Verlauf), a closed drawer with every entry of the window once, the cards there as one
+ * line. Attached is enough for the history.
+ */
+export const entries = (page, text) => page.locator('#card .message, #thread .message, #lines li, #hist > li', text === undefined ? {} : { hasText: text });
+/** The history's entries, optionally by their text: each entry once, earlier windows included. */
+export const history = (page, text) => page.locator('#hist > li', text === undefined ? {} : { hasText: text });
+/** Waits until an entry with this text is there, in the panel or in the history. */
+export const inChat = (page, text, timeout = 60000) => entries(page, text).first().waitFor({ state: 'attached', timeout });
+/** The card that waits in the panel. */
+export const cardOf = (page) => page.locator('#card .message');
 /** A slash command in the chat: "/" in the field opens the list, then the command by its id (pick for /element). */
 export const slash = async (page, id) => {
     await page.locator('#input').fill('/');
