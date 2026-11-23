@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 
 import { compareDetailed, createDesignJudge, renderDesign, structureOf, writeDesign } from '../src/host/design.mjs';
-import { assetsDirOf, snapshotName, snapshotOf, writeSnapshot } from '../src/host/design-snapshot.mjs';
+import { assetsDirOf, snapshotName, snapshotOf, withStylesFrom, writeSnapshot } from '../src/host/design-snapshot.mjs';
 import { launchChrome } from './chrome.mjs';
 
 let browser = null;
@@ -235,4 +235,19 @@ test('the judge measures the app once it settled: a colour still animating is no
         await context.close();
         await judge.close();
     }
+});
+
+test('stylesFrom: the draft\'s own stylesheets go, the snapshot\'s come in their order and relative to the draft', () => {
+    const snapshot = '<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="assets/order/sheet-1.css"><style>.x{background:url("assets/order/2-dot.png")}</style><style data-caw-snapshot="">*{animation-duration:0s}</style></head><body><main class="app"></main></body></html>';
+    const draft = '<!doctype html><html><head><title>Draft</title><link rel="stylesheet" href="https://fonts.example/css"><style>.app{color:red}</style></head><body><main class="app"><button class="btn" style="color:blue">Save</button></main></body></html>';
+    const same = withStylesFrom(draft, 'design/order-draft.html', snapshot, 'design/order.html');
+    assert.equal(same.removed, 2);
+    assert.equal(same.linked, 3);
+    assert.equal(same.styled, 1);
+    assert.doesNotMatch(same.html, /fonts\.example|color:red/);
+    assert.match(same.html, /<title>Draft<\/title><link rel="stylesheet" href="assets\/order\/sheet-1\.css">\n<style>\.x\{background:url\("assets\/order\/2-dot\.png"\)\}<\/style>/);
+    assert.match(same.html, /<button class="btn" style="color:blue">Save<\/button>/, 'markup, classes and style attributes stay');
+    const deeper = withStylesFrom(draft, 'design/drafts/order.html', snapshot, 'design/order.html');
+    assert.match(deeper.html, /href="\.\.\/assets\/order\/sheet-1\.css"/);
+    assert.match(deeper.html, /url\("\.\.\/assets\/order\/2-dot\.png"\)/);
 });

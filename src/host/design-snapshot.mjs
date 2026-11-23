@@ -307,3 +307,34 @@ export const writeSnapshot = (cawDir, file, { html, assets }) => {
     const written = writeDesignFile(cawDir, file, Buffer.from(html, 'utf8'), { html: true });
     return { file, bytes: written.bytes, assets: assets.length, assetBytes: assets.reduce((sum, { data }) => sum + data.length, 0), replaced: written.replaced };
 };
+
+// A stylesheet element of a page: <link rel=stylesheet …> or <style>…</style>.
+const SHEET = /<link\b[^>]*\brel\s*=\s*["']?stylesheet\b[^>]*>|<style\b[^>]*>[\s\S]*?<\/style\s*>/gi;
+const relativeUrl = (value) => value !== '' && !/^(?:[a-z][\w+.-]*:|\/|#)/i.test(value);
+
+/**
+ * A draft with the app's stylesheets instead of its own (caw_design put with stylesFrom): every <link rel=stylesheet> and
+ * <style> of the draft goes, the snapshot's stylesheet elements take their place in the draft's head, in their order, their
+ * addresses made relative to the draft. The markup, its classes and its style attributes stay as they are.
+ * @param draftFile    design/<name>.html of the draft
+ * @param snapshotFile design/<name>.html of the snapshot
+ * @returns { html, removed: own stylesheet elements, linked: the snapshot's, styled: elements with a style attribute }
+ */
+export const withStylesFrom = (draft, draftFile, snapshot, snapshotFile) => {
+    const from = posix.dirname(snapshotFile);
+    const to = posix.dirname(draftFile);
+    const move = (value) => (relativeUrl(value) ? posix.relative(to, posix.join(from, value)) : value);
+    const sheets = [...snapshot.matchAll(SHEET)].map(([element]) => (element.startsWith('<link')
+        ? element.replace(/\bhref\s*=\s*(["'])(.*?)\1/i, (_, quote, href) => `href=${quote}${move(href)}${quote}`)
+        : element.replace(/url\(\s*(["']?)([^"')]*)\1\s*\)/g, (whole, quote, value) => (relativeUrl(value) ? `url(${quote}${move(value)}${quote})` : whole))));
+    const removed = (draft.match(SHEET) ?? []).length;
+    const own = draft.replace(SHEET, '');
+    const block = `${sheets.join('\n')}\n`;
+    let html;
+    if (/<\/head\s*>/i.test(own)) html = own.replace(/<\/head\s*>/i, `${block}</head>`);
+    else if (/<head\b[^>]*>/i.test(own)) html = own.replace(/<head\b[^>]*>/i, (head) => `${head}\n${block}`);
+    else if (/<html\b[^>]*>/i.test(own)) html = own.replace(/<html\b[^>]*>/i, (start) => `${start}<head>\n${block}</head>`);
+    else html = `<head>\n${block}</head>\n${own}`;
+    const styled = (own.match(/<[a-z][^>]*\sstyle\s*=/gi) ?? []).length;
+    return { html, removed, linked: sheets.length, styled };
+};

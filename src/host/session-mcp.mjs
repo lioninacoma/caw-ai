@@ -767,9 +767,10 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             + 'and write it here; never write into caw/ with your own tools. {action: "snapshot", test, step, file?, env?}: plays the test '
             + 'headless to the entry of the step (only reads the app) and writes the screen as design/<name>.html (default <test>-<step>) '
             + 'with the app\'s own stylesheets, fonts and images under design/assets/<name>/: the starting point for a draft in the app\'s '
-            + 'style (add only what is new, with the app\'s classes). {action: "put", file, content}: writes '
+            + 'style (add only what is new, with the app\'s classes). {action: "put", file, content, stylesFrom?}: writes '
             + 'design/<name>.html (one screen; rendered later without scripts or network; files it links relatively are served from '
-            + 'caw/design). Replacing a design a step links needs personAsked: true, like link (also for snapshot). '
+            + 'caw/design). stylesFrom: "design/<snapshot>.html" replaces the draft\'s own <style> and <link rel=stylesheet> with the '
+            + 'snapshot\'s, so it uses the app\'s CSS. Replacing a design a step links needs personAsked: true, like link (also for snapshot). '
             + '{action: "list"}: the design files and which steps link them '
             + '(or carry look: true, a learned look the person set by hand). '
             + '{action: "link", test, step, file | null, personAsked: true}: sets or removes design: on one step of caw/tests/<test>.yaml '
@@ -782,6 +783,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                 action: { type: 'string', enum: ['snapshot', 'put', 'list', 'link'] },
                 file: { type: ['string', 'null'], description: 'Relative to the caw folder, e.g. design/order-form.html' },
                 content: { type: 'string', description: 'put: the text of an .html file' },
+                stylesFrom: { type: 'string', description: 'put: a snapshot, e.g. design/order-S3.html, whose stylesheets replace the draft\'s own' },
                 test: { type: 'string', description: 'link, snapshot: the test id' },
                 step: { type: 'string', description: 'link, snapshot: the step id, e.g. S3' },
                 env: { type: 'string', description: 'snapshot: the environment, if the test runs on more than one' },
@@ -824,10 +826,21 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             if (input.action === 'put') {
                 if (typeof input.content !== 'string') throw new Error(t('run.mcp.designContent'));
                 if (design.designKind(input.file) === null) throw new Error(t('run.mcp.designName'));
-                const content = input.content;
+                let content = input.content;
+                let styles;
+                if (input.stylesFrom !== undefined) {
+                    const from = typeof input.stylesFrom === 'string' ? design.designPath(cawDir, input.stylesFrom) : null;
+                    if (from === null) throw new Error(t('run.mcp.designMissing', { file: String(input.stylesFrom) }));
+                    const { withStylesFrom } = await import('./design-snapshot.mjs');
+                    const swapped = withStylesFrom(content, input.file, readFileSync(from, 'utf8'), input.stylesFrom);
+                    content = swapped.html;
+                    styles = { from: input.stylesFrom, removed: swapped.removed, linked: swapped.linked, styled: swapped.styled };
+                }
                 await askBeforeReplacing(input.file);
                 const written = design.writeDesign(cawDir, input.file, Buffer.from(content, 'utf8'));
-                return answer(t('run.mcp.designWritten', { file: `${PROJECT_DIR}/${written.file}` }), written);
+                const said = t('run.mcp.designWritten', { file: `${PROJECT_DIR}/${written.file}` });
+                if (styles === undefined) return answer(said, written);
+                return answer(`${said} ${t('run.mcp.designStylesFrom', { ...styles, from: `${PROJECT_DIR}/${styles.from}` })}`, { ...written, styles });
             }
             if (input.action === 'snapshot') {
                 for (const field of ['test', 'step']) textField(input, field);

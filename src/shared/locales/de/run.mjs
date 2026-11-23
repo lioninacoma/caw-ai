@@ -451,6 +451,7 @@ export default {
     'run.mcp.designSnapshotWritten': 'Snapshot geschrieben: {file}, {count} Dateien in {assets}. Entwurf davon ausgehend: Markup und Klassen behalten, nur Neues ergänzen.',
     'run.mcp.designSnapshotTimeout': 'Der Snapshot hat länger als {minutes} Minuten gedauert und wurde abgebrochen.',
     'run.mcp.designSnapshotFailed': 'caw design snapshot hat kein Ergebnis geliefert (Exit {code}):\n{output}',
+    'run.mcp.designStylesFrom': ({ removed, linked, from, styled }) => `Eigene Stylesheets (${removed}) ersetzt durch die ${linked} von ${from}.${styled > 0 ? ` ${styled} Elemente tragen ein style-Attribut: aus dem Markup des Snapshots ist das der Look der App, sonst eigenes CSS des Entwurfs.` : ''}`,
     'run.mcp.designName': 'file ist ein Pfad unter design/ relativ zum caw-Ordner, mit .html am Ende, etwa design/order-form.html.',
     'run.mcp.designContent': 'put nimmt content: den Text der .html-Datei.',
     'run.mcp.designEmpty': 'Die Datei ist leer.',

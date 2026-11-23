@@ -800,6 +800,24 @@ test('caw_design snapshot: runs caw design snapshot with --json, returns its res
     assert.match(failed.content[0].text, /Kein Snapshot/);
 });
 
+test('caw_design put with stylesFrom: the draft\'s own stylesheets are replaced by the snapshot\'s', async (t) => {
+    const root = project(t);
+    const { call } = session(root);
+    mkdirSync(join(root, 'caw', 'design', 'assets', 'bestellung-S2'), { recursive: true });
+    writeFileSync(join(root, 'caw', 'design', 'bestellung-S2.html'), '<!doctype html><html><head><link rel="stylesheet" href="assets/bestellung-S2/sheet-1.css"></head><body><main class="app"></main></body></html>');
+    const draft = '<!doctype html><html><head><style>.app{color:red}</style></head><body><main class="app"><button class="btn" style="color:blue">Bestellen</button></main></body></html>';
+    const put = await call('caw_design', { action: 'put', file: 'design/bestellung-neu.html', content: draft, stylesFrom: 'design/bestellung-S2.html' });
+    assert.equal(put.isError, false);
+    assert.match(put.content[0].text, /Eigene Stylesheets \(1\) ersetzt durch die 1 von caw\/design\/bestellung-S2\.html\. 1 Elemente tragen ein style-Attribut/);
+    const written = readFileSync(join(root, 'caw', 'design', 'bestellung-neu.html'), 'utf8');
+    assert.match(written, /<link rel="stylesheet" href="assets\/bestellung-S2\/sheet-1\.css">/);
+    assert.doesNotMatch(written, /color:red/);
+    assert.deepEqual(put.structuredContent.styles, { from: 'design/bestellung-S2.html', removed: 1, linked: 1, styled: 1 });
+    const missing = await call('caw_design', { action: 'put', file: 'design/x.html', content: draft, stylesFrom: 'design/fehlt.html' });
+    assert.equal(missing.isError, true);
+    assert.match(missing.content[0].text, /schreib sie erst mit put/);
+});
+
 test('a design draft for the session: caw_design links its step, caw_list and caw_status name origin, phase and next from draft over red to green', async (t) => {
     const root = project(t);
     const { call } = session(root);
