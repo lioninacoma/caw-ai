@@ -1,11 +1,13 @@
-// The workbench: one page for the whole run, in Graphite (style.mjs) and the personal mode (system, light or dark). Left the
-// steps with their marks, in the middle the application iframe with its address bar and a status line whose counts open
-// requests and console, right the chat. The chat is a document of its own (srcdoc); its page is the one from chat.mjs.
+// The workbench: one page for the whole run, in Graphite (style.mjs) and the personal mode (system, light or dark). In the
+// middle the application iframe with its address bar and a status line whose counts open requests and console, right the
+// panel "Now" (the chat, a document of its own (srcdoc); its page is the one from chat.mjs), which is the one place that says
+// what happens. The steps are hidden until the person shows them ("Steps" at the top left with their tally, F4, remembered in
+// the prefs) or a step fails; then a narrow list on the left with the top-level steps, a click unfolds a step's actions.
 // On a production or read-only environment the address bar carries its badge (shield or lock, as in the settings page).
 //
-// No toolbars: the header holds the product, the breadcrumb with the test and a badge with the run's mode, the run facts,
-// the status pill, the REC/PLAY/PAUSE chip and one ⋯ menu (also Ctrl+K) that lists every function with its key. Pane
-// titles collapse their pane (F4, F6). F8 shows only the application with one line back, F10 stops all animation, Ctrl+,
+// No toolbars: the header holds the steps toggle, the product, the breadcrumb with the test and a badge with the run's mode,
+// the run facts, the REC/PLAY/PAUSE chip and one ⋯ menu (also Ctrl+K) that lists every function with its key. F4 shows or
+// hides the steps, F6 folds the panel. F8 shows only the application with one line back, F10 stops all animation, Ctrl+,
 // opens the settings page, a view of the workbench (not a dialog) that changes only cosmetic prefs and shows the rest
 // read-only. The chat forwards these keys, and posts them for its slash commands (CHAT_KEYS).
 //
@@ -160,11 +162,12 @@ const compareView = () => {
 
 /**
  * The workbench page. `appUrl` loads the iframe; the host sets everything else via `window.workbench`.
- * @param prefs   personal settings: animations 'on' | 'off', steps and chat 'open' | 'closed', mode 'system' | 'light' | 'dark'
+ * @param prefs   personal settings: animations 'on' | 'off', steps and chat 'open' | 'closed' (the steps hidden unless 'open'),
+ *                mode 'system' | 'light' | 'dark'
  */
 export const workbenchHtml = ({ appUrl, title, prefs = {} }) => {
     const still = prefs.animations === 'off';
-    const classes = [still ? 'still' : '', prefs.steps === 'closed' ? 'fold-steps' : '', prefs.chat === 'closed' ? 'fold-chat' : ''].filter(Boolean).join(' ');
+    const classes = [still ? 'still' : '', prefs.steps === 'open' ? '' : 'fold-steps', prefs.chat === 'closed' ? 'fold-chat' : ''].filter(Boolean).join(' ');
     const refreshTitle = t('workbench.refreshTitle');
     const test = String(title ?? '').replace(/^caw\s*·?\s*/, '');
     const ctrl = t('workbench.page.keyCtrl');
@@ -178,7 +181,7 @@ export const workbenchHtml = ({ appUrl, title, prefs = {} }) => {
         const rest = attrs.replace(/ ?(class|role)="[^"]*"/g, '');
         return `<button type="button" class="pop-i${cls ? ` ${cls}` : ''}" role="${role}" tabindex="-1" ${rest}>${icon(glyph)}<span class="nm">${label}</span><kbd>${key}</kbd></button>`;
     }).join('');
-    const pane = (name, label, foldLabel, unfoldLabel, key, chevFold, chevUnfold, extra = '') => `<div class="pane-h"><h2 class="pane-t"><button type="button" class="pane-tb" id="${name}Title" aria-expanded="true" title="${esc(foldLabel)} (${key})">${esc(label)}</button></h2>${extra}<button class="fold ib" id="${name}Fold" type="button" aria-expanded="true" aria-label="${foldLabel}" title="${foldLabel} (${key})">${icon(chevFold)}</button></div><button class="strip" id="${name}Strip" type="button" aria-expanded="false" aria-label="${unfoldLabel}" title="${unfoldLabel} (${key})">${icon(chevUnfold)}${label}${name === 'steps' ? ' <span id="stripTally"></span>' : ''}</button>`;
+    const pane = (name, label, foldLabel, unfoldLabel, key, chevFold, chevUnfold, extra = '') => `<div class="pane-h"><h2 class="pane-t"><button type="button" class="pane-tb" id="${name}Title" aria-expanded="true" title="${esc(foldLabel)} (${key})">${esc(label)}</button></h2>${extra}<button class="fold ib" id="${name}Fold" type="button" aria-expanded="true" aria-label="${foldLabel}" title="${foldLabel} (${key})">${icon(chevFold)}</button></div><button class="strip" id="${name}Strip" type="button" aria-expanded="false" aria-label="${unfoldLabel}" title="${unfoldLabel} (${key})">${icon(chevUnfold)}${label}</button>`;
     return `<!doctype html><html lang="${language()}"${modeAttr(prefs.mode)}><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><script>${MODE_SCRIPT}</script>${FAVICON}<style>
 ${styleSheet()}
 [hidden]{display:none!important}
@@ -186,7 +189,7 @@ html,body{height:100%;margin:0}
 body{background:var(--bg)}
 .pa{height:100vh;display:flex}
 #bench{flex:1;min-width:0;display:flex;flex-direction:column}
-/* The header: product, breadcrumb with the run's title, facts, status pill, transport chip and the one menu. */
+/* The header: steps toggle, product, breadcrumb with the run's title, facts, transport chip and the one menu. */
 .top{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;min-height:48px;padding:0 16px;background:var(--nav);color:var(--nav-text);border-bottom:1px solid var(--nav-line)}
 .brand{flex:none;display:flex;align-items:center;gap:10px;color:var(--nav-text)}
 .brand .word{font:600 20px/1 var(--font);letter-spacing:-.04em}
@@ -197,7 +200,6 @@ body{background:var(--bg)}
 .top-r{margin-left:auto;display:flex;align-items:center;gap:10px;min-width:0}
 .facts{display:flex;gap:14px;margin:0;padding:0;list-style:none;font:400 11.5px/1 var(--font-mono);color:var(--nav-muted);white-space:nowrap;min-width:0;overflow:hidden}
 .facts li{overflow:hidden;text-overflow:ellipsis}
-#state{display:none}#state.on{display:inline-flex}
 #notice{font-size:12px;color:var(--warn)}
 #transport{display:none}#transport.on{display:inline-flex}
 #more[aria-expanded=true]{background:var(--panel2);color:var(--text)}
@@ -206,7 +208,7 @@ body{background:var(--bg)}
 #menu .pop-i:focus{outline:none;background:var(--accent-soft)}#menu .pop-i:focus .i{color:var(--accent-text)}
 #menu .pop-i[aria-checked=true] .i{color:var(--accent-text)}
 .panes{flex:1;min-height:0;display:grid;gap:0;
---col-steps:minmax(270px,288px);--col-chat:minmax(300px,372px);grid-template-columns:var(--col-steps) minmax(0,1fr) var(--col-chat);grid-template-rows:minmax(0,1fr);
+--col-steps:240px;--col-chat:minmax(320px,380px);grid-template-columns:var(--col-steps) minmax(0,1fr) var(--col-chat);grid-template-rows:minmax(0,1fr);
 grid-template-areas:"steps browser chat"}
 .win{position:relative;display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--panel)}
 .win+.win{border-left:1px solid var(--line)}
@@ -222,7 +224,14 @@ grid-template-areas:"steps browser chat"}
 .pa-chat{grid-area:chat}
 .strip{display:none;border:0;cursor:pointer;background:none;color:var(--muted);font:500 12px/1 var(--font);writing-mode:vertical-rl;padding:14px 0;align-items:center;gap:10px;width:100%;height:100%}
 .strip:hover{color:var(--text);background:var(--panel2)}
-#stripTally{font:400 11px/1 var(--font-mono);color:var(--faint)}
+/* The steps toggle at the top left: shown or hidden, with the tally (✓ all passed, ✗ one failed, ● one running). */
+.stoggle{flex:none;display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 10px;border:1px solid var(--line);border-radius:var(--r2);background:var(--panel);color:var(--text);font:500 13px/1 var(--font);cursor:pointer}
+.stoggle:hover{border-color:var(--line2)}.stoggle .i{width:14px;height:14px;color:var(--muted)}
+.stoggle[aria-expanded=true]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-text)}.stoggle[aria-expanded=true] .i{transform:rotate(180deg);color:inherit}
+#tally{font:500 12px/1 var(--font-mono);color:var(--muted)}#tally.pass{color:var(--pass)}#tally.fail{color:var(--fail)}#tally.run{color:var(--run)}
+.fold-steps .panes{--col-steps:0px}.fold-steps .pa-steps{display:none}
+/* The panel has no title bar of its own; it only shows one floating over the app (App only, Ctrl+J). */
+.pa-chat>.pane-h{display:none}
 .left-state #steps{opacity:.45}
 #leftNote{margin:10px 14px 0;padding:8px 10px;font-size:12.5px;line-height:1.45;color:var(--muted);background:var(--warn-soft);border-radius:var(--r1)}
 #leftNote strong{display:block;margin-bottom:3px;font-weight:600;color:var(--warn)}
@@ -230,7 +239,11 @@ grid-template-areas:"steps browser chat"}
 /* The step list: a quiet list. The list scrolls by itself with the current item, hence no scrollbar; the wheel still works. */
 #track{flex:1;min-height:0;overflow:auto;scrollbar-width:none;padding:0 0 10px}#track::-webkit-scrollbar{display:none}
 #steps,#steps .pts{list-style:none;margin:0;padding:0}
-#steps .head{position:relative;display:grid;grid-template-columns:18px auto minmax(0,1fr) auto;gap:9px;align-items:start;min-height:var(--row);padding:6px 14px 5px}
+#steps .head{position:relative;display:grid;grid-template-columns:18px auto minmax(0,1fr) auto;gap:9px;align-items:start;min-height:var(--row);padding:6px 12px 5px}
+/* A step's name unfolds its actions and check; a failed step is unfolded. */
+#steps .head>button.text{border:0;background:none;padding:0;font:inherit;color:inherit;text-align:left;cursor:pointer;min-width:0}
+#steps .head>button.text .name::after{content:" ›";color:var(--faint)}#steps>li.open>.head>button.text .name::after{content:" ⌄"}
+#steps>li:not(.open)>.pts,#steps>li:not(.open)>.note{display:none}
 #steps .head>.id,#steps .head>.ms{padding-top:4px}
 #steps .id{font:500 11px/1 var(--font-mono);color:var(--faint)}
 #steps .text{min-width:0}
@@ -289,8 +302,6 @@ grid-template-areas:"steps browser chat"}
 /* The application: address bar, the app's own look, the status line with the counts, the drawer. */
 .appbar{flex:none;display:flex;gap:10px;align-items:center;height:44px;padding:0 14px;white-space:nowrap;overflow:hidden;border-bottom:1px solid var(--line)}
 #url{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font:400 12px/1 var(--font-mono);color:var(--muted)}
-#browserState{font:700 10.5px/1 var(--font);letter-spacing:.08em;text-transform:uppercase;color:var(--run)}
-#browserState.rec,#browserState.bad{color:var(--fail)}#browserState.ask{color:var(--warn)}
 #vp{font:400 11.5px/1 var(--font-mono);color:var(--faint)}
 #appBox{flex:1;min-height:0;display:flex;position:relative;overflow:hidden}
 #app{flex:1;min-height:0;width:100%;border:0;display:block;background:#fff}
@@ -466,31 +477,28 @@ td.m{width:64px;color:var(--muted)}td.m.w{color:var(--warn)}td.p{width:auto;colo
 @media (max-width:859px){.scols{grid-template-columns:minmax(0,1fr)}.scol+.scol{border-left:0;border-top:1px solid var(--line)}.two{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:699px){.spage{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}.snav{flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--line)}.snav .back{margin:0 8px 0 0}.scont{padding:20px 16px 32px}.set-r{grid-template-columns:minmax(0,1fr)}.set-v{text-align:left}.stack{align-items:flex-start}}
 /* Three columns from 1000px; narrower sides up to 1500px so the application keeps its desktop layout. */
-@media (min-width:1000px) and (max-width:1499px){.panes{--col-steps:minmax(220px,260px);--col-chat:minmax(280px,330px)}}
+@media (min-width:1000px) and (max-width:1499px){.panes{--col-steps:220px;--col-chat:minmax(300px,340px)}}
 @media (min-width:1000px){
-.fold-steps .panes{--col-steps:44px}.fold-chat .panes{--col-chat:44px}
-.fold-steps .pa-steps>:not(#stepsStrip),.fold-chat .pa-chat>:not(#chatStrip){display:none}
-.fold-steps #stepsStrip,.fold-chat #chatStrip{display:flex}}
+.fold-chat .panes{--col-chat:44px}
+.fold-chat .pa-chat>:not(#chatStrip){display:none}
+.fold-chat #chatStrip{display:flex}}
+/* Narrow: the app over the full width, the panel below it, the steps (when shown) above it. */
 @media (max-width:999px){
 .fold{display:none}.pane-tb{cursor:default}
 .pa{height:auto;min-height:100vh}
-.panes{grid-template-columns:minmax(300px,380px) minmax(0,1fr);grid-template-rows:auto minmax(60vh,1fr);grid-template-areas:"steps browser" "chat browser"}
-.pa-steps{max-height:40vh}
-.win+.win{border-left:0}.pa-browser{border-left:1px solid var(--line)}.pa-chat{border-top:1px solid var(--line)}}
-@media (max-width:859px){
-.panes{grid-template-columns:minmax(0,1fr);grid-template-rows:none;grid-template-areas:"steps" "chat" "browser"}
-.pa-steps{max-height:none}#track{overflow:visible}.pa-chat{height:72vh}.pa-browser{height:78vh;border-left:0;border-top:1px solid var(--line)}
+.panes{grid-template-columns:minmax(0,1fr);grid-template-rows:none;grid-template-areas:"steps" "browser" "chat"}
+.pa-steps{max-height:40vh}.pa-browser{height:70vh}.pa-chat{height:auto;min-height:60vh}
+.win+.win{border-left:0}.pa-browser,.pa-chat{border-top:1px solid var(--line)}
 .top{padding:6px 16px}.top-r{margin-left:0}}
 </style></head><body class="${classes}"><div class="pa"><div id="bench">
 <div class="soloBar">${logo({ size: 18, label: 'caw' })}<span id="soloUrl"></span><span id="soloConn" hidden></span><button class="btn btn-s btn-sm cbtn" type="button" id="chatPop" data-press="Ctrl+J" aria-pressed="false" title="${t('workbench.page.showChat')} (${ctrl} J)">${icon('msg')}${t('workbench.chat')}<kbd>${ctrl} J</kbd><span class="new" title="${t('workbench.chatNew')}" hidden></span></button><button class="lnk" type="button" data-solo data-press="F8">${t('workbench.backToBench')}<kbd>F8</kbd></button></div>
-<header class="top"><div class="brand" title="${esc(LONG_NAME)}">${logo({ size: 28, label: 'caw' })}<b class="word" aria-hidden="true">caw</b></div>
+<header class="top"><button type="button" class="stoggle" id="stepsToggle" aria-expanded="false" aria-controls="stepsCard" data-press="F4" title="${t('workbench.page.showSteps')} (F4)">${icon('chev-r')}<span>${t('workbench.steps')}</span><span id="tally"></span></button><div class="brand" title="${esc(LONG_NAME)}">${logo({ size: 28, label: 'caw' })}<b class="word" aria-hidden="true">caw</b></div>
 <nav class="crumb" aria-label="${t('workbench.crumb')}"><span class="sl" id="projectSep" hidden>/</span><span id="project" hidden></span><span class="sl">/</span><b id="crumbTest">${esc(test || 'caw')}</b><span id="title" class="bdg line" data-test="${esc(test)}">${esc(test || 'caw')}</span></nav>
-<div class="top-r"><ul class="facts" id="facts" aria-label="${t('workbench.runFacts')}"></ul><span id="notice" role="status" hidden></span><span id="state" class="pill" role="status"></span><span id="transport" class="tp" role="img"><i></i><span></span></span><button type="button" class="ib" id="more" aria-haspopup="menu" aria-expanded="false" aria-controls="menu" aria-label="${t('workbench.more')}" title="${t('workbench.more')} (${ctrl} K)">${icon('more')}</button></div></header>
+<div class="top-r"><ul class="facts" id="facts" aria-label="${t('workbench.runFacts')}"></ul><span id="notice" role="status" hidden></span><span id="transport" class="tp" role="img"><i></i><span></span></span><button type="button" class="ib" id="more" aria-haspopup="menu" aria-expanded="false" aria-controls="menu" aria-label="${t('workbench.more')}" title="${t('workbench.more')} (${ctrl} K)">${icon('more')}</button></div></header>
 <div id="menu" class="pop" role="menu" aria-label="${t('workbench.menu')}" hidden>${menu}</div>
 <main class="panes">
-<section class="pa-steps win" id="stepsCard" aria-label="${t('workbench.steps')}">${pane('steps', t('workbench.steps'), t('workbench.stepsFold'), t('workbench.stepsUnfold'), 'F4', 'chev-l', 'chev-r', '<span class="cnt" id="tally"></span>')}
-<p id="leftNote" hidden></p><p class="hint" id="stepsHint">${t('workbench.stepsHint')}</p><div id="track"><ol id="steps" aria-label="${t('workbench.steps')}"></ol></div></section>
-<section class="pa-browser win" aria-label="${t('workbench.app')}"><div class="appbar"><span id="url"></span><span id="envBadge" class="bdg" hidden></span><span id="browserState"></span><span id="vp" hidden></span></div>
+<section class="pa-steps win" id="stepsCard" aria-label="${t('workbench.steps')}"><p id="leftNote" hidden></p><div id="track"><ol id="steps" aria-label="${t('workbench.steps')}"></ol></div></section>
+<section class="pa-browser win" aria-label="${t('workbench.app')}"><div class="appbar"><span id="url"></span><span id="envBadge" class="bdg" hidden></span><span id="vp" hidden></span></div>
 <div id="appBox"><iframe id="app" name="${APP_FRAME}" title="${t('workbench.app')}" src="${esc(appUrl)}" allow="clipboard-write"></iframe></div>
 <div class="drawer" id="drawer"><div class="tabs" role="tablist"><button type="button" role="tab" data-tab="requests" aria-selected="false">${t('workbench.requests')}<span class="count" data-count="requests">0</span></button><button type="button" role="tab" data-tab="console" aria-selected="false">${t('workbench.console')}<span class="count" data-count="console">0</span></button><span class="end"><span>F2 · F3 ·</span><button type="button" id="drawerClose" aria-label="${t('workbench.drawerCloseLabel')}">${t('workbench.drawerEsc')}</button></span></div>
 <div class="panel" id="panel"></div></div>
@@ -506,8 +514,6 @@ ${settingsView(ctrl)}
 <script>
 const T=${json(texts('workbench.page.'))};
 const AGENT_FACT=${json(t('run.fact.agent'))};
-// The chat header labels (Claude working, caw working, pausing …, paused): the pill shows them first.
-const PILL=${json(Object.fromEntries(Object.entries(texts('chat.status.')).filter(([name]) => name.endsWith('.label'))))};
 const MODES=${json(MODES)};
 const fill=(key,vars)=>Object.entries(vars).reduce((text,[name,value])=>text.split('{'+name+'}').join(String(value)),T[key]??key);
 const $=(id)=>document.getElementById(id);
@@ -560,7 +566,6 @@ let aborted=false;
 let transport=null;
 // What the chat currently wants: ask from the mood, plus its state (showing: the human is demonstrating).
 let asking=false,chatState=null;
-const stepsHintText=$('stepsHint').textContent;
 // One heading "Run" right before the first step, none without steps.
 const section=()=>{const list=$('steps'),first=items().find((li)=>li.dataset.kind==='step');let sec=[...list.children].find((li)=>li.dataset.kind==='section');
   if(!first){sec?.remove();return;}
@@ -570,40 +575,15 @@ const section=()=>{const list=$('steps'),first=items().find((li)=>li.dataset.kin
   const steps=items().filter((li)=>li.dataset.kind==='step'),timed=steps.filter((li)=>li.dataset.ms!==undefined);
   sec.querySelector('.ms').textContent=timed.length>0&&!steps.some((li)=>li.dataset.state==='running')?duration(timed.reduce((total,li)=>total+Number(li.dataset.ms),0)):'';
   if(sec.nextElementSibling!==first)list.insertBefore(sec,first);};
-// The status pill: dot and word. The chat header's label first (pausing and paused are the human's turn), then Claude
-// reproducing, the chat waiting for the human, a failed step, all passed, ready. Nothing while a step runs without a label.
-const pillOf=(failed,running,n,pass)=>{
-  const label=aborted||chatState===null?undefined:PILL['chat.status.'+chatState+'.label'];
-  const reproducing=items().some((li)=>li.dataset.id==='reproduce'&&li.dataset.state==='running');
-  if(aborted)return ['fail',T['workbench.page.pillCancelled']];
-  if(chatState==='paused'||chatState==='pausing')return ['turn',label];
-  if(reproducing)return ['agent',T['workbench.page.pillReproduces']];
-  if(chatState==='starting'&&label!==undefined)return ['agent',label];
-  if(label!==undefined)return ['run',label];
-  if(asking)return ['turn',T['workbench.page.pillYourTurn']];
-  if(failed)return ['fail',fill('workbench.page.pillFailed',{id:groupTitle(failed)})];
-  if(n>0&&pass===n)return ['pass',T['workbench.page.pillPassed']];
-  if(running)return null;
-  return n>0?['idle',T['workbench.page.pillReady']]:null;};
-// Header, counter, pill and the application bar follow the steps: what runs, what failed, how many passed.
+// The steps toggle follows the steps: how many passed, with ✓ when all did, ✗ when one failed, ● while one runs. The panel
+// says what happens; the header has no status of its own.
 const summarize=()=>{
   section();
   const list=stepItems(),n=list.length,all=items();
-  $('stepsHint').hidden=all.length>0;$('stepsHint').textContent=chatState==='showing'?T['workbench.page.stepsHintShowing']:stepsHintText;
   const pass=list.filter((li)=>li.dataset.state==='pass').length;
-  $('tally').textContent=$('stripTally').textContent=n===0?'':pass+'/'+n;
   const failed=all.find((li)=>li.dataset.state==='fail'),running=list.find((li)=>li.dataset.state==='running')??all.find((li)=>li.dataset.state==='running');
-  const left=document.body.classList.contains('left-state');
-  let browserText=aborted?T['workbench.page.aborted']:failed?T['workbench.page.browserFailed']:running?T['workbench.page.browserRunning']:n>0&&pass===n?T['workbench.page.browserPassed']:pass>0&&left?T['workbench.page.browserReloaded']:n>0?T['workbench.page.ready']:'';
-  let tone=failed&&!aborted?'bad':'';
-  // If the chat waits for the human, the application bar says so too.
-  if(!aborted&&asking){browserText=T['workbench.page.browserYourTurn'];tone='ask';}
-  if(!aborted&&chatState==='showing'){browserText=T['workbench.page.recording'];tone='rec';}
-  if(refreshing)browserText=T['workbench.page.reloading'];
-  $('browserState').textContent=browserText;$('browserState').className=tone;
-  const kind=pillOf(failed,running,n,pass),pill=$('state');
-  pill.className='pill'+(kind===null?'':' on '+kind[0]);pill.dataset.state=chatState??'';
-  if(kind===null)pill.replaceChildren();else{const dot=document.createElement('span');dot.className='dot';pill.replaceChildren(dot,kind[1]);}
+  const tone=n===0?'':failed&&!aborted?'fail':running?'run':pass===n?'pass':'';
+  const tally=$('tally');tally.className=tone;tally.textContent=n===0?T['workbench.page.stepsNone']:({fail:'✗ ',run:'● ',pass:'✓ '}[tone]??'')+pass+'/'+n;
   // Only while something runs: record or play from the host, pause while that run is paused (F9). Cancelled: nothing.
   const mode=transport===null||aborted?null:chatState==='paused'||chatState==='pausing'?'pause':transport;
   const chip=$('transport'),name=mode===null?'':mode[0].toUpperCase()+mode.slice(1);chip.className='tp'+(mode===null?'':' on '+({record:'rec',play:'play',pause:'pause'})[mode]);chip.dataset.kind=mode??'';
@@ -617,29 +597,27 @@ let refreshing=false,noticeTimer=0,refreshOn=false;
 const REFRESH_TITLE=${json(refreshTitle)};
 const notice=(text)=>{const box=$('notice');box.textContent=text;box.hidden=false;clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>{box.hidden=true;},6000);};
 const refresh=async()=>{
-  if(refreshing)return;refreshing=true;$('reload').disabled=true;summarize();
+  if(refreshing)return;refreshing=true;$('reload').disabled=true;
   let done=false;try{done=(await window.${REFRESH_BINDING}?.())===true;}catch{}
   if(!done)notice(T['workbench.page.refreshLocked']);
-  refreshing=false;$('reload').disabled=!refreshOn;summarize();
+  refreshing=false;$('reload').disabled=!refreshOn;
 };
 // Personal settings: the host validates key and value.
 const pref=(key,value)=>{try{const result=window.${PREF_BINDING}?.(key,value);result?.catch?.(()=>{});}catch{}};
 const wide=()=>matchMedia('(min-width:1000px)').matches;
-// Steps and chat can be collapsed. When the chat asks something it unfolds by itself without overriding the choice.
-const foldMarks=(name,on)=>{for(const id of [name+'Fold',name+'Strip',name+'Title'])$(id).setAttribute('aria-expanded',String(id===name+'Strip'?on:!on));
+// The steps can be shown and the panel folded. When the panel asks something it unfolds by itself without overriding the choice.
+const foldMarks=(name,on)=>{if(name==='steps'){const toggle=$('stepsToggle');toggle.setAttribute('aria-expanded',String(!on));toggle.title=T['workbench.page.'+(on?'showSteps':'hideSteps')]+' (F4)';}
+  else for(const id of [name+'Fold',name+'Strip',name+'Title'])$(id).setAttribute('aria-expanded',String(id===name+'Strip'?on:!on));
   $(name==='steps'?'setSteps':'setChat').setAttribute('aria-checked',String(!on));menuLabels();};
 const fold=(name,on,remember=true)=>{document.body.classList.toggle('fold-'+name,on);foldMarks(name,on);if(remember){pref(name,on?'closed':'open');if(name==='steps')autoSteps=false;}};
 const toggleFold=(name)=>fold(name,!document.body.classList.contains('fold-'+name));
-// Without an own choice the step list starts collapsed in narrow windows: the space belongs to the application.
+// Without an own choice the steps stay hidden: the space belongs to the application and the panel.
 let autoSteps=${prefs.steps === undefined ? 'true' : 'false'};
-// When a step fails or the steps are known, the list unfolds by itself, but only if it was collapsed automatically.
-let stepsWanted=false;
-const fitSteps=()=>{if(!autoSteps)return;const on=innerWidth<1500&&!stepsWanted;document.body.classList.toggle('fold-steps',on);foldMarks('steps',on);};
-const showSteps=()=>{if(!autoSteps||stepsWanted)return;stepsWanted=true;fitSteps();};
-$('stepsFold').addEventListener('click',()=>fold('steps',true));$('stepsStrip').addEventListener('click',()=>fold('steps',false));
+// When a step fails, the list shows by itself, but only without an own choice.
+const showSteps=()=>{if(!autoSteps||!document.body.classList.contains('fold-steps'))return;document.body.classList.remove('fold-steps');foldMarks('steps',false);};
 $('chatFold').addEventListener('click',()=>fold('chat',true));$('chatStrip').addEventListener('click',()=>fold('chat',false));
 // The pane titles collapse their pane too, where panes can collapse at all.
-$('stepsTitle').addEventListener('click',()=>{if(wide())toggleFold('steps');});$('chatTitle').addEventListener('click',()=>{if(wide())toggleFold('chat');});
+$('chatTitle').addEventListener('click',()=>{if(wide())toggleFold('chat');});
 // Application only: the workbench steps back, the browser window stays as it is (no fullscreen like F11). The host remembers
 // it and restores it after a workbench reload.
 const showSolo=(on)=>{document.body.classList.toggle('solo',on);try{chatWindow()?.postMessage({caw:'solo',on},'*');}catch{}};
@@ -672,6 +650,7 @@ const paint=(node)=>{const own=isGroup(node),st=node.querySelector(own?':scope>.
   const tg=st.querySelector('.tag');tg.className='tag tag-'+k+(own?'':' pt-tag');markInto(tg,k);};
 // A group's fail note sits under the group, an item's under its text.
 const setState=(node,stateName,note)=>{const label=LABELS[stateName]??stateName,own=isGroup(node);node.dataset.state=stateName;node.setAttribute('aria-label',node.dataset.label+' – '+label);
+  if(own&&stateName==='fail')unfold(node,true);
   node.querySelector(own?':scope>.head [role=img]':'[role=img]').setAttribute('aria-label',label);paint(node);
   if(note!==undefined||stateName!=='fail'){const box=own?node:node.querySelector('.text');box.querySelector(':scope>.note')?.remove();
     if(note){const div=document.createElement('div');div.className='note';div.textContent=note;div.title=note;box.append(div);}}};
@@ -693,10 +672,13 @@ const hoverOf=(id)=>{const box=document.createElement('span');box.className='hov
   const go=document.createElement('button');go.type='button';go.className='lnk lnk-m';go.textContent=fill('workbench.page.openUpTo',{id});go.addEventListener('click',()=>openStates(true,{step:id}));
   const more=document.createElement('button');more.type='button';more.className='ib';more.innerHTML=ICON.more;more.title=T['workbench.page.openTest'];more.setAttribute('aria-label',more.title);more.addEventListener('click',()=>openStates(true,{step:null}));
   box.append(go,more);return box;};
+// A step unfolds its actions and check by a click on its name.
+const unfold=(li,on)=>{li.classList.toggle('open',on);li.querySelector(':scope>.head>.text')?.setAttribute('aria-expanded',String(on));follow();};
+document.addEventListener('click',(event)=>{const text=event.target.closest?.('#steps>li>.head>button.text');if(text){const li=text.closest('li');unfold(li,!li.classList.contains('open'));}});
 const makeGroup=(g)=>{const li=document.createElement('li');const phase=g.kind==='phase';li.dataset.id=g.id;li.dataset.kind=phase?'phase':'step';li.dataset.name=g.name;li.dataset.state='waiting';li.dataset.label=(phase?'':g.id+' ')+g.name;li.setAttribute('aria-label',li.dataset.label+' – '+LABELS.waiting);
   const head=document.createElement('div');head.className='head';head.append(makeMark(false));
   if(!phase){const id=document.createElement('span');id.className='id';id.textContent=g.id;head.append(id);}
-  const text=document.createElement('span');text.className='text';const name=document.createElement('span');name.className='name';name.textContent=g.name;text.append(name);
+  const text=document.createElement('button');text.type='button';text.className='text';text.setAttribute('aria-expanded','false');const name=document.createElement('span');name.className='name';name.textContent=g.name;text.append(name);
   const ms=document.createElement('span');ms.className='ms';head.append(text,ms);if(!phase)head.append(hoverOf(g.id));
   const pts=document.createElement('ol');pts.className='pts';li.append(head,pts);pts.append(...(g.points??[]).map(makePoint));paint(li);if(phase)phaseName(li);return li;};
 // Pick a state (F1): only after the hand-over, when the host offers tests. A picked step opens at its entry; without a step the
@@ -858,7 +840,9 @@ const follow=()=>{cancelAnimationFrame(followFrame);followFrame=requestAnimation
   if(track.scrollHeight<=track.clientHeight+1)return;
   // Between the agent's actions nothing runs: its latest action stays in view, not the first waiting step far above it.
   const li=innermost('running')??(latestAction?.isConnected?latestAction:null)??innermost('fail')??document.querySelector('#steps li[data-state=waiting]');
-  const el=li?(li.parentElement.id==='steps'?li.querySelector(':scope>.head'):li):null;
+  let el=li?(li.parentElement.id==='steps'?li.querySelector(':scope>.head'):li):null;
+  // An action of a folded step: its step's line instead.
+  if(el&&el.getClientRects().length===0)el=el.closest('#steps>li')?.querySelector(':scope>.head')??null;
   const box=track.getBoundingClientRect();
   const top=el?track.scrollTop+el.getBoundingClientRect().top-box.top-track.clientHeight/3:track.scrollHeight;
   track.scrollTo({top:Math.max(0,Math.round(top)),behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});});};
@@ -1031,7 +1015,7 @@ window.workbench={
     const conn=rest.find(([label])=>label===AGENT_FACT);$('soloConn').hidden=!conn;$('soloConn').textContent=conn?String(conn[1]):'';
     $('facts').replaceChildren(...rest.map(([label,value])=>{const li=document.createElement('li');li.title=label+': '+value;li.setAttribute('aria-label',label+': '+value);li.textContent=String(value);return li;}));},
   url:(url)=>{appUrl=url;$('url').textContent=$('soloUrl').textContent=url;$('url').title=url;},
-  steps:(groups)=>{aborted=false;$('steps').replaceChildren(...groups.map(makeGroup));if(groups.length>0)showSteps();openable();summarize();},
+  steps:(groups)=>{aborted=false;$('steps').replaceChildren(...groups.map(makeGroup));openable();summarize();},
   // Adds or renames a group, e.g. "Fehler klären" when Claude investigates. Existing items stay.
   group:(def)=>{const known=items().find((li)=>li.dataset.id===def.id);if(known){known.dataset.name=def.name;if(known.dataset.kind==='phase')phaseName(known);else known.querySelector(':scope>.head .name').textContent=def.name;for(const point of def.points??[])if(!pointsOf(known).some((li)=>li.dataset.id===point.id))known.querySelector(':scope>.pts').append(makePoint(point));}else $('steps').append(makeGroup(def));openable();summarize();},
   step:(id,stateName,note)=>{for(const li of items()){if(li.dataset.id===id){setState(li,stateName,note);
@@ -1115,7 +1099,6 @@ $('app').addEventListener('load',()=>{forward();mirror();});
 setInterval(mirror,400);
 setInterval(forward,500);
 forward();mirror();
-fitSteps();addEventListener('resize',fitSteps);
 foldMarks('steps',document.body.classList.contains('fold-steps'));foldMarks('chat',document.body.classList.contains('fold-chat'));
 $('setStill').setAttribute('aria-checked',String(!still()));modeMarks();
 summarize();${sourceTag}</script></body></html>`;

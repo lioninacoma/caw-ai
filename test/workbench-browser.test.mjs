@@ -2,7 +2,7 @@
 // reload by the human aborts the test. Skipped without Chrome.
 import assert from 'node:assert/strict';
 /* global caw -- the workbench's console object, inside page.evaluate callbacks */
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -84,7 +84,7 @@ const until = async (check, ms = 8000) => {
 };
 
 /** @param first  (bench) => runs between workbench and chat, e.g. the application tampering with the chat frame first */
-const open = async (t, { first, desk } = {}) => {
+const open = async (t, { first, desk, transcript } = {}) => {
     const context = await browser.newContext();
     t.after(() => context.close());
     await context.newPage();
@@ -95,7 +95,7 @@ const open = async (t, { first, desk } = {}) => {
     let tampered = null;
     const waiting = [];
     const logPath = join(dir, `chat-${Date.now()}.log`);
-    const chat = await openChat({ session: { workbench: bench }, logPath, onAbort: () => { aborts += 1; }, onWaiting: (line) => waiting.push(line), onTampered: (error) => { tampered = error; }, desk });
+    const chat = await openChat({ session: { workbench: bench }, logPath, onAbort: () => { aborts += 1; }, onWaiting: (line) => waiting.push(line), onTampered: (error) => { tampered = error; }, desk, ...(transcript === undefined ? {} : { transcript }) });
     return { context, bench, chat, aborts: () => aborts, tampered: () => tampered, waiting, logPath };
 };
 
@@ -409,10 +409,8 @@ test('chat: the decision is a card, discard needs a second click', async (t) => 
     assert.equal(await frame.locator('.decision > ul > li').count(), 1);
     assert.equal(await frame.locator('.decision details').getAttribute('open'), null, 'warnings collapsed');
     assert.deepEqual(waiting, ['Wartet im Chrome-Fenster auf dich: Soll das der neue Testplan werden?'], 'once in the terminal, with the question the card asks');
-    // The application bar says so too, and the pill: the chat waits for the human.
-    assert.ok(await until(async () => (await bench.page.textContent('#browserState')) === 'DU BIST DRAN'));
-    assert.equal(await bench.page.textContent('#state'), 'Du bist dran');
-    assert.equal(await bench.page.getAttribute('#state', 'class'), 'pill on turn');
+    // The panel is the one place that says so: no pill in the header, no status word in the application bar.
+    assert.equal(await bench.page.locator('#state, #browserState, .pill').count(), 0);
 
     const discard = frame.locator('#choices button', { hasText: 'Entwurf verwerfen' });
     await discard.click();
@@ -426,7 +424,7 @@ test('chat: the decision is a card, discard needs a second click', async (t) => 
     assert.equal(answer, 'discard');
 });
 
-test('chat: a decision card with checkboxes, none ticked; the ticked ones go along with the button, then they are locked', async (t) => {
+test('chat: a decision card with checkboxes, none ticked; the ticked ones go along with the button, then the card leaves the panel', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { bench, chat } = await open(t);
     const frame = bench.chatFrame();
@@ -442,8 +440,8 @@ test('chat: a decision card with checkboxes, none ticked; the ticked ones go alo
     await frame.getByRole('checkbox', { name: 'S3 Hilfe' }).check();
     await frame.locator('#choices button', { hasText: 'Testplan übernehmen' }).click();
     assert.deepEqual(await chosen, { choice: 'adopt', picked: ['S3'] });
-    assert.ok(await until(() => frame.getByRole('checkbox', { name: 'S2 Formular' }).isDisabled()), 'locked after the choice');
-    assert.match(await frame.locator('.message').last().textContent(), /Testplan übernehmen \(3 Schritte\): S3/, 'the chat says what was ticked');
+    assert.ok(await until(async () => (await frame.locator('#card .decision').count()) === 0), 'the card leaves the panel after the choice');
+    assert.ok(await until(async () => /Testplan übernehmen \(3 Schritte\): S3/.test(await frame.textContent('#hist .h-card .t'))), 'the history says what was ticked');
 });
 
 test('workbench: demonstrating shows recording, refresh is locked until the host allows it', async (t) => {
@@ -458,14 +456,13 @@ test('workbench: demonstrating shows recording, refresh is locked until the host
     assert.equal(await bench.page.isDisabled('#reload'), true, 'locked again');
 
     chat.enter('showing');
-    assert.ok(await until(async () => (await bench.page.textContent('#browserState')) === '● AUFNAHME – deine Klicks zählen'));
-    assert.equal(await bench.page.textContent('#stepsHint'), 'Führe den Ablauf in der Anwendung vor.');
+    assert.ok(await until(async () => /^Führe den Weg vor/.test(await frame.textContent('#status'))), 'the panel says what to do');
     assert.match(await frame.textContent('#toggle'), /Vorführung beenden/);
     // The checkpoint is a slash command and Alt+Enter, only while demonstrating.
     assert.match(await frame.textContent('#mark'), /^\/checkpointNur während du vorführstAlt ↵$/);
     assert.match(await frame.getAttribute('#input', 'placeholder'), /Alt\+↵ = Prüfpunkt/);
     chat.progress('Klick: Weiter');
-    assert.ok(await until(() => frame.evaluate(() => document.querySelector('details.activity')?.open === true)), 'the actions are open');
+    assert.ok(await until(async () => (await frame.locator('#lines li').last().textContent()).startsWith('Klick: Weiter')), 'every click shows in the panel');
 });
 
 test('workbench: the logo is an SVG in currentColor; system mode follows the browser live, in workbench and chat', async (t) => {
@@ -539,7 +536,7 @@ test('chat: after the run the window stays open until the human closes it or the
     const lingering = chat.linger(60000).then(() => { done = true; });
     assert.ok(await until(() => frame.isVisible('#closeWindow')));
     assert.match(await frame.textContent('#closeWindow'), /Fenster schließen \((60|59)\)/);
-    assert.match(await frame.textContent('#messages'), /Gespeichert: caw\/tests\/t\.yaml/);
+    assert.match(await frame.textContent('#hist'), /Gespeichert: caw\/tests\/t\.yaml/, 'in the history');
     assert.equal(done, false);
     await frame.click('#closeWindow');
     await lingering;
@@ -597,31 +594,52 @@ test('workbench: the badge shows the mode only, the sentence is its tooltip; the
     assert.equal(await bench.page.textContent('#title'), 'Claude Code behebt S2');
 });
 
-test('workbench: the pill top right is a dot and a word: the chat header labels first, then failed, passed, ready; no step while one runs', async (t) => {
+test('workbench: the steps are hidden until shown; "Schritte" carries the tally; a step unfolds its actions, a failed one by itself; the choice is remembered', async (t) => {
     if (browser === null) return t.skip('no Chrome');
+    // No own choice yet.
+    writeFileSync(join(process.env.CAW_AI_HOME, 'prefs.json'), JSON.stringify({ tokenNotice: 'off' }));
+    t.after(() => writeFileSync(join(process.env.CAW_AI_HOME, 'prefs.json'), JSON.stringify({ tokenNotice: 'off' })));
     const { bench } = await open(t);
-    const pill = async () => ((await bench.page.isVisible('#state')) ? `${(await bench.page.getAttribute('#state', 'class')).replace('pill on ', '')}:${await bench.page.textContent('#state')}` : null);
-    assert.equal(await pill(), null, 'nothing before the steps');
-    await bench.steps([{ id: 'S1', name: 'Eins' }, { id: 'S2', name: 'Zwei' }]);
-    assert.equal(await pill(), 'idle:Bereit');
+    const page = bench.page;
+    assert.equal(await page.isVisible('#stepsCard'), false, 'hidden by default');
+    assert.equal(await page.getAttribute('#stepsToggle', 'aria-expanded'), 'false');
+    assert.equal(await page.textContent('#tally'), 'noch keine');
+    await bench.steps([{ id: 'S1', name: 'Eins', points: [{ id: 'a', kind: 'click', label: 'Weiter' }] }, { id: 'S2', name: 'Zwei', points: [{ id: 'b', kind: 'check', label: 'Da' }] }]);
+    assert.equal(await page.textContent('#tally'), '0/2');
     await bench.step('S1', 'running');
-    for (const [state, label] of [['running', 'run:Claude Code arbeitet'], ['testing', 'run:caw arbeitet'], ['pausing', 'turn:Hält an …'], ['paused', 'turn:Pausiert'], ['deciding', null]]) {
-        await bench.chatState(state);
-        assert.ok(await until(async () => (await pill()) === label), `${state}: ${await pill()}`);
-    }
-    assert.equal(await bench.page.locator('#state .dot').count(), 0);
-    await bench.chatState('closed');
-    await bench.step('S1', 'fail', 'kaputt');
-    assert.equal(await pill(), 'fail:S1 gescheitert');
+    assert.equal(await page.textContent('#tally'), '● 0/2');
     await bench.step('S1', 'pass');
-    await bench.step('S2', 'pass');
-    assert.equal(await pill(), 'pass:Alle bestanden');
-    assert.equal(await bench.page.locator('#state .dot').count(), 1);
-    await bench.group({ id: 'reproduce', name: 'Claude Code stellt nach', kind: 'phase', points: [{ id: 'p1', label: 'Suche' }] });
-    await bench.point('reproduce', 'p1', 'running');
-    assert.equal(await pill(), 'agent:Claude Code stellt nach');
-    await bench.mood('aborted');
-    assert.equal(await pill(), 'fail:Abgebrochen');
+    assert.equal(await page.isVisible('#stepsCard'), false, 'known steps do not show it');
+    await bench.step('S2', 'running');
+    await bench.step('S2', 'fail', 'weg');
+    await bench.mood('fail');
+    assert.equal(await page.textContent('#tally'), '✗ 1/2');
+    assert.ok(await until(() => page.isVisible('#stepsCard')), 'a failed step shows them, without an own choice');
+    assert.equal(await page.isVisible('#steps>li[data-id=S2] .pts li[data-id=b]'), true, 'the failed step unfolded');
+    assert.equal(await page.isVisible('#steps>li[data-id=S1] .pts li[data-id=a]'), false, 'the others only as a line');
+    await page.click('#steps>li[data-id=S1]>.head>button.text');
+    assert.equal(await page.isVisible('#steps>li[data-id=S1] .pts li[data-id=a]'), true, 'a click unfolds its actions');
+    assert.equal(await page.getAttribute('#steps>li[data-id=S1]>.head>button.text', 'aria-expanded'), 'true');
+    await page.keyboard.press('F4');
+    assert.ok(await until(async () => !(await page.isVisible('#stepsCard'))), 'F4 hides them');
+    assert.equal(readPrefs().steps, 'closed', 'remembered');
+    await page.click('#stepsToggle');
+    assert.ok(await until(() => page.isVisible('#stepsCard')));
+    assert.equal(await page.getAttribute('#stepsToggle', 'aria-expanded'), 'true');
+    assert.equal(readPrefs().steps, 'open');
+    return undefined;
+});
+
+test('workbench: one status display: the panel says what runs; no pill in the header, no status word in the application bar', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench, chat, frame } = await chatReady(t);
+    assert.equal(await bench.page.locator('#state, #browserState, .pill').count(), 0);
+    chat.testing();
+    assert.ok(await until(async () => (await frame.textContent('#workLabel')) === 'caw arbeitet'));
+    assert.equal(await frame.textContent('#status'), 'Testlauf ohne Claude Code.');
+    assert.equal(await frame.locator('#bar').count(), 0, 'no status line under it');
+    assert.equal(await frame.isVisible('#thinking'), false, 'no second spinner');
+    return undefined;
 });
 
 test('workbench: the steps get the heading "Durchführung" between preparation and wrap-up; it counts as no step', async (t) => {
@@ -692,8 +710,8 @@ test('workbench: the chat over the app shows the newest message that came while 
     assert.ok(await until(() => page.evaluate(() => !document.querySelector('#chatPop .new').hidden)), 'a dot');
     await page.click('#chatPop');
     const lastInView = () => bench.chatFrame().evaluate(() => {
-        const box = document.getElementById('messages').getBoundingClientRect();
-        const last = [...document.querySelectorAll('#messages .message')].at(-1).getBoundingClientRect();
+        const box = document.getElementById('now').getBoundingClientRect();
+        const last = [...document.querySelectorAll('#thread .message')].at(-1).getBoundingClientRect();
         return last.bottom <= box.bottom + 1 && last.top >= box.top - 1;
     });
     assert.ok(await until(lastInView), 'the newest message is in view');
@@ -966,6 +984,7 @@ test('workbench: a hovered step offers to open its state only when F1 offers thi
     const page = bench.page;
     await page.setViewportSize({ width: 1600, height: 900 });
     await bench.steps([{ id: 'S1', name: 'Eins' }, { id: 'S2', name: 'Zwei' }, { id: 'S3', name: 'Drei' }]);
+    await page.evaluate(() => document.body.classList.remove('fold-steps'));
     const offer = async (id) => {
         await page.hover(`#steps>li[data-id=${id}]>.head`);
         return (await page.isVisible(`#steps>li[data-id=${id}] .hov .lnk`)) ? page.textContent(`#steps>li[data-id=${id}] .hov .lnk`) : null;
@@ -1074,7 +1093,7 @@ test('chat: /checkpoint and Alt+Enter set a checkpoint while demonstrating; /ele
     await bench.page.keyboard.press('Enter');
     await reading;
     assert.deepEqual(lines, [{ checkpoint: 'Die Liste ist leer' }, { checkpoint: 'Der Haken ist gesetzt' }, { note: '/api ist langsam' }]);
-    assert.equal(await frame.locator('.message.checkpoint').count(), 2);
+    assert.equal(await frame.locator('#thread .message.checkpoint').count(), 2);
     // /element asks the host to pick (its crosshair in the application), like the former Element button.
     await frame.evaluate(() => { const binding = window.__cawChat; window.__cawChat = (event) => { window.sent = [...(window.sent ?? []), event.type]; return binding(event); }; });
     await frame.fill('#input', '/el');
@@ -1084,16 +1103,17 @@ test('chat: /checkpoint and Alt+Enter set a checkpoint while demonstrating; /ele
     return undefined;
 });
 
-test('chat: the main action sits above the input with Ctrl+Enter; while Claude Code works it is "Pause F9" in the status line', async (t) => {
+test('chat: the main action sits in the panel with Ctrl+Enter; while Claude Code works it is "Pause F9" under what runs', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { bench, chat, frame } = await chatReady(t);
     // Running: a link with F9 next to the status, no button row under the input.
     assert.ok(await until(() => frame.evaluate(() => document.body.dataset.state === 'running')));
     assert.equal(await frame.getAttribute('#toggle', 'class'), 'lnk');
     assert.match(await frame.textContent('#toggle'), /^Pause\s*F9$/);
-    assert.equal(await frame.evaluate(() => document.getElementById('toggle').parentElement.id), 'bar');
+    assert.equal(await frame.evaluate(() => document.getElementById('toggle').parentElement.id), 'now', 'in the panel, under what runs');
     assert.equal(await frame.locator('#form button').evaluateAll((list) => list.filter((b) => b.offsetParent !== null).map((b) => b.id).join(',')), 'send', 'only the send arrow in the field');
-    assert.match(await frame.textContent('#hint'), new RegExp(`^/ Befehle\\s*Enter senden\\s*${MOD} ↵ Hauptaktion`));
+    assert.equal(await frame.locator('#hint').count(), 0, 'no line that only explains the keys');
+    assert.equal(await frame.textContent('#inputLabel'), 'Hinweis an Claude Code', 'while the agent works: a hint');
     // Asking: "Fertig" full width above the input, Ctrl+Enter presses it.
     const lines = [];
     chat.enter('asking');
@@ -1219,7 +1239,7 @@ test('chat: the end card\'s command wraps only between its words, keeps every sp
     // Narrow enough that the command needs two lines, as in the workbench's chat column.
     const seen = await frame.evaluate(() => {
         const code = document.querySelector('#nextCmd code');
-        code.parentElement.style.width = '150px';
+        code.closest('.cmd').style.width = '200px';
         const lines = new Map();
         const walker = document.createTreeWalker(code, NodeFilter.SHOW_TEXT);
         const range = document.createRange();
@@ -1269,27 +1289,27 @@ test('chat: a reproduction ends with its findings, the read-only note and Close 
     return undefined;
 });
 
-test('chat: notices are quiet icon lines, the token notice a card; Claude Code starting shows a spinner and the pill says so', async (t) => {
+test('chat: while something runs the panel shows the last lines, notices too; the history keeps them; the agent starting shows the time; the token notice is a card', async (t) => {
     if (browser === null) return t.skip('no Chrome');
-    const { bench, chat, frame } = await chatReady(t);
+    const { chat, frame } = await chatReady(t);
     chat.notice('Gespeichert: caw/tests/t.yaml');
-    assert.ok(await until(() => frame.isVisible('.message.notice')));
-    assert.equal(await frame.locator('.message.notice svg').count(), 1);
+    assert.ok(await until(async () => (await frame.locator('#lines li').count()) === 1));
+    assert.equal(await frame.textContent('#lines li span:nth-child(2)'), 'Gespeichert: caw/tests/t.yaml');
+    assert.equal(await frame.locator('#hist .h-line[data-who=notice] svg').count(), 1, 'a quiet icon line in the history');
     chat.starting('Starte Claude');
-    assert.ok(await until(() => frame.isVisible('.message.starting:not(.done) .spin')));
-    assert.match(await frame.textContent('.message.starting small'), /^00:0\d$/);
+    assert.ok(await until(async () => /^00:0\d$/.test(await frame.textContent('#lines li:last-child small'))), 'with the time since');
     chat.starting('Starte Claude');
     await pause(200);
-    assert.equal(await frame.locator('.message.starting').count(), 1, 'preparing and starting show as one line');
-    assert.ok(await until(async () => (await bench.page.textContent('#state')) === 'Claude Code startet'), 'the pill while Claude Code starts');
-    assert.equal(await bench.page.getAttribute('#state', 'class'), 'pill on agent');
+    assert.equal(await frame.locator('#lines li', { hasText: 'Starte Claude' }).count(), 1, 'preparing and starting show as one line');
+    for (let i = 0; i < 6; i += 1) chat.progress(`Aktion ${i}`);
+    assert.ok(await until(async () => (await frame.locator('#lines li').count()) === 4), 'only the last few lines');
     chat.say('Ich schaue.');
-    assert.ok(await until(() => frame.isVisible('.message.starting.done')), 'done once Claude Code speaks');
-    assert.ok(await until(async () => (await bench.page.textContent('#state')) === 'Claude Code arbeitet'), 'the pill follows the chat again');
-    assert.match(await frame.textContent('.message.claude .who'), /^Claude Code\d\d:\d\d$/, 'with the time');
-    const gate = chat.choose('choosing', 'Jetzt arbeitet Claude, das kostet Token.', [{ id: 'go', label: 'Weiter', primary: true }, { id: 'always', label: 'Nicht mehr fragen' }, { id: 'stop', label: 'Ohne Claude Code weiter' }], { kind: 'tokens', text: 'caw fragt einmal pro Lauf.' });
-    assert.ok(await until(() => frame.isVisible('.message.tokens')));
+    assert.ok(await until(() => frame.isVisible('#thread .message.claude')));
+    assert.match(await frame.textContent('#thread .message.claude .who'), /^Claude Code\d\d:\d\d$/, 'with the time');
+    const gate = chat.choose('choosing', 'Jetzt arbeitet Claude, das kostet Token.', [{ id: 'go', label: 'Weiter', primary: true }, { id: 'always', label: 'Nicht mehr fragen' }, { id: 'stop', label: 'Ohne Claude Code weiter' }], { kind: 'tokens' });
+    assert.ok(await until(() => frame.isVisible('#card .message.tokens')));
     assert.equal(await frame.textContent('.message.tokens strong'), 'Jetzt arbeitet Claude, das kostet Token.');
+    assert.equal(await frame.isVisible('#work'), false, 'the card instead of the lines');
     await frame.click('#choicesMore');
     await frame.click('#choices button:text-is("Ohne Claude Code weiter")');
     assert.equal(await gate, 'stop');
@@ -1358,6 +1378,9 @@ test('agent actions: a folded item unfolds to its files and keeps the call as to
     await bench.group({ id: 'claude', name: 'Develop', kind: 'phase' });
     await bench.point('claude', 'c1', 'running', { kind: 'Claude Code', label: '2 Dateien gelesen', raw: 'Read: a\nRead: b', details: ['p/a.mjs', 'p/b.md'] });
     await bench.point('claude', 'c1', 'pass');
+    await page.click('#stepsToggle');
+    await page.click('#steps>li[data-id=claude]>.head>button.text');
+    t.after(() => writeFileSync(join(process.env.CAW_AI_HOME, 'prefs.json'), JSON.stringify({ tokenNotice: 'off' })));
     const item = page.locator('#steps li[data-id=claude] .pts>li[data-id=c1]');
     assert.equal(await item.getAttribute('title'), 'Read: a\nRead: b');
     assert.equal(await item.locator('.det').isVisible(), false, 'folded');
@@ -1385,27 +1408,75 @@ test('agent actions: a folded item unfolds to its files and keeps the call as to
     return undefined;
 });
 
-test('chat follows the end: new entries, a card that grows in place; scrolled up it stays, the button says something came', async (t) => {
+test('chat: an answered card leaves the panel as one line in the history with the answer and who gave it; no echo of the button', async (t) => {
     if (browser === null) return t.skip('no Chrome');
-    const { chat, frame } = await chatReady(t);
-    const gap = () => frame.evaluate(() => { const m = document.getElementById('messages'); return Math.round(m.scrollHeight - m.scrollTop - m.clientHeight); });
-    for (let i = 0; i < 30; i += 1) chat.notice(`Hinweis ${i}`);
-    assert.ok(await until(async () => (await gap()) < 5), 'at the end');
-    // A long card ends with its buttons and the copy prompt: the end is shown, not its start.
-    chat.say(Array.from({ length: 40 }, (_, i) => `Zeile ${i}`).join('\n'));
-    assert.ok(await until(async () => (await gap()) < 5), 'a long answer to its end');
-    // Grows in place, as after Next: still at the end.
-    await frame.evaluate(() => { const last = [...document.querySelectorAll('#messages .message')].at(-1); for (let i = 0; i < 20; i += 1) last.append(Object.assign(document.createElement('p'), { textContent: `mehr ${i}` })); });
-    assert.ok(await until(async () => (await gap()) < 5), 'follows a card that grows');
-    // Scrolled up: nothing moves, the button marks the news.
-    await frame.evaluate(() => { document.getElementById('messages').scrollTop = 0; });
-    await pause(200);
-    chat.say('Neu.');
-    await pause(400);
-    assert.equal(await frame.evaluate(() => document.getElementById('messages').scrollTop), 0, 'stays where the person reads');
-    assert.ok(await frame.evaluate(() => document.getElementById('down').classList.contains('new')));
-    await frame.click('#down');
-    assert.ok(await until(async () => (await gap()) < 5), 'the button goes to the end and following starts again');
+    let answerFromOutside = null;
+    const desk = { open: (decision, answer) => { answerFromOutside = answer; }, settle: () => {} };
+    const { bench, chat, logPath } = await open(t, { desk });
+    const frame = bench.chatFrame();
+    const chosen = chat.choose('deciding', 'Text', [{ id: 'adopt', label: 'Testplan übernehmen (2 Schritte)', primary: true }, { id: 'discard', label: 'Entwurf verwerfen' }], { title: 'Prüflauf bestanden' }, { id: 'plan.adopt' });
+    assert.ok(await until(() => frame.isVisible('#card .decision')));
+    await frame.click('#choices button.primary');
+    assert.equal(await chosen, 'adopt');
+    assert.ok(await until(async () => (await frame.locator('#card > *').count()) === 0), 'the panel is free again');
+    assert.equal(await frame.locator('.message.human').count(), 0, 'no "You" bubble with the button');
+    const first = frame.locator('#hist .h-card').first();
+    assert.equal(await first.locator('.t').textContent(), 'Testplan übernehmen (2 Schritte)');
+    assert.equal(await first.locator('small').textContent(), 'Prüflauf bestanden');
+    assert.equal(await first.locator('.mk').textContent(), '✓');
+    // Answered by caw (a draft in the window): the line says so.
+    const auto = chat.choose('deciding', 'Plan', [{ id: 'approve', label: 'Plan freigeben', primary: true }], { title: 'Ablaufplan' }, { id: 'plan.approve' });
+    assert.ok(await until(() => frame.isVisible('#card .decision')));
+    answerFromOutside({ option: 'approve', by: 'auto' });
+    assert.equal(await auto, 'approve');
+    assert.ok(await until(async () => (await frame.locator('#hist .h-card').count()) === 2 && (await frame.locator('#card > *').count()) === 0));
+    assert.equal(await frame.locator('#hist .h-card').last().locator('.tx').textContent(), 'Plan freigebenvon caw · Ablaufplan');
+    // chat.log keeps the record: the button and who answered.
+    assert.match(readFileSync(logPath, 'utf8'), /human: Testplan übernehmen \(2 Schritte\)[\s\S]*notice: Plan freigeben: von caw gewählt/);
+    return undefined;
+});
+
+test('chat: earlier windows of the same run are not replayed into the panel; the history has them under their window', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const at = Date.now() - 60000;
+    const transcript = [['window', '', null, at], ['activity', 'Task gelesen', null, at], ['result', 'Alte Karte', { kind: 'result', tone: 'fail', title: 'Alte Karte', phase: 'red' }, at], ['human', 'Weiter', { answer: true }, at], ['notice', 'Gleich öffnet sich ein neues Fenster.', null, at], ['claude', 'Ich war hier.', null, at]];
+    const { bench, chat } = await open(t, { transcript });
+    const frame = bench.chatFrame();
+    await frame.waitForFunction(() => typeof window.setStatus === 'function');
+    assert.ok(await until(async () => (await frame.locator('#hist > li').count()) > 0));
+    assert.equal(await frame.locator('#card > *, #thread > *, #lines > *').count(), 0, 'nothing of before in the panel');
+    assert.deepEqual(await frame.$$eval('#hist .h-sep', (list) => list.map((li) => li.textContent)), ['Fenster 1', 'Fenster 2']);
+    assert.match(await frame.textContent('#hist'), /Task gelesen.*Weiter.*Alte Karte.*Gleich öffnet sich ein neues Fenster\..*Ich war hier\./s);
+    assert.equal(await frame.getAttribute('#phases [aria-current=step]', 'title'), 'Im Test', 'the phase of the run stays');
+    // This window's entries go into the panel.
+    chat.notice('Jetzt');
+    assert.ok(await until(async () => (await frame.locator('#lines li').count()) === 1));
+    assert.equal(await frame.textContent('#histCount'), '1 erledigt · 5 Einträge');
+    return undefined;
+});
+
+test('chat: "Verlauf" at the bottom counts entries and answered cards; it opens over the panel, a line opens its card, Esc closes it', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench, chat, frame } = await chatReady(t);
+    assert.equal(await frame.textContent('#histCount'), '');
+    chat.progress('Klick: Weiter');
+    chat.notice('Gespeichert: caw/tests/t.yaml');
+    const chosen = chat.choose('deciding', 'Text', [{ id: 'go', label: 'Los', primary: true }], { title: 'Karte' });
+    assert.ok(await until(() => frame.isVisible('#choices button.primary')));
+    await frame.click('#choices button.primary');
+    await chosen;
+    assert.ok(await until(async () => (await frame.textContent('#histCount')) === '1 erledigt · 3 Einträge'));
+    assert.equal(await frame.isVisible('#history'), false);
+    await frame.click('#histBtn');
+    assert.ok(await until(() => frame.isVisible('#history')));
+    assert.equal(await frame.getAttribute('#histBtn', 'aria-expanded'), 'true');
+    assert.deepEqual(await frame.$$eval('#hist > li', (list) => list.map((li) => li.className)), ['h-act', 'h-line', 'h-line h-card']);
+    await frame.click('#hist .h-card summary');
+    assert.ok(await until(() => frame.isVisible('#hist .h-card .message.decision')), 'the card itself');
+    await bench.page.keyboard.press('Escape');
+    assert.ok(await until(async () => !(await frame.isVisible('#history'))));
+    assert.equal(await frame.evaluate(() => document.activeElement.id), 'histBtn');
+    assert.equal(await frame.evaluate(() => document.body.classList.contains('arming')), false, 'Esc only closed the history');
     return undefined;
 });
 
@@ -1735,10 +1806,10 @@ test('chat: an advice card starts with its icon and heading, never with "null" (
     const { chat, frame } = await chatReady(t);
     chat.advice({ side: 'test', title: 'Answer in German', target: 'home/caw.md (personal)', reason: 'Because.', changes: [{ label: 'Section "Language"', before: '', after: '- Answer me in German.' }] }, [{ id: 'adopt', label: 'Übernehmen', primary: true }]);
     assert.ok(await until(() => frame.isVisible('.message.advice')));
-    assert.match(await frame.evaluate(() => document.querySelector('.message.advice').innerText), /^Empfehlung für den Test/);
+    assert.match(await frame.evaluate(() => document.querySelector('.message.advice').innerText), /^Empfehlung für den Test/i);
     assert.equal(await frame.locator('.message.advice strong svg').count(), 1, 'the agent icon');
     chat.say('Hallo.');
-    assert.ok(await until(async () => (await frame.locator('.message.claude .who svg').count()) === 1), 'the sender has its icon too');
+    assert.ok(await until(async () => (await frame.locator('#thread .message.claude .who svg').count()) === 1), 'the sender has its icon too');
     return undefined;
 });
 
@@ -1758,14 +1829,14 @@ test('chat: an exception while the answer from the window is processed (the desk
     return undefined;
 });
 
-test('chat: a card of the guided bug fix has its phase bar above it, done ticked, the current one marked; the fix card lists the red step', async (t) => {
+test('chat: the guided bug fix has its phase bar once at the top of the panel, done ticked, the current one marked; the fix card lists the red step', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { chat, frame, waiting } = await chatReady(t);
     const rows = [{ label: 'Schritt', text: 'S2 Summe' }, { label: 'Erwartung', text: 'Die Summe zeigt Total: 5.' }, { label: 'Prüfung', text: "sum==='Total: 5'", code: true }];
     const card = { kind: 'result', tone: 'next', title: 'Jetzt den Fehler beheben', rows, muted: 'Änderungen kommen als Karten.', phase: 'fix' };
     const chosen = chat.choose('deciding', card.title, [{ id: 'later', label: 'Später', primary: true }], card);
     assert.ok(await until(() => frame.isVisible('ol.phases')));
-    const bar = await frame.$$eval('ol.phases li', (items) => items.map((li) => ({ text: li.textContent, current: li.getAttribute('aria-current'), tick: li.querySelector('svg') !== null })));
+    const bar = await frame.$$eval('ol.phases li', (items) => items.map((li) => ({ text: li.textContent, current: li.getAttribute('aria-current'), tick: li.classList.contains('done') })));
     assert.deepEqual(bar, [
         { text: 'Nachgestellt', current: null, tick: true },
         { text: 'Im Test', current: null, tick: true },
@@ -1774,7 +1845,7 @@ test('chat: a card of the guided bug fix has its phase bar above it, done ticked
         { text: 'Übernommen', current: null, tick: false },
     ]);
     assert.equal(await frame.getAttribute('ol.phases', 'aria-label'), 'Fehlerbehebung');
-    assert.equal(await frame.evaluate(() => document.querySelector('ol.phases').nextElementSibling.classList.contains('r-next')), true, 'the bar stands right above its card');
+    assert.equal(await frame.evaluate(() => document.body.firstElementChild.id), 'phases', 'once, at the top of the panel');
     assert.deepEqual(await frame.$$eval('.message.result dl.kv dt', (list) => list.map((dt) => dt.textContent)), ['Schritt', 'Erwartung', 'Prüfung']);
     assert.equal(await frame.textContent('.message.result dl.kv dd code'), "sum==='Total: 5'", 'the check as code');
     assert.equal(await frame.textContent('.message.result p.muted'), 'Änderungen kommen als Karten.');
@@ -1785,13 +1856,13 @@ test('chat: a card of the guided bug fix has its phase bar above it, done ticked
     return undefined;
 });
 
-test('chat: a card of a design draft has the phases of the target design over it: Entwurf › Im Test › Umsetzen › Erfüllt › Übernommen', async (t) => {
+test('chat: a design draft has the phases of the target design at the top: Entwurf › Im Test › Umsetzen › Erfüllt › Übernommen', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { chat, frame } = await chatReady(t);
     const card = { kind: 'result', tone: 'next', title: 'Jetzt das Zielbild umsetzen', rows: [{ label: 'Stil', text: 'button "Save note": background-color #5f8f6b → #e5533a' }], phase: 'build', phases: 'design' };
     const chosen = chat.choose('deciding', card.title, [{ id: 'later', label: 'Später', primary: true }], card);
     assert.ok(await until(() => frame.isVisible('ol.phases')));
-    const bar = await frame.$$eval('ol.phases li', (items) => items.map((li) => `${li.textContent}${li.getAttribute('aria-current') === 'step' ? ' *' : ''}${li.querySelector('svg') === null ? '' : ' ✓'}`));
+    const bar = await frame.$$eval('ol.phases li', (items) => items.map((li) => `${li.textContent}${li.getAttribute('aria-current') === 'step' ? ' *' : ''}${li.classList.contains('done') ? ' ✓' : ''}`));
     assert.deepEqual(bar, ['Entwurf ✓', 'Im Test ✓', 'Umsetzen *', 'Erfüllt', 'Übernommen']);
     assert.equal(await frame.getAttribute('ol.phases', 'aria-label'), 'Zielbild');
     chat.closed?.();

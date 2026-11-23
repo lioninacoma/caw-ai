@@ -2,13 +2,13 @@
 // aborts. Deliberately not inside the application page: there it could cover buttons, end up in snapshots and recordings,
 // and the page itself could slip instructions to Claude. The binding only exists on the chat page.
 //
-// The page, in Graphite (style.mjs) and the personal mode: messages with speaker, time and the picked element; caw's notices
-// as quiet icon lines; Claude's actions as one collapsible mono line; "Starting Claude" with the time since; cards for plan,
-// question, advice (with diff), failure, decision and the token notice. No tool row: the one main action of the state
-// (Done, Approve plan, Finish demo, Hand over …) sits full width above the input (Ctrl+Enter); while Claude works it is
-// "Pause F9" in the status line. A card's choices and the end card show one primary action, the others beside it or behind
-// "More"; the end card's command wraps only between words and keeps its spaces. "/" at the start of the field opens the
-// commands (element, checkpoint, pause, cancel, and open, requests and the like for the workbench). Those for the workbench are posted to it like a forwarded key (CHAT_KEYS): they open views there.
+// The page, in Graphite (style.mjs) and the personal mode, is the panel "Now": the card that waits with its buttons (one main
+// action, the others beside it or behind "More"), or while caw or the agent works a calm block with what runs and the last
+// lines. The phase bar of a guided fix stands once at the top. Everything else (answered cards as one line, actions, notices,
+// earlier windows) is in the history behind the button at the bottom. The one main action of a state without a card (Done,
+// Finish demo, Hand over …) sits full width (Ctrl+Enter); while the agent works it is "Pause F9". The end card's command wraps
+// only between words and keeps its spaces. "/" at the start of the field opens the commands (element, checkpoint, pause,
+// cancel, and open, requests and the like for the workbench). Those for the workbench are posted to it like a forwarded key (CHAT_KEYS): they open views there.
 // Nothing from the workbench or the application decides here; only clicks and keys in this page reach the binding.
 
 import { actionOf, actionText, foldAction } from './activity.mjs';
@@ -130,7 +130,9 @@ export const tailLines = (read, onLine, intervalMs = TAIL_MS) => {
 /**
  * The conversation state, without a browser.
  * @param show    shows an entry: (who, text, about). who is human, checkpoint, claude, question, notice, activity or starting
- *                (about: the element label), or a card: plan, failure, decision, advice, tokens (about: the card)
+ *                (about: the element label), or a card: plan, failure, decision, advice, tokens (about: the card). A button's
+ *                answer is a human entry with about { answer: true }; an answer from outside the window a notice with about
+ *                { answer: label, by }
  * @param status  shows the state, see STATES; plus the options when the human has to decide
  * @param onAbort the human aborts the whole run
  * @param desk    the run's decisions (decision-desk.mjs): each decision a card waits for is opened there and settled with who
@@ -256,7 +258,8 @@ export const createChat = ({ show: shown = () => {}, status = () => {}, onAbort 
      */
     const external = (decision, { option, message, picked, by }) => {
         if (ended) return false;
-        const said = (label) => show('notice', t({ elicitation: 'chat.answeredInSession', auto: 'chat.answeredAuto', terminal: 'chat.answeredInTerminal', stopped: 'chat.stoppedOpen' }[by] ?? 'chat.answeredBySession', { label }));
+        // The card waiting for it closes with this answer: in the window one line in the history, with who answered.
+        const said = (label) => show('notice', t({ elicitation: 'chat.answeredInSession', auto: 'chat.answeredAuto', terminal: 'chat.answeredInTerminal', stopped: 'chat.stoppedOpen' }[by] ?? 'chat.answeredBySession', { label }), { answer: label, by: ['elicitation', 'auto', 'terminal', 'stopped'].includes(by) ? by : 'session' });
         if (choice === null && planAnswer !== null && planDecision === decision) {
             if (option === 'approve') {
                 said(t('chat.page.approvePlan'));
@@ -318,7 +321,7 @@ export const createChat = ({ show: shown = () => {}, status = () => {}, onAbort 
                     return;
                 }
                 if (planAnswer !== null) {
-                    show('human', t('chat.planApproved'));
+                    show('human', t('chat.planApproved'), { answer: true });
                     answerPlan({ approved: true });
                 } else if (capturing !== null) {
                     // A picked element without text must not get lost.
@@ -341,12 +344,12 @@ export const createChat = ({ show: shown = () => {}, status = () => {}, onAbort 
                 const option = choice?.options.find((candidate) => candidate.id === id);
                 if (option === undefined) return;
                 if (choice.picks === undefined) {
-                    show('human', option.label);
+                    show('human', option.label, { answer: true });
                     answerChoice(id);
                 } else {
                     const ticked = new Set(Array.isArray(picked) ? picked : []);
                     const kept = choice.picks.filter((pick) => ticked.has(pick));
-                    show('human', kept.length === 0 ? option.label : `${option.label}: ${kept.join(', ')}`);
+                    show('human', kept.length === 0 ? option.label : `${option.label}: ${kept.join(', ')}`, { answer: true });
                     answerChoice({ choice: id, picked: kept });
                 }
                 publish();
@@ -581,11 +584,16 @@ const slashCommands = (ctrl) => [
  * The chat page in the current language and the personal mode; texts for the page script are in T. Exported for preview and
  * tests. The chat has its own opaque origin, so it follows the system mode by itself (MODE_SCRIPT); a mode picked in the
  * workbench's settings arrives as a message from the parent.
+ *
+ * The page is the panel "Now": only the current thing, large. A card that waits (with its buttons), or while caw or the agent
+ * works a calm block: what runs now and the last few lines. The phase bar of a guided fix stands once at the top. Everything
+ * else is in the history (Verlauf, a button at the bottom with the counts): an answered card as one line with the answer, the
+ * actions, caw's notices, and the entries of earlier windows of the same run, which never come back into the panel itself.
  */
 export const chatPage = (nonce = '', mode = readPrefs().mode) => {
     const ctrl = t('workbench.page.keyCtrl');
     const slash = slashCommands(ctrl).map(([name, id, glyph, key, bench]) => `<button type="button" class="pop-i${name === 'cancel' ? ' danger' : ''}" role="option" tabindex="-1" id="${id}" data-cmd="${name}" data-name="/${name}"${bench ? ` data-key="${bench}"` : ''}${id === 'pick' ? ` title="${t('chat.page.pickTitle')}"` : ''}>${icon(glyph)}<span><span class="nm">/${name}</span><small>${t(`chat.page.cmd.${name}`)}</small></span>${key ? `<kbd>${key}</kbd>` : '<span></span>'}</button>`).join('');
-    const icons = { agent: 'agent', you: 'user', cross: 'cross', flag: 'flag', info: 'info', chev: 'chev-r', chevd: 'chev-d', loader: 'loader', check: 'check', x: 'x', alert: 'alert', help: 'help', list: 'list', file: 'file', copy: 'copy', terminal: 'terminal', bug: 'bug', coins: 'coins', lock: 'lock', msg: 'msg', pause: 'pause', play: 'play', stop: 'stop', bookmark: 'bookmark', dot: 'circle' };
+    const icons = { agent: 'agent', you: 'user', cross: 'cross', flag: 'flag', info: 'info', chev: 'chev-r', chevd: 'chev-d', loader: 'loader', check: 'check', x: 'x', alert: 'alert', help: 'help', list: 'list', file: 'file', copy: 'copy', terminal: 'terminal', bug: 'bug', coins: 'coins', lock: 'lock', msg: 'msg', pause: 'pause', play: 'play', stop: 'stop', bookmark: 'bookmark', dot: 'circle', dash: 'dash' };
     const ICON = Object.fromEntries(Object.entries(icons).map(([name, glyph]) => [name, icon(glyph, { cls: name === 'loader' ? 'spin' : '' })]));
     return `<!doctype html><html lang="${language()}"${modeAttr(mode)}><head><meta charset="utf-8"><title>caw · Chat</title><script>${MODE_SCRIPT}${sourceTag}</script>${FAVICON}<style>
 ${styleSheet()}
@@ -593,10 +601,20 @@ ${styleSheet()}
 html,body{height:100%}
 body{margin:0;display:flex;flex-direction:column;background:var(--panel);color:var(--text);font:400 13px/1.5 var(--font)}
 button{cursor:pointer}
-main{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:16px;scrollbar-width:thin;scrollbar-color:var(--line2) var(--panel)}
-/* Nothing in the list shrinks: a card is as tall as its content, the list scrolls. */
-main>*{flex-shrink:0}
-/* Messages: who speaks (Claude, You) with an icon and the time, the text below. */
+/* The phases of a guided bug fix or target design: once at the top, one segment per phase with its name. */
+#phases{flex:none;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:4px;margin:0;padding:16px 18px 0;list-style:none}
+#phases li{display:flex;flex-direction:column;gap:5px;min-width:0;font:500 10.5px/1.2 var(--font);color:var(--faint)}
+#phases li::before{content:"";height:4px;border-radius:2px;background:var(--line)}
+#phases li.done{color:var(--muted)}#phases li.done::before{background:var(--pass)}
+#phases li[aria-current]{color:var(--accent-text);font-weight:600}#phases li[aria-current]::before{background:var(--accent)}
+/* Only the current phase is named under its segment; the others are named for screen readers and as tooltip. */
+#phases span{white-space:nowrap}#phases li:last-child{align-items:flex-end}#phases li:not([aria-current]) span{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+/* Now: the card that waits, the conversation about it, or the block while something runs. */
+#now{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:14px;padding:18px;scrollbar-width:thin;scrollbar-color:var(--line2) var(--panel)}
+#now>*{flex-shrink:0}
+#card:empty,#thread:empty{display:none}
+#thread{display:flex;flex-direction:column;gap:12px}
+/* Messages: who speaks (the agent, You) with an icon and the time, the text below. */
 .message{display:flex;flex-direction:column;gap:3px;min-width:0}
 .who{display:inline-flex;align-items:center;gap:6px;font:500 12px/1.2 var(--font);color:var(--text)}
 .who .i{width:13px;height:13px}.who.c .i{color:var(--agent)}.who.h .i{color:var(--muted)}
@@ -605,40 +623,33 @@ main>*{flex-shrink:0}
 .txt{font-size:13px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
 .about{display:flex;gap:5px;font:400 11px/1.35 var(--font-mono);color:var(--muted);overflow-wrap:anywhere}
 .about .i{width:12px;height:12px;margin-top:1px;color:var(--accent-text)}
-/* A note from caw: one quiet line with an icon. */
-.message.notice{flex-direction:row;align-items:flex-start;gap:8px;font-size:12px;line-height:1.45;color:var(--muted)}
-.message.notice .i{width:14px;height:14px;margin-top:1px}.message.notice .txt{font-size:12px}
-/* Claude's actions: one mono line, opened the list of all. */
-details.activity{font:400 11.5px/1.4 var(--font-mono);color:var(--muted)}
-details.activity summary{display:flex;align-items:center;gap:6px;cursor:pointer;list-style:none;user-select:none;min-width:0}
-details.activity summary::-webkit-details-marker{display:none}
-details.activity .mk{display:inline-grid;place-items:center;width:12px;flex:none}.activity .mk .i{width:12px;height:12px}
-details.activity[open] .mk .chev{transform:rotate(90deg)}.activity .mk .spin{display:none}
-:is([data-state=running],[data-state=advising]) details.activity.live .mk .spin{display:block}:is([data-state=running],[data-state=advising]) details.activity.live .mk .chev{display:none}
-details.activity .count{flex:none}details.activity .latest{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}details.activity .latest::before{content:"· "}
-details.activity ol{margin:6px 0 0 5px;padding:0 0 0 12px;border-left:1px solid var(--line2);list-style:none;display:flex;flex-direction:column;gap:2px}
-details.activity li{overflow-wrap:anywhere}
-/* Claude starting, and Claude working. */
-.message.starting{flex-direction:row;align-items:center;gap:8px;padding:10px 12px;border-radius:var(--r2);background:var(--panel2);font-size:12.5px}
-.message.starting .i{color:var(--agent)}.message.starting small{margin-left:auto;font:400 11px/1 var(--font-mono);color:var(--faint)}
-.activity li small.items{display:block;color:var(--faint);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.message.starting.done{background:none;padding:0;color:var(--muted);font-size:12px}.message.starting.done .i{color:var(--pass)}.message.starting.done small{margin-left:0}
+/* The agent working on an answer while a card stays: one line under the conversation. */
 #thinking{display:none;align-items:center;gap:7px;font:500 12px/1 var(--font);color:var(--agent)}#thinking .i{width:14px;height:14px}
-[data-state=running] #thinking,[data-state=advising] #thinking,body.awaiting:not([data-state=choosing]):not([data-state=planning]):not([data-state=deciding]):not([data-state=reviewing]) #thinking{display:flex}main:has(.message.starting:not(.done)) #thinking{display:none!important}
-/* Cards: plan, question, advice, failure, decision and the token notice. Flat: the header line, then the parts. */
-.message.card{gap:10px;padding:12px 14px 14px;border-radius:var(--r2);background:var(--panel);border:1px solid var(--line);font-size:13px;line-height:1.5}
-.card>strong{display:flex;align-items:center;gap:8px;font:500 13px/1.25 var(--font);color:var(--text)}
-.card>strong .i{width:16px;height:16px}.card>strong .meta{margin-left:auto;font:400 11px/1 var(--font-mono);color:var(--faint)}
-.card p{margin:0}.card .txt{white-space:pre-wrap}.card .muted{color:var(--muted);font-size:12px}
-.message.question{box-shadow:inset 0 2px 0 var(--agent)}.question>strong .i{color:var(--agent)}
-.message.r-ask,.message.r-next,.message.r-info{box-shadow:inset 0 2px 0 var(--run)}:is(.r-ask,.r-next,.r-info)>strong .i{color:var(--run)}
-.message.r-fail{box-shadow:inset 0 2px 0 var(--fail)}.r-fail>strong .i{color:var(--fail)}.message.r-warn{box-shadow:inset 0 2px 0 var(--warn)}.r-warn>strong .i{color:var(--warn)}
+body.awaiting:has(#card:not(:empty)):is([data-state=discussing],[data-state=developing]) #thinking{display:flex}
+/* The block while caw or the agent works, or the person demonstrates: what runs, a short fact, the last lines. */
+#work{display:flex;flex-direction:column;gap:10px}
+body:has(#card:not(:empty)) #work,[data-state=closed] #work{display:none}
+#workLabel{display:flex;align-items:center;gap:9px;margin:0;font:600 17px/1.3 var(--font);letter-spacing:-.01em}#workLabel:empty{display:none}
+:is([data-state=running],[data-state=advising],[data-state=testing],[data-state=verifying],[data-state=preparing],[data-state=handing]) #workLabel::before{content:"";flex:none;width:11px;height:11px;border-radius:50%;border:2px solid var(--run);border-right-color:transparent;animation:caw-spin .9s linear infinite}
+#status{margin:0;font-size:13px;line-height:1.55;color:var(--muted)}#status:empty{display:none}
+#lines{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:12.5px;line-height:1.4;color:var(--muted)}
+#lines li{display:grid;grid-template-columns:14px minmax(0,1fr) auto;gap:8px;align-items:baseline;min-width:0}
+#lines li>span{overflow-wrap:anywhere}#lines .mk .i{width:12px;height:12px;color:var(--pass)}#lines small{font:400 11px/1 var(--font-mono);color:var(--faint)}
+#lines li:last-child{color:var(--text)}
+:is([data-state=running],[data-state=advising],[data-state=testing],[data-state=verifying],[data-state=preparing],[data-state=handing]) #lines li:last-child .mk .i{display:none}
+:is([data-state=running],[data-state=advising],[data-state=testing],[data-state=verifying],[data-state=preparing],[data-state=handing]) #lines li:last-child .mk::before{content:"";display:block;width:8px;height:8px;margin-top:2px;border-radius:50%;border:2px solid var(--run);border-right-color:transparent;animation:caw-spin .9s linear infinite}
+[data-state=showing] #lines .mk .i{color:var(--fail)}
+/* Cards: plan, question, advice, failure, decision, the token notice and results. In the panel large and flat. */
+.message.card{gap:12px;font-size:13px;line-height:1.55;overflow:visible}
+#card>.card,#next{padding:0;border:0;border-radius:0;background:none}
+.kick{font:600 11px/1.2 var(--font);letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
+.card>strong{display:flex;align-items:flex-start;gap:9px;font:600 18px/1.3 var(--font);letter-spacing:-.01em;color:var(--text)}
+.card>strong .i{flex:none;width:18px;height:18px;margin-top:3px}.card>strong .meta{margin-left:auto;padding-top:5px;font:400 11px/1 var(--font-mono);color:var(--faint)}
+.card p{margin:0}.card .txt{white-space:pre-wrap;color:var(--muted)}.card .muted{color:var(--muted);font-size:12px}
+.question>strong .i{color:var(--agent)}
+:is(.r-ask,.r-next,.r-info)>strong .i{color:var(--run)}.r-fail>strong .i{color:var(--fail)}.r-warn>strong .i{color:var(--warn)}
 .plan>strong .i{color:var(--accent-text)}.advice>strong .i{color:var(--agent)}.decision>strong .i{color:var(--pass)}.tokens>strong .i{color:var(--warn)}
-.message.failure{box-shadow:inset 0 2px 0 var(--fail)}.failure>strong .i{color:var(--fail)}
-/* The guided bug fix and the target design: their phases over a card, done ones with a tick, the current one in the accent, the rest dimmed. */
-.message.phases{flex-direction:row;flex-wrap:wrap;align-items:center;gap:6px 3px;margin:0;padding:0;list-style:none}.phases li{display:flex;align-items:center;gap:3px}
-.phases li:not(:last-child)::after{content:"›"/"";color:var(--faint);font-size:12px}.phases .bdg{gap:2px;padding:0 7px}.phases .bdg .i{width:11px;height:11px}
-.phases [aria-current] .bdg{background:var(--accent-soft);color:var(--accent-text);box-shadow:inset 0 0 0 1px var(--accent)}.phases .later .bdg{background:none;color:var(--faint);box-shadow:inset 0 0 0 1px var(--line)}
+.failure>strong .i{color:var(--fail)}
 .kv code{font:400 11.5px/1.5 var(--font-mono);white-space:pre-wrap;overflow-wrap:anywhere}
 .heard{display:flex;gap:8px;padding:8px 10px;border-radius:var(--r1);background:var(--panel2);font-size:12.5px}
 .heard .i{width:14px;height:14px;margin-top:3px;color:var(--muted)}.heard small{display:block;color:var(--faint);font-size:11px}
@@ -668,42 +679,35 @@ details.activity li{overflow-wrap:anywhere}
 .diff-h b{color:var(--text);font:500 11px/1.3 var(--font-mono)}.diff-h .i{width:13px;height:13px}.diff-h span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .prompt{display:flex;flex-direction:column;gap:6px;padding:9px 10px;border-radius:var(--r1);background:var(--panel2);font-size:12px;color:var(--muted)}
 .prompt .ptext{white-space:pre-wrap;overflow-wrap:break-word;max-height:200px;overflow:auto}.prompt .lnk{font-size:12px;align-self:flex-start}
-/* The footer: cancel question, status line, choices or the end card, then the input. */
-footer{flex:none;position:relative;display:flex;flex-direction:column;gap:8px;padding:10px 14px 14px;border-top:1px solid var(--line)}
-#down{position:absolute;right:14px;top:-42px;background:var(--panel);box-shadow:0 0 0 1px var(--line2);display:none}#down.on{display:inline-grid}
-#down.new::after{content:"";position:absolute;top:4px;right:4px;width:6px;height:6px;border-radius:50%;background:var(--accent)}
-#cancel{display:none;align-items:center;justify-content:flex-end;gap:8px}body.arming #cancel,body.stopping #cancel{display:flex}
+/* The buttons of the waiting card: one main action, the rest beside it or behind "More". */
+#cancel{display:none;align-items:center;gap:8px}body.arming #cancel,body.stopping #cancel{display:flex}
+body:not(:has(#card:not(:empty))):is([data-state=running],[data-state=pausing],[data-state=paused],[data-state=asking],[data-state=showing],[data-state=describing],[data-state=handing],[data-state=verifying],[data-state=testing],[data-state=preparing],[data-state=advising]) #cancel{display:flex}
 #abort.sure{background:var(--fail);color:var(--on-accent);border-color:transparent}
-#bar{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px}
-#status{font-size:12px;line-height:1.45;color:var(--muted);min-width:0}#status:empty{display:none}
-:is([data-state=paused],[data-state=asking],[data-state=showing],[data-state=describing],[data-state=planning]) #status{color:var(--text)}
-[data-state=handing] #status::before{content:"";display:inline-block;width:10px;height:10px;margin-right:8px;border-radius:50%;border:2px solid var(--run);border-right-color:transparent;vertical-align:-1px;animation:caw-spin .9s linear infinite}
-/* The one main action: a link in the status line while Claude works (Pause F9), else full width above the input. */
-#toggle{display:none}#toggle.lnk{font-size:12px}#toggle.lnk kbd{margin-left:2px}
+#toggle{display:none}#toggle.lnk{font-size:12px;align-self:flex-start}#toggle.lnk kbd{margin-left:2px}
 :is([data-state=running],[data-state=pausing]) #toggle{display:inline-flex}
 :is([data-state=paused],[data-state=asking],[data-state=showing],[data-state=describing]) #toggle{display:flex;width:100%}
 #toggle.busy .i{display:none}#toggle.busy::before{content:"";width:10px;height:10px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:caw-spin .9s linear infinite}
 #choices{display:none;flex-direction:column;gap:8px}
 :is([data-state=choosing],[data-state=deciding],[data-state=reviewing],[data-state=discussing],[data-state=developing],[data-state=planning]) #choices{display:flex}
-.acts{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:8px}.acts>.btn,.acts>.more{flex:0 0 auto}.acts>.btn-p{flex:1 1 auto}
-#choices .btn,#next .btn{white-space:normal;height:auto;min-height:36px;padding:8px 15px;line-height:1.25;text-align:center}
-#choices .rest>.btn{flex:1 1 auto}
+.acts{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:8px}.acts>.btn,.acts>.more{flex:0 0 auto}.acts>.btn-p{flex:1 1 100%}
+#choices .btn,#next .btn{white-space:normal;height:auto;min-height:38px;padding:9px 15px;line-height:1.25;text-align:center}
+#choices .rest>.btn{flex:1 1 auto}#choices .rest>.btn-p{flex:1 1 100%;min-height:42px;font-size:14px}
 #choices button.sure{background:var(--fail);color:var(--on-accent);border-color:transparent}
 #choices button:disabled{cursor:progress;opacity:.55}#choices button.busy{opacity:1}
 #choices button.busy::before{content:"";width:10px;height:10px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:caw-spin .9s linear infinite}
-/* More: the other options of a card, a menu that opens upwards. */
-/* The menu hangs from the row, not from the button: a wrapped "More" sits at the row's left edge, where a menu aligned to
-   the button would leave the chat. */
+/* More: the other options of a card, a menu under the row. */
 .more{position:static}.more .btn .i{width:14px;height:14px}
-.more .pop{position:absolute;right:0;bottom:calc(100% + 6px);z-index:30;min-width:min(220px,100%);max-width:min(320px,100%)}
+.more .pop{position:absolute;right:0;top:calc(100% + 6px);z-index:30;min-width:min(220px,100%);max-width:min(320px,100%)}
 .more .pop-i{display:block;white-space:normal;line-height:1.35;font-size:12.5px}.more .pop-i:focus{outline:none;background:var(--accent-soft)}
 .more .pop-i.sure{background:var(--fail);color:var(--on-accent)}
-/* The end card after the run. */
-#next{display:none;gap:10px;padding:12px 14px 14px;overflow:visible}[data-state=closed] #next.on{display:flex}[data-state=closed]:has(#next.on) #hint{display:none}
+#nextActs .more .pop{top:auto;bottom:calc(100% + 6px)}
+/* The end card after the run; with a final card above it, only its command and buttons. */
+#next{display:none;flex-direction:column;gap:12px;overflow:visible}[data-state=closed] #next.on{display:flex}
+#next.merged #nextHead,#next.merged #nextText{display:none}
 #stays{display:flex;align-items:center;gap:6px;margin:0;font-size:12px;color:var(--muted)}#stays[hidden]{display:none}#stays .i{width:13px;height:13px}
 #next[data-kind=pass] #nextIcon .i{color:var(--pass)}#next[data-kind=fail] #nextIcon .i{color:var(--fail)}#next[data-kind=reproduce] #nextIcon .i{color:var(--warn)}
 #nextIcon{display:inline-grid}#nextIcon:empty{display:none}
-#nextText{font-size:13px}#nextText:empty,#nextRepro:empty{display:none}#nextRepro{display:flex;flex-direction:column;gap:10px}
+#nextText{color:var(--muted)}#nextText:empty,#nextRepro:empty{display:none}#nextRepro{display:flex;flex-direction:column;gap:10px}
 .quote{padding:8px 10px;border-radius:var(--r1);background:var(--panel2);font-size:12.5px;font-style:italic;overflow-wrap:anywhere}
 .banner.ro{padding:7px 10px}.banner.ro span{font-size:12px}
 .cmd{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-radius:var(--r1);background:var(--code);color:var(--code-text);font:400 11.5px/1.45 var(--font-mono)}
@@ -712,11 +716,18 @@ footer{flex:none;position:relative;display:flex;flex-direction:column;gap:8px;pa
 .cmd code{white-space:normal;overflow-wrap:normal;word-break:normal}.cmd .w{display:inline-block;max-width:100%;overflow-wrap:anywhere}
 .cmd small{display:block;margin-bottom:2px;font:400 11.5px/1.4 var(--font);color:var(--muted)}.cmd code{font:inherit}
 .cmd .ib{width:22px;height:22px;margin:-2px -4px -2px 0}.cmd .ib .i{width:14px;height:14px}.cmd:empty{display:none}
-/* The input: chip, field with the send arrow, the hint line; "/" opens the commands above it. */
-form{position:relative;display:flex;flex-direction:column;gap:8px;margin:0;padding:9px 10px;border-radius:var(--r2);background:var(--panel);border:1px solid var(--line2)}
+/* At the bottom: the history with its counts, then the input with its label. */
+footer{flex:none;position:relative;display:flex;flex-direction:column;gap:10px;padding:10px 18px 16px}
+#histBtn{display:flex;align-items:center;gap:8px;width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:var(--r2);background:var(--bg);color:var(--muted);font:500 12.5px/1.3 var(--font);text-align:left}
+#histBtn:hover{color:var(--text);border-color:var(--line2)}#histBtn .hb{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#histBtn .i{width:14px;height:14px}
+#histCount{font-weight:400;color:var(--faint)}#histCount:empty{display:none}
+#pickNote{margin:0;font-size:12px;color:var(--accent-text)}
+#ask{display:flex;flex-direction:column;gap:5px}
+#inputLabel{font-size:12px;color:var(--muted)}
+form{position:relative;display:flex;flex-direction:column;gap:8px;margin:0;padding:8px 10px;border-radius:var(--r2);background:var(--panel);border:1px solid var(--line2)}
 form:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}form:has(textarea:disabled){opacity:.75}
-:is([data-state=handing],[data-state=choosing],[data-state=deciding],[data-state=reviewing],[data-state=verifying],[data-state=testing],[data-state=preparing],[data-state=advising]) form{display:none}
-[data-state=closed] form{opacity:.7}.stopping form,.stopping #choices{opacity:.55;pointer-events:none}
+:is([data-state=handing],[data-state=choosing],[data-state=deciding],[data-state=reviewing],[data-state=verifying],[data-state=testing],[data-state=preparing],[data-state=advising]) #ask{display:none}
+[data-state=closed] #ask{opacity:.7}.stopping #ask,.stopping #choices{opacity:.55;pointer-events:none}
 .inp-row{display:flex;align-items:flex-end;gap:8px;min-width:0}
 textarea{display:block;flex:1;min-width:0;width:100%;min-height:22px;max-height:160px;margin:0;padding:2px 0;resize:none;border:0;outline:0;background:none;font:400 13px/1.45 var(--font);color:var(--text);overflow-y:hidden;scrollbar-width:thin;caret-color:var(--accent)}
 textarea.full{overflow-y:auto}textarea::placeholder{color:var(--faint)}textarea:focus-visible{outline:0}
@@ -725,27 +736,54 @@ textarea.full{overflow-y:auto}textarea::placeholder{color:var(--faint)}textarea:
 #chip{display:none;align-items:center;gap:6px;align-self:flex-start;max-width:100%;height:24px;padding:0 4px 0 8px;border-radius:var(--r1);background:var(--accent-soft);color:var(--accent-text);font:500 11.5px/1 var(--font-mono)}#chip.on{display:inline-flex}
 #chipText{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 #chipRemove{display:grid;place-items:center;width:18px;height:18px;padding:0;border:0;border-radius:50%;background:none;color:inherit}#chipRemove:hover{background:var(--panel)}#chipRemove .i{width:12px;height:12px}
-.inp-hint{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11px;color:var(--faint)}.inp-hint b{font-weight:500;color:var(--muted)}.inp-hint .cp{display:none}[data-state=showing] .inp-hint .cp{display:inline}
 #slash{position:absolute;left:-1px;right:-1px;bottom:calc(100% + 6px);z-index:30;max-height:min(360px,60vh);overflow:auto}
 #slash .pop-i>span{min-width:0}#slash .pop-i .nm{display:block;font:500 12px/1.3 var(--font-mono)}#slash .pop-i small{display:block;color:var(--faint);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #slash .pop-i:disabled{background:none}#pick.on .nm{color:var(--accent-text)}
 #slashEmpty{padding:6px 8px;color:var(--faint);font-size:12px}
+/* The history: over the whole panel, every entry in order, the cards as one line that opens the card. */
+#history{position:fixed;inset:0;z-index:40;display:flex;flex-direction:column;background:var(--panel)}
+.h-top{flex:none;display:flex;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid var(--line)}
+.h-top h2{margin:0;font:600 15px/1.2 var(--font);outline:0}.h-top .lnk{margin-left:auto;font-size:12px}
+#hist{flex:1;min-height:0;overflow:auto;margin:0;padding:12px 18px 18px;list-style:none;display:flex;flex-direction:column;gap:8px;scrollbar-width:thin}
+#hist>li{min-width:0}
+.h-sep{display:flex;align-items:center;gap:8px;margin-top:6px;font:600 10.5px/1.2 var(--font);letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}.h-sep::after{content:"";flex:1;height:1px;background:var(--line)}
+.h-line{display:flex;align-items:flex-start;gap:8px;font-size:12.5px;line-height:1.45;color:var(--muted)}.h-line>.i{flex:none;width:14px;height:14px;margin-top:2px}
+.h-line .txt{font-size:12.5px}
+.h-card details{flex:1;min-width:0}.h-card summary{display:flex;align-items:baseline;gap:8px;cursor:pointer;list-style:none;color:var(--text)}.h-card summary::-webkit-details-marker{display:none}
+.h-card .mk{flex:none;width:14px;text-align:center;font-weight:600}.h-card .ok{color:var(--pass)}.h-card .open{color:var(--accent-text)}.h-card .off{color:var(--faint)}
+.h-card summary .tx{min-width:0;overflow-wrap:anywhere}.h-card summary small{color:var(--faint);font-size:12px}.h-card summary small:not(:empty)::before{content:" · "}
+.h-card details>.card{margin:8px 0 4px 22px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--r2)}
+.h-card details>.card>strong{font-size:14px}.h-card details>.card>strong .i{width:15px;height:15px;margin-top:1px}
+.h-msg{display:flex;flex-direction:column;gap:3px}
+details.activity{font:400 11.5px/1.4 var(--font-mono);color:var(--muted)}
+details.activity summary{display:flex;align-items:center;gap:6px;cursor:pointer;list-style:none;user-select:none;min-width:0}
+details.activity summary::-webkit-details-marker{display:none}
+details.activity .mk{display:inline-grid;place-items:center;width:12px;flex:none}.activity .mk .i{width:12px;height:12px}
+details.activity[open] .mk .chev{transform:rotate(90deg)}
+details.activity .count{flex:none}details.activity .latest{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}details.activity .latest::before{content:"· "}
+details.activity ol{margin:6px 0 0 5px;padding:0 0 0 12px;border-left:1px solid var(--line2);list-style:none;display:flex;flex-direction:column;gap:2px}
+details.activity li{overflow-wrap:anywhere}
+.activity li small.items{display:block;color:var(--faint);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 </style></head><body data-state="running">
-<main id="messages" role="log" aria-live="polite"><div id="thinking" aria-hidden="true">${ICON.loader}<span>${t('chat.page.thinking')}</span></div></main>
-<footer><button id="down" class="ib" type="button" aria-label="${t('chat.page.scrollDown')}" title="${t('chat.page.scrollDown')}">${icon('down')}</button>
-<div id="cancel"><button id="abortNo" class="btn btn-s btn-sm" type="button" hidden>${t('chat.page.no')}</button><button id="abort" class="btn btn-s btn-sm" type="button" title="${t('chat.page.abortTitle')}">${t('chat.page.abort')}</button></div>
-<div id="bar"><div id="status" role="status" aria-live="polite"></div><button id="toggle" type="button" class="lnk"><span class="tic"></span><span id="toggleText"></span><kbd class="key" aria-hidden="true"></kbd></button></div>
+<ol id="phases" hidden></ol>
+<main id="now" aria-live="polite"><div id="card"></div><div id="thread"></div><div id="thinking" aria-hidden="true">${ICON.loader}<span>${t('chat.page.thinking')}</span></div>
+<section id="work" aria-labelledby="workLabel"><h2 id="workLabel"></h2><p id="status" role="status" aria-live="polite"></p><ol id="lines"></ol></section>
 <div id="choices"></div>
+<button id="toggle" type="button" class="lnk"><span class="tic"></span><span id="toggleText"></span><kbd class="key" aria-hidden="true"></kbd></button>
+<div id="cancel"><button id="abort" class="btn btn-s btn-sm" type="button" title="${t('chat.page.abortTitle')}">${t('chat.page.abort')}</button><button id="abortNo" class="btn btn-s btn-sm" type="button" hidden>${t('chat.page.no')}</button></div>
 <div id="next" class="card" role="region" aria-label="${t('chat.page.nextStep')}"><strong id="nextHead"><span id="nextIcon"></span><span id="nextTitle">${t('chat.page.nextStep')}</span></strong><p id="nextText"></p><div id="nextRepro"></div><div class="cmd" id="nextCmd"></div>
-<div class="acts" id="nextActs"><button id="closeWindow" type="button" class="btn btn-s" hidden></button><button id="report" type="button" class="btn btn-s">${t('chat.page.openReport')}</button></div><p id="stays" hidden>${icon('clock')}<span>${t('chat.page.stays')}</span></p></div>
-<form id="form"><div id="slash" class="pop" role="listbox" aria-label="${t('chat.page.commands')}" hidden><div class="pop-h">${t('chat.page.commands')}</div>${slash}<div id="slashEmpty" hidden>${t('chat.page.noCommand')}</div></div>
+<div class="acts" id="nextActs"><button id="closeWindow" type="button" class="btn btn-s" hidden></button><button id="report" type="button" class="btn btn-s">${t('chat.page.openReport')}</button></div><p id="stays" hidden>${icon('clock')}<span>${t('chat.page.stays')}</span></p></div></main>
+<footer><p id="pickNote" hidden>${t('chat.page.picking')}</p>
+<button id="histBtn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="history"><span class="hb">${t('chat.page.history')} <span id="histCount"></span></span>${icon('chev-r')}</button>
+<div id="ask"><label id="inputLabel" for="input"></label><form id="form"><div id="slash" class="pop" role="listbox" aria-label="${t('chat.page.commands')}" hidden><div class="pop-h">${t('chat.page.commands')}</div>${slash}<div id="slashEmpty" hidden>${t('chat.page.noCommand')}</div></div>
 <div id="chip"><span id="chipText"></span><button id="chipRemove" type="button" aria-label="${t('chat.page.removeElement')}" title="${t('chat.page.removeElement')}">${icon('x')}</button></div>
-<div class="inp-row"><textarea id="input" rows="1" aria-label="${t('chat.page.inputLabel')}" aria-controls="slash" aria-autocomplete="list" placeholder="${t('chat.page.placeholder')}"></textarea><button id="send" type="submit" aria-label="${t('chat.page.send')}" title="${t('chat.page.send')} (Enter)" disabled>${icon('up')}</button></div>
-<div class="inp-hint" id="hint"><span><b>/</b> ${t('chat.page.hintCommands')}</span><span><b>Enter</b> ${t('chat.page.hintSend')}</span><span><b class="mainKey"></b> ${t('chat.page.hintMain')}</span><span class="cp"><b>Alt ↵</b> ${t('chat.page.hintCheckpoint')}</span></div></form></footer>
+<div class="inp-row"><textarea id="input" rows="1" aria-controls="slash" aria-autocomplete="list" placeholder="${t('chat.page.placeholder')}"></textarea><button id="send" type="submit" aria-label="${t('chat.page.send')}" title="${t('chat.page.send')} (Enter)" disabled>${icon('up')}</button></div></form></div></footer>
+<section id="history" role="dialog" aria-modal="true" aria-labelledby="histTitle" hidden><header class="h-top"><h2 id="histTitle" tabindex="-1">${t('chat.page.history')}</h2><button id="histClose" type="button" class="lnk">${t('chat.page.historyClose')}<kbd>Esc</kbd></button></header><ol id="hist"></ol></section>
 <script>
 const T=${json(texts('chat.page.'))};
 const ICON=${json(ICON)};
+const AGENT=${JSON.stringify(AGENT_NAME)};
 const $=(id)=>document.getElementById(id);
 const el=(tag,cls,text)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined&&text!==null)node.textContent=text;return node;};
 // The icons are static SVG from the host, never page content.
@@ -756,9 +794,8 @@ const send=(type,text,checkpoint,picked)=>window.${BINDING}({type,text,checkpoin
 let openPicks=null;
 const takePicks=()=>{if(openPicks===null)return undefined;const ticked=[...openPicks.querySelectorAll('input:checked')].map((box)=>box.value);openPicks.disabled=true;openPicks=null;return ticked;};
 const toBench=(key)=>parent.postMessage({caw:'key',key},'*');
-const input=$('input'),messages=$('messages'),thinking=$('thinking'),abort=$('abort'),sendButton=$('send'),toggleButton=$('toggle'),statusBox=$('status');
+const input=$('input'),now=$('now'),abort=$('abort'),sendButton=$('send'),toggleButton=$('toggle'),statusBox=$('status');
 const KEY=/Mac|iPhone|iPad/.test(navigator.platform)?'⌘ ↵':T['chat.page.ctrlEnter'];
-document.querySelector('#hint .mainKey').textContent=KEY;
 const stateNow=()=>document.body.dataset.state;
 // The height follows the text, or the placeholder when empty: it wraps in a narrow chat and would be cut off otherwise.
 // A scrollbar only appears at the maximum height.
@@ -773,11 +810,11 @@ $('form').addEventListener('submit',(event)=>{event.preventDefault();submit();})
 toggleButton.addEventListener('click',()=>{if(toggleButton.disabled)return;toggleButton.disabled=true;toggleButton.classList.add('busy');toggleButton.setAttribute('aria-busy','true');$('toggleText').textContent=T['chat.page.wait'];send('toggle');});
 // F9: like the main action, if it is currently shown.
 function pauseKey(){if(toggleButton.offsetParent!==null&&!toggleButton.disabled)toggleButton.click();}
-const pick=$('pick'),chip=$('chip');let statusText='';
+const pick=$('pick'),chip=$('chip');
 const PICK_STATES=["paused","asking","showing","planning","discussing","developing"];
 const pickAllowed=()=>PICK_STATES.includes(stateNow());
 $('chipRemove').addEventListener('click',()=>{window.setChip(null);send('unpick');});
-window.setPicking=(on)=>{pick.classList.toggle('on',on);statusBox.textContent=on?T['chat.page.picking']:statusText;};
+window.setPicking=(on)=>{pick.classList.toggle('on',on);$('pickNote').hidden=!on;};
 window.setChip=(label)=>{chip.classList.toggle('on',label!==null);$('chipText').textContent=label??'';input.focus();};
 // Cancelling is possible while something runs; deciding, talking, developing and the end have no cancel.
 let sure=false,stopping=false,unsure=null;
@@ -787,7 +824,7 @@ const unarm=()=>{sure=false;clearTimeout(unsure);document.body.classList.remove(
 abortNo.addEventListener('click',()=>{unarm();input.focus();});
 abort.addEventListener('click',()=>{
   if(stopping)return;
-  if(sure){stopping=true;clearTimeout(unsure);abortNo.hidden=true;document.body.classList.remove('arming');abort.disabled=true;document.body.classList.add('stopping');abort.classList.remove('sure');abort.textContent=T['chat.page.aborting'];statusText=T['chat.page.abortingStatus'];statusBox.textContent=statusText;send('abort');return;}
+  if(sure){stopping=true;clearTimeout(unsure);abortNo.hidden=true;document.body.classList.remove('arming');abort.disabled=true;document.body.classList.add('stopping');abort.classList.remove('sure');abort.textContent=T['chat.page.aborting'];statusBox.textContent=T['chat.page.abortingStatus'];send('abort');return;}
   sure=true;abort.classList.add('sure');abort.textContent=T['chat.page.abortSure'];abortNo.hidden=false;document.body.classList.add('arming');unsure=setTimeout(unarm,4000);});
 
 // "More": a menu of the other options, keyboard operable (arrows, Home, End; Esc and Tab close it).
@@ -811,61 +848,23 @@ const arrange=(box,id,primary,rest)=>{for(const b of primary){b.classList.remove
   if(primary.length===1&&rest.length>1){box.replaceChildren(...primary,more(id,rest));return;}
   for(const b of rest){b.classList.remove('pop-i','btn-p');b.removeAttribute('role');b.removeAttribute('tabindex');b.classList.add('btn','btn-s');}box.replaceChildren(...primary,...rest);};
 
-// Follow the end as long as the human has not scrolled up. Measured on scroll, not on insert:
-// when a lot arrives at once, e.g. the history in a new window, a scroll would otherwise still be pending.
-const down=$('down');
-const atEnd=()=>messages.scrollHeight-messages.scrollTop-messages.clientHeight<80;
-let follow=true;
-// At the end the chat follows everything that grows: new entries, a card that changes (Next, a copy prompt), an unfolded
-// list. Scrolled up by the human, it stays where it is; the button at the bottom shows that something new came.
-const toEnd=()=>{messages.scrollTop=messages.scrollHeight;down.classList.toggle('on',!atEnd());};
-messages.addEventListener('scroll',()=>{follow=atEnd();down.classList.toggle('on',!follow);if(follow)down.classList.remove('new');});
-down.addEventListener('click',()=>{follow=true;down.classList.remove('on','new');toEnd();});
-const grown=()=>{if(follow)toEnd();else down.classList.add('on','new');};
-// If the footer grows or shrinks, the chat area resizes: following continues.
-if(window.ResizeObserver)new ResizeObserver(()=>{if(follow)toEnd();}).observe(messages);
-// Content that changes in place (a card's next item, an unfolded list) grows the chat without a new entry.
-new MutationObserver(()=>grown()).observe(messages,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['open','hidden','class']});
-const place=(element)=>{messages.insertBefore(element,thinking);grown();};
 const clock=(at)=>{if(!at)return null;const d=new Date(at);return el('small','',String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'));};
-const whoLine=(who,at,extra)=>{const line=el('span','who '+(who==='claude'?'c':'h'));const name=el('span','',who==='claude'?${JSON.stringify(AGENT_NAME)}:T['chat.page.you']);name.dataset.who=who;line.append(ic(who==='claude'?'agent':'you'),name);if(extra)line.append(extra);const time=clock(at);if(time)line.append(time);return line;};
+const whoLine=(who,at,extra)=>{const line=el('span','who '+(who==='claude'?'c':'h'));const name=el('span','',who==='claude'?AGENT:T['chat.page.you']);name.dataset.who=who;line.append(ic(who==='claude'?'agent':'you'),name);if(extra)line.append(extra);const time=clock(at);if(time)line.append(time);return line;};
 const head=(glyph,title,meta)=>{const strong=el('strong');strong.append(ic(glyph),el('span','',title));if(meta)strong.append(el('span','meta',meta));return strong;};
 const card=(cls)=>el('div','message card '+cls);
-// The phases of the guided bug fix, or of a design draft (phases: 'design'), as an ordered list over its cards: where the
-// person stands on the way to the adopted test.
+// The phases of the guided bug fix, or of a design draft (phases: 'design'): once at the top, where the person stands.
 const PHASES={fix:['reproduced','red','fix','green','promoted'],design:['draft','red','build','green','adopted']};
-const phaseBar=(phase,flow)=>{const names=flow==='design'?PHASES.design:PHASES.fix;const at=names.indexOf(phase);const ol=el('ol','message phases');ol.setAttribute('aria-label',T[flow==='design'?'chat.page.phasesDesign':'chat.page.phases']);names.forEach((name,i)=>{const li=el('li',i<at?'done':i>at?'later':'now');const badge=el('span','bdg');if(i<at)badge.append(ic('check'));badge.append(T['chat.page.phase.'+(flow==='design'&&name==='green'?'met':name)]);if(i===at)li.setAttribute('aria-current','step');li.append(badge);ol.append(li);});return ol;};
-// "Starting Claude": a spinner and the time since, until anything else arrives.
-let starting=null;
-const elapsed=(row)=>{const s=Math.max(0,Math.floor((Date.now()-Number(row.dataset.t0))/1000));row.querySelector('small').textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');};
-setInterval(()=>{if(starting)elapsed(starting);},1000);
-const started=()=>{if(!starting)return;elapsed(starting);starting.classList.add('done');starting.querySelector('.i').replaceWith(ic('check'));starting=null;};
-let group=null;
-const endGroup=()=>{group?.details.classList.remove('live');group=null;};
+const phaseName=(name,flow)=>T['chat.page.phase.'+(flow==='design'&&name==='green'?'met':name)];
+const setPhase=(phase,flow)=>{const names=flow==='design'?PHASES.design:PHASES.fix;const at=names.indexOf(phase);if(at<0)return;const bar=$('phases');bar.className='phases';bar.setAttribute('aria-label',T[flow==='design'?'chat.page.phasesDesign':'chat.page.phases']);
+  bar.replaceChildren(...names.map((name,i)=>{const li=el('li',i<at?'done':i>at?'later':'now');li.title=phaseName(name,flow);li.append(el('span','',phaseName(name,flow)));if(i===at)li.setAttribute('aria-current','step');return li;}));bar.hidden=false;};
 const list=(title,items,cls)=>{if(!items||items.length===0)return null;const details=el('details');const summary=el('summary');summary.append(ic('chev'),title+' ('+items.length+')');const ul=el('ul');
   for(const text of items){const li=el('li',cls);li.append(ic(cls==='e'?'x':cls==='w'?'alert':'dot'),el('span','',text));ul.append(li);}details.append(summary,ul);return details;};
 const copyButton=(text,select)=>{const copy=el('button','lnk copy');copy.type='button';copy.append(ic('copy'),el('span','',T['chat.page.copyPrompt']));
   copy.addEventListener('click',async()=>{let done=false;try{await navigator.clipboard.writeText(text);done=true;}catch{}if(!done){const range=document.createRange();range.selectNodeContents(select);const selection=getSelection();selection.removeAllRanges();selection.addRange(range);try{done=document.execCommand('copy');}catch{}}copy.querySelector('span').textContent=done?T['chat.page.copied']:T['chat.page.copyManual'];});return copy;};
-// Over the app in App only (Ctrl+J): Esc hides the chat instead of cancelling; the workbench says when (pop).
-let popped=false,solo=false;
-// What the agent says or asks reaches the workbench as "new" (a dot on Chat while hidden); replayed history after a reload does not.
-const UNREAD=['claude','plan','failure','decision','advice','question','result','intro','tokens'];
-window.addMessage=(who,text,about,at)=>{
-  if(UNREAD.includes(who)&&Date.now()-(at||Date.now())<5000)parent.postMessage({caw:'unread'},'*');
-  // Its start (after Continue) begins "working"; the host ends it once the agent waits for the person (setWorking).
-  if(who==='starting'&&['discussing','developing','running'].includes(stateNow()))document.body.classList.add('awaiting');
-  // One start at a time: preparing the sandbox and starting the agent show as one line.
-  if(who==='starting'&&starting)return;
-  if(who==='starting'){endGroup();started();const row=el('div','message starting');row.dataset.t0=String(at||Date.now());row.append(ic('loader'),el('span','',text),el('small'));elapsed(row);starting=row;place(row);return;}
-  started();
-  if(who==='activity'){
-    // While demonstrating, the open list shows that every click arrives.
-    if(group===null){const details=el('details','activity live');if(stateNow()==='showing')details.open=true;details.setAttribute('aria-live','off');const summary=el('summary');const mark=el('span','mk');mark.append(ic('chev','chev'),ic('loader'));const count=el('span','count');const latest=el('span','latest');summary.append(mark,count,latest);const ol=el('ol');details.append(summary,ol);group={details,count,latest,list:ol,total:0};place(details);}
-    const merging=about?.merge===true&&group.list.lastElementChild!==null;const li=merging?group.list.lastElementChild:el('li');li.replaceChildren(el('span','',text));if(Array.isArray(about?.items)&&about.items.length>1)li.append(el('small','items',about.items.join(' · ')));if(typeof about?.raw==='string')li.title=about.raw;if(!merging)group.list.append(li);group.total+=1;group.count.textContent=group.total===1?T['chat.page.oneAction']:fill('chat.page.actions',{n:group.total});group.latest.textContent=text;
-    if(follow)toEnd();
-    return;
-  }
-  endGroup();
+
+// A card as an element: in the panel while it waits, a copy in the history when its line opens (copy: its checkboxes locked).
+const CARDS=['plan','failure','decision','advice','tokens','question','result','intro'];
+const build=(who,text,about,copy)=>{
   if(who==='plan'){
     const box=card('plan');const heading=about.title||(about.repairing?T['chat.page.repairStep']:T['chat.page.plan']);const title=head('list',heading,about.steps.length===1?T['chat.page.oneStep']:fill('chat.page.steps',{n:about.steps.length}));title.dataset.heading=heading;box.append(title);
     if(about.notes)box.append(el('div','notes muted',about.notes));
@@ -876,7 +875,7 @@ window.addMessage=(who,text,about,at)=>{
       const fact=(label,value,changed,before)=>{const row=el('div',changed?'changed':'');const dd=el('dd');if(before){dd.append(el('span','before',before),el('br'));}dd.append(value);row.append(el('dt','',label),dd);facts.append(row);};
       if(step.do)fact(T['chat.page.do'],step.do);fact(T['chat.page.expect'],step.expect,step.previousExpect!==undefined,step.previousExpect);if(step.note)fact(T['chat.page.note'],step.note);if(step.retry)fact(T['chat.page.retry'],fill('chat.page.retryText',{times:step.retry.times,from:step.retry.from||step.id}));
       for(const h of step.heard||[]){const row=el('div','heard');row.append(el('dt','',T['chat.page.heard']),el('dd','',heardText(h)));facts.append(row);}section.append(top,facts);box.append(section);}
-    place(box);return;
+    return box;
   }
   if(who==='failure'){
     const box=card('question failure'+(about.diagnosis?' '+about.diagnosis.side:''));box.append(head('x',fill('chat.page.failed',{id:about.id})));
@@ -887,7 +886,7 @@ window.addMessage=(who,text,about,at)=>{
     if(about.warn){const warn=el('div','warnbox warn');warn.append(ic('alert'),el('span','',about.warn));box.append(warn);}
     for(const part of [list(T['chat.page.findings'],about.diagnosis?about.diagnosis.findings:[],'f'),list(T['chat.page.failures'],about.failures,'e'),list(T['chat.page.warnings'],about.warnings,'w')])if(part)box.append(part);
     if(about.next)box.append(el('p','next muted',about.next));
-    place(box);return;
+    return box;
   }
   if(who==='decision'){
     const box=card('decision');box.append(head('check',about.title));
@@ -897,13 +896,13 @@ window.addMessage=(who,text,about,at)=>{
     // Checkboxes the human ticks before choosing, none ticked: they go along with the button they click (choosePicks).
     if(about.picks){const set=el('fieldset','picks');set.append(el('legend','',about.picks.title));if(about.picks.text)set.append(el('p','muted',about.picks.text));
       for(const item of about.picks.items){const label=el('label','pick');const tick=el('input');tick.type='checkbox';tick.value=item.id;label.append(tick,el('span','sid',item.id),el('span','nm',item.label));set.append(label);}
-      box.append(set);openPicks=set;}
+      box.append(set);if(copy)set.disabled=true;else openPicks=set;}
     if(about.question)box.append(el('p','next',about.question));
-    place(box);return;
+    return box;
   }
   if(who==='advice'){
-    const box=card('advice '+about.side);box.append(head('agent',T[({app:'chat.page.adviceApp',outside:'chat.page.adviceOutside'})[about.side]??'chat.page.adviceTest']));
-    const intro=el('div');intro.append(el('h2','',about.title));if(about.target)intro.append(el('div','target',about.target));if(about.about)intro.append(el('div','target',fill('chat.page.about',{about:about.about})));box.append(intro);
+    const box=card('advice '+about.side);box.append(el('span','kick',T[({app:'chat.page.adviceApp',outside:'chat.page.adviceOutside'})[about.side]??'chat.page.adviceTest']),head('agent',about.title));
+    if(about.target)box.append(el('div','target',about.target));if(about.about)box.append(el('div','target',fill('chat.page.about',{about:about.about})));
     box.append(el('p','reason txt',about.reason));
     if(about.evidence)box.append(el('p','muted',fill('chat.page.evidence',{evidence:about.evidence})));
     if(about.contradicts){const warn=el('div','warnbox warn');warn.append(ic('alert'),el('span','',T['chat.page.contradicts']));box.append(warn);}
@@ -913,20 +912,87 @@ window.addMessage=(who,text,about,at)=>{
       lines(edit.find,'del');lines(edit.replace,'add');box.append(diff);}
     if(about.changes){const facts=el('dl','kv');for(const change of about.changes){const dd=el('dd');if(change.before){dd.append(el('span','before',change.before),el('br'));}dd.append(change.after);facts.append(el('dt','',change.label),dd);}box.append(facts);}
     if(about.prompt){const prompt=el('div','prompt');const words=el('div','ptext',about.prompt);prompt.append(words,copyButton(about.prompt,words));box.append(prompt);}
-    place(box);return;
+    return box;
   }
-  if(who==='tokens'){const box=card('tokens');box.append(head('coins',text));if(about?.text)box.append(el('p','muted',about.text));place(box);return;}
-  // Claude's own question (ask-operator): the head says who asks.
-  if(who==='question'){const box=card('question');box.append(head('agent',fill('chat.page.agentAsks',{agent:${JSON.stringify(AGENT_NAME)}})),el('p','txt',text));place(box);return;}
-  // What happened and waits for a button: the head says what, the tone gives icon and colour.
-  if(who==='result'){const glyph={fail:'x',warn:'alert',next:'play',info:'info',ask:'help'}[about.tone]??'info';const box=card('result r-'+(about.tone??'info'));box.append(head(glyph,about.title));if(about.text)box.append(el('p','txt',about.text));if(about.rows){const kv=el('dl','kv');for(const row of about.rows){const dd=el('dd');dd.append(row.code?el('code','',row.text):row.text);kv.append(el('dt','',row.label),dd);}box.append(kv);}if(about.muted)box.append(el('p','muted',about.muted));if(about.phase)place(phaseBar(about.phase,about.phases));place(box);return;}
-  if(who==='intro'){const box=card('intro');box.append(head('info',T['chat.page.intro']),el('p','txt',text));place(box);return;}
-  if(who==='notice'){const item=el('div','message notice');item.append(ic('info'),el('span','txt',text));place(item);return;}
-  const item=el('div','message '+who);
+  if(who==='tokens'){const box=card('tokens');box.append(head('coins',text));if(about?.text)box.append(el('p','muted',about.text));return box;}
+  // The agent's own question (ask-operator): the kicker says who asks.
+  if(who==='question'){const box=card('question');box.append(el('span','kick',fill('chat.page.agentAsks',{agent:AGENT})),head('agent',text));return box;}
+  // What happened and waits for a button: the head says what, the tone gives icon and colour, the phase is the kicker.
+  if(who==='result'){const glyph={fail:'x',warn:'alert',next:'play',info:'info',ask:'help'}[about.tone]??'info';const box=card('result r-'+(about.tone??'info'));
+    box.append(head(glyph,about.title));if(about.text)box.append(el('p','txt',about.text));
+    if(about.rows){const kv=el('dl','kv');for(const row of about.rows){const dd=el('dd');dd.append(row.code?el('code','',row.text):row.text);kv.append(el('dt','',row.label),dd);}box.append(kv);}if(about.muted)box.append(el('p','muted',about.muted));return box;}
+  const box=card('intro');box.append(head('info',T['chat.page.intro']),el('p','txt',text));return box;
+};
+// The one line a card leaves in the history.
+const cardTitle=(who,text,about)=>who==='plan'?(about.title||(about.repairing?T['chat.page.repairStep']:T['chat.page.plan']))+' · '+(about.steps.length===1?T['chat.page.oneStep']:fill('chat.page.steps',{n:about.steps.length}))
+  :who==='failure'?fill('chat.page.failed',{id:about.id}):who==='intro'?T['chat.page.intro']:who==='tokens'||who==='question'?text:about?.title??text;
+
+// The history: every entry in order. Counted: answered cards and all entries.
+const hist=$('hist');let done=0,total=0,windows=0,group=null;
+const count=()=>{$('histCount').textContent=total===0?'':(done>0?fill('chat.page.historyDone',{n:done})+' · ':'')+(total===1?T['chat.page.historyOne']:fill('chat.page.historyAll',{n:total}));};
+const toHist=(node)=>{hist.append(node);if(!$('history').hidden)hist.scrollTop=hist.scrollHeight;};
+const histLine=(who,glyph,content)=>{const li=el('li','h-line');li.dataset.who=who;li.append(ic(glyph));if(typeof content==='string')li.append(el('span','txt',content));else li.append(content);return li;};
+const histCard=(who,text,about)=>{const li=el('li','h-line h-card');li.dataset.who=who;const details=el('details');const summary=el('summary');const mark=el('span','mk open','●');const what=el('span','t',cardTitle(who,text,about));const by=el('small');const tx=el('span','tx');tx.append(what,by);summary.append(mark,tx);details.append(summary);
+  // The card itself only when the line opens.
+  details.addEventListener('toggle',()=>{if(details.open&&details.childElementCount===1)details.append(build(who,text,about,true));});li.append(details);li.mark=mark;li.what=what;li.by=by;return li;};
+const endGroup=()=>{group?.details.classList.remove('live');group=null;};
+
+// The panel: the card that waits (current), the messages after it, the block with the last lines while something runs.
+let current=null;
+const thread=$('thread'),lines=$('lines'),MAX_LINES=4,MAX_THREAD=6;
+const clearNow=()=>{$('card').replaceChildren();thread.replaceChildren();current=null;openPicks=null;};
+const answer=(label,by)=>{const line=current?.line??[...hist.querySelectorAll('.h-card')].at(-1);
+  if(line&&!line.answered){line.answered=true;line.mark.className='mk '+(by==='stopped'?'off':'ok');line.mark.textContent=by==='stopped'?'○':'✓';line.by.textContent=[by?T['chat.page.by.'+by]:'',line.what.textContent].filter(Boolean).join(' · ');line.what.textContent=label;done+=1;}else{toHist(histLine('answer','check',[label,by?T['chat.page.by.'+by]:''].filter(Boolean).join(' · ')));total+=1;}count();
+  if(current)clearNow();};
+// A line in the block while something runs: the newest one is what runs now, the ones before it are done.
+let starting=null;
+const elapsed=(row)=>{const s=Math.max(0,Math.floor((Date.now()-Number(row.dataset.t0))/1000));row.querySelector('small').textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');};
+setInterval(()=>{if(starting)elapsed(starting);},1000);
+const started=()=>{if(!starting)return;elapsed(starting);starting=null;};
+const workLine=(text,merge,t0)=>{let li=merge?lines.lastElementChild:null;if(!li){li=el('li');const mk=el('span','mk');mk.append(ic('check'));li.append(mk,el('span'),el('small'));lines.append(li);}
+  li.children[1].textContent=text;if(t0){li.dataset.t0=String(t0);elapsed(li);starting=li;}while(lines.childElementCount>MAX_LINES)lines.firstElementChild.remove();};
+const toThread=(node)=>{thread.append(node);while(thread.childElementCount>MAX_THREAD)thread.firstElementChild.remove();now.scrollTop=now.scrollHeight;};
+const bubble=(who,text,about,at)=>{const item=el('div','message '+who);
   if(who==='checkpoint'){const cp=el('span','cp');cp.append(ic('flag'),T['chat.page.checkpoint']);item.append(whoLine('human',at,cp));}
   else item.append(whoLine(who==='claude'?'claude':'human',at));
-  if(about){const ref=el('span','about');ref.append(ic('cross'),el('span','',about));item.append(ref);}
-  item.append(el('div','txt',text));place(item);
+  if(typeof about==='string'){const ref=el('span','about');ref.append(ic('cross'),el('span','',about));item.append(ref);}
+  item.append(el('div','txt',text));return item;};
+
+// Over the app in App only (Ctrl+J): Esc hides the chat instead of cancelling; the workbench says when (pop).
+let popped=false,solo=false;
+// What the agent says or asks reaches the workbench as "new" (a dot on Chat while hidden); replayed history after a reload does not.
+const UNREAD=['claude','plan','failure','decision','advice','question','result','intro','tokens'];
+/**
+ * One entry. past: from an earlier window of the same run, only for the history. A window marker ('window') starts the entries
+ * of the next window. A button answer comes as a human entry with { answer: true }, an answer from elsewhere as a notice with
+ * { answer: label, by }: both close the card that waits.
+ */
+window.addMessage=(who,text,about,at,past)=>{
+  if(who==='window'){windows+=1;endGroup();if(windows>1||past)toHist(el('li','h-sep',fill('chat.page.window',{n:windows})));return;}
+  if(!past&&UNREAD.includes(who)&&Date.now()-(at||Date.now())<5000)parent.postMessage({caw:'unread'},'*');
+  if(about?.phase)setPhase(about.phase,about.phases);
+  // An answer: the card becomes one line in the history, with the answer.
+  if((who==='human'&&about?.answer===true)||(who==='notice'&&typeof about?.answer==='string')){endGroup();answer(who==='human'?text:about.answer,who==='human'?'':about.by);count();return;}
+  // Its start (after Continue) begins "working"; the host ends it once the agent waits for the person (setWorking).
+  if(!past&&who==='starting'&&['discussing','developing','running'].includes(stateNow()))document.body.classList.add('awaiting');
+  // One start at a time: preparing the sandbox and starting the agent show as one line.
+  if(who==='starting'&&starting&&!past)return;
+  total+=1;
+  if(who==='activity'){
+    if(group===null){const li=el('li','h-act');const details=el('details','activity live');details.setAttribute('aria-live','off');const summary=el('summary');const mark=el('span','mk');mark.append(ic('chev','chev'));const count=el('span','count');const latest=el('span','latest');summary.append(mark,count,latest);const ol=el('ol');details.append(summary,ol);li.append(details);group={details,count,latest,list:ol,total:0};toHist(li);}
+    const merging=about?.merge===true&&group.list.lastElementChild!==null;const li=merging?group.list.lastElementChild:el('li');li.replaceChildren(el('span','',text));if(Array.isArray(about?.items)&&about.items.length>1)li.append(el('small','items',about.items.join(' · ')));if(typeof about?.raw==='string')li.title=about.raw;if(!merging)group.list.append(li);else total-=1;group.total+=1;group.count.textContent=group.total===1?T['chat.page.oneAction']:fill('chat.page.actions',{n:group.total});group.latest.textContent=text;
+    if(!past){started();workLine(text,merging);}count();return;}
+  endGroup();
+  if(who==='starting'){toHist(histLine('starting','loader',text));if(!past){started();workLine(text,false,at||Date.now());}count();return;}
+  if(!past)started();
+  if(who==='notice'){toHist(histLine('notice','info',text));if(!past)workLine(text,false);count();return;}
+  if(CARDS.includes(who)){const line=histCard(who,text,about);toHist(line);
+    if(!past){if(current&&!current.line.answered){current.line.mark.className='mk off';current.line.mark.textContent='–';}clearNow();$('card').append(build(who,text,about,false));current={who,line};now.scrollTop=0;}
+    else{line.mark.className='mk off';line.mark.textContent='–';}
+    count();return;}
+  // Messages: in the history, and in the panel under the card they are about.
+  const li=el('li','h-msg');li.dataset.who=who;li.append(bubble(who,text,about,at));toHist(li);
+  if(!past)toThread(bubble(who,text,about,at));count();
 };
 
 const choices=$('choices');
@@ -944,6 +1010,8 @@ const confirmFirst=(choice,option)=>{if(choice.classList.contains('sure'))return
 const closeWindow=$('closeWindow'),report=$('report');
 // The main action: close the window, else the report.
 const arrangeNext=()=>{const shown=[closeWindow,report].filter((b)=>!b.hidden);const rest=shown.slice(1).sort((a,b)=>(a===report?-1:b===report?1:0));arrange($('nextActs'),'nextMore',shown.slice(0,1),rest);};
+// A final card above (the guided fix adopted) says it already: the end card keeps only its command and buttons.
+const merge=()=>{$('next').classList.toggle('merged',current?.who==='result'&&choices.childElementCount===0);};
 const KINDS={pass:['check','chat.page.endPass'],fail:['x','chat.page.endFail'],reproduce:['bug','']};
 window.setNext=(info)=>{const box=$('next');box.classList.toggle('on',!!info);if(!info)return;
   const kind=KINDS[info.kind];box.dataset.kind=info.kind??'';$('nextIcon').replaceChildren(...(kind?[ic(kind[0])]:[]));
@@ -958,7 +1026,7 @@ window.setNext=(info)=>{const box=$('next');box.classList.toggle('on',!!info);if
   if(info.command){const words=el('span');words.append(el('small','',T[info.adopt?'chat.page.adoptDraft':'chat.page.newRun']),commandCode(info.command));const copy=el('button','ib');copy.type='button';copy.title=copy.ariaLabel=T['chat.page.copyCommand'];copy.append(ic('copy'));
     copy.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(info.command);copy.title=T['chat.page.copied'];}catch{const range=document.createRange();range.selectNodeContents(words.lastChild);getSelection().removeAllRanges();getSelection().addRange(range);}});
     cmd.append(ic(info.adopt?'file':'terminal'),words,copy);}
-  arrangeNext();};
+  merge();arrangeNext();};
 report.addEventListener('click',()=>{closeMenus();send('report','');});
 // After the last decision the window stays open briefly: the human sees the result and closes it, otherwise it closes on timeout.
 let lingerTimer=0;
@@ -968,6 +1036,11 @@ const stay=()=>{if(lingerTimer===0||closeWindow.disabled)return;clearInterval(li
 input.addEventListener('pointerdown',stay);input.addEventListener('focus',stay);
 window.linger=(seconds)=>{let left=seconds;const paint=()=>{closeWindow.textContent=fill('chat.page.closeIn',{n:left});};closeWindow.hidden=false;closeWindow.disabled=false;paint();arrangeNext();
   if(closeWindow.offsetParent!==null)closeWindow.focus({preventScroll:true});clearInterval(lingerTimer);lingerTimer=setInterval(()=>{left=Math.max(0,left-1);paint();if(left===0)clearInterval(lingerTimer);},1000);};
+
+// The history over the panel: the button at the bottom opens it, Esc or its own button closes it.
+const histBtn=$('histBtn'),historyBox=$('history');
+const showHistory=(on)=>{if(on===!historyBox.hidden)return;historyBox.hidden=!on;histBtn.setAttribute('aria-expanded',String(on));if(on){hist.scrollTop=hist.scrollHeight;$('histTitle').focus({preventScroll:true});}else histBtn.focus();};
+histBtn.addEventListener('click',()=>showHistory(true));$('histClose').addEventListener('click',()=>showHistory(false));
 
 // The slash commands: "/" at the start of the field opens them; arrows, Enter and Tab pick, Esc closes. Unavailable ones
 // stay visible but disabled. Commands for the workbench are posted to it like a forwarded key.
@@ -1001,16 +1074,19 @@ input.addEventListener('keydown',(event)=>{
   if(event.key==='Enter'&&!event.shiftKey&&!event.ctrlKey&&!event.metaKey){event.preventDefault();submit();}});
 
 const TOGGLE_ICON={running:'pause',pausing:'play',paused:'play',asking:'check',showing:'stop',describing:'chev'};
+// The input's label: a hint while something runs or the person shows, a question otherwise.
+const HINT_STATES=['running','pausing','paused','asking','showing','describing'];
 // The host knows: the agent works until it waits for the person (its chat call) or ends.
 window.setWorking=(on)=>{document.body.classList.toggle('awaiting',on===true);};
-window.setStatus=(state,text,label,button,options)=>{if(state==='closed')document.body.classList.remove('awaiting');document.body.dataset.state=state;toggleButton.disabled=false;toggleButton.classList.remove('busy');toggleButton.removeAttribute('aria-busy');if(!stopping){statusText=text;statusBox.textContent=pick.classList.contains('on')?T['chat.page.picking']:text;}
-  // While Claude works in the application the input is locked: typing here would take the focus from the application (an open
+window.setStatus=(state,text,label,button,options)=>{if(state==='closed')document.body.classList.remove('awaiting');document.body.dataset.state=state;toggleButton.disabled=false;toggleButton.classList.remove('busy');toggleButton.removeAttribute('aria-busy');
+  if(!stopping){statusBox.textContent=text;$('workLabel').textContent=label;}
+  $('inputLabel').textContent=fill(HINT_STATES.includes(state)?'chat.page.hintLabel':'chat.page.askLabel',{agent:AGENT});
+  // While the agent works in the application the input is locked: typing here would take the focus from the application (an open
   // list closes when its field loses the focus). Pausing unlocks it.
   const locked=state==='running';input.disabled=locked;
   // After the run nothing listens any more: the input only stays reachable to stop the close countdown.
   input.readOnly=state==='closed';input.placeholder=locked?T['chat.page.lockedPlaceholder']:state==='closed'?T['chat.page.endedPlaceholder']:state==='planning'?T['chat.page.planPlaceholder']:state==='showing'?T['chat.page.showPlaceholder']:state==='describing'?T['chat.page.describePlaceholder']:hint;fit();
-  if(state==='showing'&&group)group.details.open=true;
-  // The main action: a link with F9 while Claude works, else the full-width button with Ctrl+Enter.
+  // The main action: a link with F9 while the agent works, else the full-width button with Ctrl+Enter.
   const asLink=state==='running'||state==='pausing';toggleButton.className=asLink?'lnk':'btn btn-p';
   toggleButton.querySelector('.tic').replaceChildren(ic(TOGGLE_ICON[state]??'play'));toggleButton.querySelector('.key').textContent=asLink?'F9':KEY;$('toggleText').textContent=button;
   closeMenus();
@@ -1023,14 +1099,16 @@ window.setStatus=(state,text,label,button,options)=>{if(state==='closed')documen
   const row=el('div','acts rest');arrange(row,'choicesMore',primary,rest);choices.replaceChildren(...(buttons.length>0?[row]:[]));
   // New buttons get focus so keyboard and screen reader continue there; someone typing keeps the field.
   if(buttons.length>0&&document.activeElement!==input)(choices.querySelector('.primary')??choices.querySelector('button')).focus({preventScroll:true});
+  if(state==='closed')merge();
   if(!pickAllowed())window.setChip(null);renderSlash();};
 input.focus();
-// Shortcuts: Ctrl+Enter (Cmd+Enter) triggers the main action, e.g. approve or done. Esc first closes a menu, then clears the field
-// being typed in; otherwise the first Esc asks to cancel and only a second one within 4 s confirms it.
+// Shortcuts: Ctrl+Enter (Cmd+Enter) triggers the main action, e.g. approve or done. Esc first closes a menu or the history, then
+// clears the field being typed in; otherwise the first Esc asks to cancel and only a second one within 4 s confirms it.
 document.addEventListener('keydown',(event)=>{
   if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)&&input.value.trim()===''){const main=$('approve');if(main&&main.offsetParent!==null&&!main.disabled){event.preventDefault();main.click();}else if(toggleButton.offsetParent!==null&&!toggleButton.disabled){event.preventDefault();toggleButton.click();}}
   else if(event.key==='Escape'){
     if(openMenus().length>0){event.preventDefault();closeMenus(true);return;}
+    if(!historyBox.hidden){event.preventDefault();showHistory(false);return;}
     if(pick.classList.contains('on'))return;
     if(document.activeElement===input&&input.value!==''){event.preventDefault();input.value='';fit();renderSlash();return;}
     if(popped){event.preventDefault();toBench('Ctrl+J');return;}
@@ -1052,13 +1130,10 @@ addEventListener('keydown',(event)=>{const plain=!event.ctrlKey&&!event.metaKey&
 // A new mode from the workbench's settings: only from it, only one of the three modes.
 addEventListener('message',(event)=>{const pref=event.data?.pref;if(event.source===parent&&event.data?.caw==='mode'&&['system','light','dark'].includes(pref))document.documentElement.dataset.pref=pref;});
 // F9 and Esc from the workbench: only from it, only these two.
-// Hidden (App only), the chat has no layout: what came meanwhile is only scrolled to once it shows again, over the app or
-// back in its pane. Nothing else notices, the area keeps its size.
-const shown=()=>{if(follow)requestAnimationFrame(()=>requestAnimationFrame(toEnd));};
-addEventListener('message',(event)=>{if(event.source!==parent)return;if(event.data?.caw==='pop'){popped=event.data.on===true;if(popped)shown();}if(event.data?.caw==='focus')input.focus();if(event.data?.caw==='solo'){solo=event.data.on===true;if(!solo)shown();}});
+addEventListener('message',(event)=>{if(event.source!==parent)return;if(event.data?.caw==='pop')popped=event.data.on===true;if(event.data?.caw==='focus')input.focus();if(event.data?.caw==='solo')solo=event.data.on===true;});
 addEventListener('message',(event)=>{if(event.source!==parent||event.data?.caw!=='key')return;
   if(event.data.key==='F9')pauseKey();
-  else if(event.data.key==='Escape'){if(openMenus().length>0)closeMenus(true);else if(!pick.classList.contains('on')&&canAbort())abort.click();}});
+  else if(event.data.key==='Escape'){if(openMenus().length>0)closeMenus(true);else if(!historyBox.hidden)showHistory(false);else if(!pick.classList.contains('on')&&canAbort())abort.click();}});
 ${sourceTag}</script></body></html>`;
 };
 
@@ -1118,6 +1193,10 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
     bench.chatOpen = true;
     const doc = () => bench.chatFrame();
     const chatWindow = bench.page;
+    // What came before belongs to earlier windows of the same run: only in this window's history, never in its panel. A marker
+    // starts this window's entries.
+    const earlier = transcript.length;
+    transcript.push(['window', '', null, Date.now()]);
     const quiet = (promise) => promise.catch(() => {});
     // Set once the page under test has touched the chat frame: from then on nothing is written into it or read from it.
     let tampered = null;
@@ -1266,7 +1345,7 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
             return;
         }
         if (tampered !== null) return;
-        await inChat((entries) => entries.forEach((entry) => window.addMessage(...entry)), transcript);
+        await inChat(([entries, past]) => entries.forEach((entry, index) => window.addMessage(...entry, index < past)), [transcript, earlier]);
         if (next !== null) await inChat((info) => window.setNext(info), next);
     };
     /** The run is over: the card shows the report and the command for a new run. */
