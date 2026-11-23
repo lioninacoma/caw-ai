@@ -143,7 +143,8 @@ ${finishOf(['S1', 'S2', 'S3'])}`;
         await page.waitForTimeout(400);
         // Double click on Done: the second click hits a disabled button, the chat shows the handover at once.
         await page.locator('#toggle').dblclick().catch(() => {});
-        const after = await page.evaluate(() => `${document.body.dataset.state}|${getComputedStyle(document.getElementById('form')).display}`).catch(() => 'closed');
+        // The input is hidden with its block (#ask), so the form's own display stays: what counts is whether it is visible.
+        const after = await page.evaluate(() => `${document.body.dataset.state}|${document.getElementById('form').checkVisibility() ? 'shown' : 'none'}`).catch(() => 'closed');
         verify('After Done: handing over, nothing left to click', after === 'handing|none' || after === 'closed', after);
     }, async (page) => {
         await stateOf(page, 'planning');
@@ -459,7 +460,7 @@ ${walk(`${CASE_TEXT}==='Vorgang $TAG'`, CASE_DONE)}
 ${finishOf(['S1', 'S2', 'S3'])}`;
     const second = humans(follow, approve, async (page) => {
         await page.locator('#choices button.primary', { hasText: 'Testplan' }).waitFor({ timeout: 90000 });
-        verify('Decision names the changed expected result', await history(page, 'Geändertes Ergebnis in S3').count() > 0);
+        verify('Decision names the changed expected result', await cardOf(page).filter({ hasText: 'Geändertes Ergebnis in S3' }).count() > 0);
         await decide(page, 'Testplan übernehmen');
     });
     const code = await record(fake, [ID, ...opts], { interactive: true, containerCommand: ['bash', '-c', changed], onChatOpen: second.onChatOpen });
@@ -844,22 +845,24 @@ scenario('V', '--headless: without window, screenshot on failure, open --headles
     restore();
 });
 
-scenario('W', 'Chat: follows new messages, down button when scrolled up, cancel only once and visible', async () => {
+scenario('W', 'Chat: the panel follows new messages, the history keeps them all and follows while open, cancel only once and visible', async () => {
     restore(breakStep(good, 'Senden'));
     const h = humans(async (page) => {
         await stateOf(page, 'discussing');
-        const gap = () => page.evaluate(() => { const m = document.getElementById('messages'); return m.scrollHeight - m.scrollTop - m.clientHeight; });
+        // The panel (#now) shows the card and the last messages under it; the history (#hist) holds every entry.
+        const gap = (id) => page.evaluate((box) => { const m = document.getElementById(box); return m.scrollHeight - m.scrollTop - m.clientHeight; }, id);
         await page.evaluate(() => { for (let i = 0; i < 80; i += 1) window.addMessage('claude', `Line ${i}\nwith two lines`); });
-        verify('Much at once: stays at the end', await gap() < 5, String(await gap()));
-        await page.evaluate(() => { document.getElementById('messages').scrollTop = 0; });
-        await page.waitForTimeout(200);
-        verify('Scrolled up: button shown', await page.locator('#down').isVisible());
-        await page.evaluate(() => window.addMessage('claude', 'New, while scrolled up'));
-        verify('Stays up, button marks new content', await gap() > 200 && await page.locator('#down.new').count() === 1);
-        await shoot(page, 'scroll-down');
-        await page.locator('#down').click();
-        await page.waitForTimeout(800);
-        verify('Button scrolls to the end and disappears', await gap() < 5 && !await page.locator('#down').isVisible(), String(await gap()));
+        const shown = await page.locator('#thread .message').allTextContents();
+        verify('Much at once: the panel stays at the end with the last messages', await gap('now') < 5 && shown.length === 6 && shown.at(-1).includes('Line 79'), `${await gap('now')} ${shown.length}`);
+        verify('The history keeps all of them', await history(page, 'with two lines').count() === 80);
+        await page.locator('#histBtn').click();
+        await page.locator('#history').waitFor({ timeout: 10000 });
+        verify('History opens at the end', await gap('hist') < 5, String(await gap('hist')));
+        await page.evaluate(() => window.addMessage('claude', 'New, while the history is open'));
+        verify('History follows a new entry while open', await gap('hist') < 5 && await history(page, 'New, while the history is open').count() === 1, String(await gap('hist')));
+        await shoot(page, 'history');
+        await page.locator('#histClose').click();
+        verify('History closes', await page.locator('#history').isHidden());
         // Without Claude the run ends at once: the state is read in the page before it closes.
         const after = await page.evaluate(() => { const a = document.getElementById('abort'); a.click(); a.click(); a.click(); return { disabled: a.disabled, text: a.textContent, status: document.getElementById('status').textContent }; });
         verify('Cancel disabled and labelled', after.disabled && /Wird abgebrochen/.test(after.text), JSON.stringify(after));
@@ -1231,9 +1234,12 @@ scenario('2', 'Developing in a state: crosshair to Claude Code, reload without s
         const opened = await bench.locator('#drawer.open').count();
         await bench.locator('#drawerClose').click();
         verify('Drawer collapsed via its button', opened === 1 && await bench.locator('#drawer.open').count() === 0);
-        // Fold the panel and hide the steps (Schritte at the top left), and back, remembered in the settings.
-        if (await bench.locator('#stepsCard').isVisible()) await bench.locator('#stepsToggle').click();
-        await bench.locator('#chatFold').click({ force: true });
+        // Fold the panel (⋯ → hide chat, F6: the panel has no title bar) and hide the steps (Schritte at the top left), and back,
+        // remembered in the settings. The steps are hidden by default: shown first, so hiding them is a choice of its own.
+        if (!await bench.locator('#stepsCard').isVisible()) await bench.locator('#stepsToggle').click();
+        await bench.locator('#stepsToggle').click();
+        await bench.locator('#more').click();
+        await bench.locator('#fChat').click();
         await bench.waitForTimeout(400);
         verify('Collapsed and remembered', await bench.locator('#chatStrip').isVisible() && !(await bench.locator('#stepsCard').isVisible()) && pref().chat === 'closed' && pref().steps === 'closed', JSON.stringify(pref()));
         await shoot(chat, 'collapsed');
