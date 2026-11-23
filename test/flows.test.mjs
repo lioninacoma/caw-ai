@@ -523,8 +523,7 @@ test('Developing in a state with the Claude Code session as agent: it is there r
     };
     await develop({ chat, talk, until: 'S2', refresh: async () => '', restore: async () => '', onRefresh: () => {}, onReload: () => () => {}, toCode: () => {} });
     assert.deepEqual(sent, [{ question: undefined, sandbox: 'box' }, 'opened=1', { text: 'Was siehst du?' }, 'opened=1']);
-    assert.match(intro[0], /Claude-Code-Sitzung ist verbunden/);
-    assert.doesNotMatch(intro[0], /kosten Token/);
+    assert.equal(intro[0], 'Zustand S2 steht. Claude-Code-Sitzung verbunden.');
 });
 
 test('Developing in a state: refresh without state, restore state, crosshair to Claude Code, questions to Claude', async () => {
@@ -578,11 +577,12 @@ test('Developing in a state: refresh without state, restore state, crosshair to 
         onReload: (listener) => { reloaded = listener; return () => { reloaded = 'unsubscribed'; }; },
         toCode: (value) => handed.push(value),
     });
-    assert.match(shown[0].question, /^Zustand S2 steht\. .*Anwendung neu laden.*Neu öffnen.*\/element im Chat.*kosten Token/);
-    // At the entry of a step the introduction says so.
+    // The card holds only the facts; the buttons and keys say the rest themselves.
+    assert.equal(shown[0].question, 'Zustand S2 steht.');
+    // At the entry of a step the card says so.
     const entered = [];
     await develop({ chat: { ...chat, develop: async (question) => { entered.push(question); return { choice: 'end' }; } }, talk, until: 'S3', entry: true, refresh: async () => '', restore: async () => '', toCode: () => {} });
-    assert.match(entered[0], /^Bereit für S3: Die Schritte davor sind ausgeführt, seine Eingaben offen\. /);
+    assert.equal(entered[0], 'Bereit für S3: Die Schritte davor sind ausgeführt, seine Eingaben offen.');
     assert.deepEqual(shown[0].options, ['restore', 'end']);
     assert.equal(shown[1].question, undefined, 'the introduction comes only once');
     assert.equal(refreshed, 1, 'refresh only reloads the page, without a message');

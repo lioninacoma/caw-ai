@@ -955,15 +955,12 @@ export const runFlow = async (options) => {
                     const ready = await fixer.open(chat, (text) => { chat.progress(t('run.flow.claudeUnavailable', { message: text })); });
                     if (ready !== null) talker = talk({ sandbox: ready, spec: current }, message, element);
                 };
-                const at = state === undefined ? t('run.develop.atEnd') : t('run.develop.atState', { state });
                 // open: no steps, so nothing to restore; only refresh and questions.
                 const opened = spec.steps.length === 0;
-                let question = opened ? t('run.develop.opened', { head: t(signedIn ? 'run.develop.openedSignedIn' : 'run.develop.openedPlain'), agent: t(sessionAgent ? 'run.develop.sessionAgent' : 'run.develop.costsTokens') }) : t('run.develop.intro', {
-                    start: state === undefined ? t('run.develop.runDone') : t(atEntry ? 'run.develop.entryReady' : 'run.develop.stateReady', { state }),
-                    at,
-                    restore: RESTORE.label,
-                    agent: t(sessionAgent ? 'run.develop.sessionAgent' : 'run.develop.costsTokens'),
-                });
+                // The card: what stands now and whether the own session is connected; the buttons do the rest.
+                const reached = opened ? t(signedIn ? 'run.develop.openedSignedIn' : 'run.develop.openedPlain')
+                    : state === undefined ? t('run.develop.runDone') : t(atEntry ? 'run.develop.entryReady' : 'run.develop.stateReady', { state });
+                let question = sessionAgent ? `${reached} ${t('run.develop.sessionAgent')}` : reached;
                 const buttons = opened ? [END_DEVELOP] : [RESTORE, END_DEVELOP];
                 // If the dev server is reloading right now, the reload fails: that is a message in the chat, not the end of the run.
                 const attempt = async (what, work) => {

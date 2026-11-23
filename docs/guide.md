@@ -491,7 +491,7 @@ The sequence is deterministic, the environment isn't: this is not a snapshot. Th
 
 ### Developing in the reached state
 
-With chat, the chat stays open after handover (state "Develop"). Its first card, "What you can do now", says what the window offers:
+With chat, the chat stays open after handover (state "Develop"). Its first card, "Developing", names the state reached, with "Open again" and "End run". The window offers:
 
 The workbench stays as it is, with steps and chat; F8 shows the app alone (**App only**) and keeps it across reloads. The browser window stays as it is. The app now fills the whole pane; the recorded size holds only while caw replays, also when it restores a state.
 

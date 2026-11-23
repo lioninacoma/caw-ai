@@ -497,7 +497,7 @@ Der Ablauf ist deterministisch, die Umgebung nicht: Das ist kein Snapshot. Der W
 
 ### Im hergestellten Zustand entwickeln
 
-Mit Chat bleibt der Chat nach der Übergabe offen (Zustand „Entwickeln“). Seine erste Karte, „So geht es weiter“, sagt, was das Fenster bietet:
+Mit Chat bleibt der Chat nach der Übergabe offen (Zustand „Entwickeln“). Seine erste Karte, „Entwickeln“, nennt den erreichten Zustand, mit „Neu öffnen“ und „Lauf beenden“. Das Fenster bietet:
 
 Die Werkbank bleibt, wie sie ist, mit Schritten und Chat; F8 zeigt nur die Anwendung (**Nur Anwendung**) und behält das auch beim Neuladen. Das Browserfenster bleibt, wie es ist. Die Anwendung füllt jetzt die ganze Fläche; die aufgenommene Größe gilt nur, solange caw abspielt, auch beim Herstellen eines Zustands.
 
