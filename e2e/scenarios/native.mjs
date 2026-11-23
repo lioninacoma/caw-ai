@@ -1399,12 +1399,15 @@ scenario('N17', 'Visual layer: step screenshots, learned look by style lines cha
             verify('Überlagert: the design over the app', over.tab === 'overlay' && over.images === 2 && await bench.locator('.shot-in img.over').count() === 1, JSON.stringify(over));
             await bench.keyboard.press('ArrowRight');
             verify('the arrow key goes on to Nur Unterschiede', (await view()).tab === 'diff', JSON.stringify(await view()));
+            // Closing gives the focus back to where it was before the page opened: the app, which open drove through S2. F7
+            // there reaches the workbench as a message (a task later), so each check waits for the page's state.
+            const designIs = (state) => bench.locator(`body[data-design=${state}]`).waitFor({ state: 'attached', timeout: 5000 }).then(() => true, () => false);
             await bench.keyboard.press('F7');
-            verify('F7 closes the comparison', (await view()).design === 'closed' && !(await view()).shown, JSON.stringify(await view()));
+            verify('F7 closes the comparison', await designIs('closed') && !(await view()).shown, JSON.stringify(await view()));
             await bench.keyboard.press('F7');
-            verify('F7 opens it again', (await view()).design === 'open' && (await view()).shown, JSON.stringify(await view()));
+            verify('F7 opens it again', await designIs('open') && (await view()).shown, JSON.stringify(await view()));
             await bench.keyboard.press('Escape');
-            verify('Esc closes it', (await view()).design === 'closed', JSON.stringify(await view()));
+            verify('Esc closes it', await designIs('closed'), JSON.stringify(await view()));
             await decide(chat, 'Beenden');
         });
         const openCode = await open(native, [`${LOOKED}@S2`, '--design', ...target], { interactive: true, onChatOpen: overlay.onChatOpen });

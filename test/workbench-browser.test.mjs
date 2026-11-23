@@ -1682,6 +1682,26 @@ test('F8 with the focus in the app switches App only, both ways', async (t) => {
     return undefined;
 });
 
+test('F7 after the comparison gave the focus back to the app opens it again (as a message, a task later); Esc then closes it', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench } = await open(t);
+    const page = bench.page;
+    const pixel = { src: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', width: 1, height: 1 };
+    // As open --design: the host drove the app through the step, the focus is in the app when the page opens.
+    await page.frameLocator('#app').locator('#go').click();
+    await bench.design({ step: { id: 'S2', name: 'Speichern' }, file: 'design/s2.html', viewport: { width: 1, height: 1 }, run: 'r', met: true, design: pixel, app: pixel, deviations: [], extra: [], steps: [] }, { open: true });
+    const state = () => page.evaluate(() => ({ design: document.body.dataset.design, focus: document.activeElement?.id ?? '' }));
+    assert.ok(await until(async () => (await state()).design === 'open'));
+    await page.keyboard.press('F7');
+    assert.deepEqual(await state(), { design: 'closed', focus: 'app' }, 'closed, the focus back in the app');
+    await page.keyboard.press('F7');
+    assert.ok(await until(async () => (await state()).design === 'open'), 'F7 in the app reaches the workbench');
+    assert.equal((await state()).focus, 'cmpStep');
+    await page.keyboard.press('Escape');
+    assert.ok(await until(async () => (await state()).design === 'closed'));
+    return undefined;
+});
+
 test('console tools in the app context too (the DevTools switch there after picking an element); an app keeps its own caw', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { bench } = await open(t);
