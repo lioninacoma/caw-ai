@@ -264,8 +264,11 @@ nach `caw/tests` und `caw/recordings` (ohne `red`), der Entwurf wird gelöscht, 
 (`git diff --name-only` im ganzen Repository plus neue Dateien im Projektordner, nie ein neuer Ordner wie ein eingebettetes
 Repository, plus eine beim Rot im Arbeitsverzeichnis geänderte Datei (`red.dirty`), deren Inhalt sich seitdem geändert hat, und nie
 eine solche Datei, deren Inhalt noch derselbe ist wie beim Rot;
-ohne `caw/` und `.caw/`) und wie viele andere Tests bestanden haben. Ein Test gleichen
-Namens wird nie überschrieben (Exit 3).
+ohne `caw/` und `.caw/`) und wie viele andere Tests bestanden haben. Das `known` des roten Schritts (in seiner Aufnahme) wird zu
+den Meldungen und Statushinweisen, die der grüne Lauf dort gezeigt hat: Die Rot-Aufnahme kannte die Meldungen des Fehlers, die
+behobene App zeigt andere. Der Bericht nennt sie unter „Bekannte Meldungen bei S3, aus dem grünen Lauf“ (neu, weggefallen,
+geblieben). Jeder Lauf hält in `result.json` fest, was jeder Schritt gezeigt hat (`steps[].messages`, geschwärzt; nicht auf
+Produktion). Ein Test gleichen Namens wird nie überschrieben (Exit 3).
 
 Ein Zielbild-Entwurf (`origin: design`, siehe [Leitfaden](guide.de.md#einen-entwurf-testgetrieben-umsetzen)) wird nur mit
 erfülltem Zielbild an seinem roten Schritt übernommen, auch wenn `design.fail` `target` weglässt, und sein Laufordner bekommt

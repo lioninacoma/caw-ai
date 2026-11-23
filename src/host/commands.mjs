@@ -26,6 +26,7 @@ import { ignoreAuthDir, requireTestUser } from './test-users.mjs';
 import { ensureMcpEntry } from './mcp-entry.mjs';
 import { decide } from './decisions.mjs';
 import { promptTerminal } from './decision-prompt.mjs';
+import { textMatcher } from './patterns.mjs';
 import { projectPath } from './project-path.mjs';
 import { changedFiles, dirtyFiles, shortHead } from './git.mjs';
 import { brokenChain, checkTest, draftIds, draftPath, environmentProblems, isDesignDraft, loadDraft, loadTest, pendingSteps, recordingHints, setStepLooks, staleSteps, testExists, testPath, withDefaults, writeTest } from './test-file.mjs';
@@ -1594,7 +1595,7 @@ const runOf = (report) => basename(dirname(report));
  * commit outside caw/ and .caw/, and how many other tests passed on the environment. Of a design draft (design: { file,
  * count? }) the design report: red with the design not met and its number of deviations in the red run, green with it met.
  */
-export const fixReport = ({ id, red, green, target, others, changed, design }) => {
+export const fixReport = ({ id, red, green, target, others, changed, design, known }) => {
     const head = red.head ?? '–';
     let redLine = t('cli.fixReport.red', { step: red.step, run: red.run, head });
     if (design !== undefined) redLine = t(design.count === undefined ? 'cli.designReport.redUnknown' : 'cli.designReport.red', { step: red.step, design: design.file, count: design.count, run: red.run, head });
@@ -1611,6 +1612,13 @@ export const fixReport = ({ id, red, green, target, others, changed, design }) =
     if (changed === null) lines.push(t('cli.fixReport.changedUnknown'));
     else if (changed.length === 0) lines.push(t('cli.fixReport.changedNone'));
     else lines.push(...changed.map((file) => `- ${file}`));
+    // What the red step knows from now on: the green run's messages instead of the bug's.
+    if (known !== undefined) {
+        const parts = [['knownAdded', known.added], ['knownDropped', known.dropped], ['knownKept', known.kept]].filter(([, messages]) => messages.length > 0);
+        lines.push('', `## ${t('cli.fixReport.known', { step: known.step })}`, '');
+        if (parts.length === 0) lines.push(t('cli.fixReport.knownNone'));
+        else lines.push(...parts.map(([key, messages]) => `- ${t(`cli.fixReport.${key}`, { list: messages.join('; ') })}`));
+    }
     return `${lines.join('\n')}\n`;
 };
 
@@ -1702,8 +1710,10 @@ const promoteGreen = async (root, options, deps, { config, test, target, red, re
         if (code !== EXIT.pass) return refused(t('cli.promoteOthersFailed', { test, target }));
     }
     // The draft as the green run left it, learned baselines included, becomes the test; red stays in the fix report only.
-    const draft = loadDraft(root, test);
-    const design = isDesignDraft(draft) ? { file: draft.steps.find(({ id }) => id === red.step)?.design, ...redDeviations(root, red) } : undefined;
+    const loaded = loadDraft(root, test);
+    const design = isDesignDraft(loaded) ? { file: loaded.steps.find(({ id }) => id === red.step)?.design, ...redDeviations(root, red) } : undefined;
+    // The red recording knew the bug's messages: the red step knows what the green run showed there instead.
+    const { draft, known } = withGreenKnown(loaded, red.step, greenMessages(root, report, red.step));
     const written = writeTest(root, withLearning(root, asTest(draft)));
     rmSync(draftPath(root, test));
     const git = deps.git ?? gitDefault;
@@ -1716,12 +1726,47 @@ const promoteGreen = async (root, options, deps, { config, test, target, red, re
         }
     }
     const runDir = dirname(join(root, report));
-    const text = inLanguage(teamLanguage(config), () => fixReport({ id: test, red, green: runOf(report), target, others: others.length, changed, ...(design === undefined ? {} : { design }) }));
+    const text = inLanguage(teamLanguage(config), () => fixReport({ id: test, red, green: runOf(report), target, others: others.length, changed, ...(design === undefined ? {} : { design }), ...(known === undefined ? {} : { known }) }));
     const name = design === undefined ? FIX_REPORT : DESIGN_REPORT;
     writeFileSync(join(runDir, name), text);
     const shownReport = posix.join(dirname(report), name);
     ui.success(t(design === undefined ? 'cli.promoted' : 'cli.designAdopted', { test, files: written, report: shownReport }));
     return { ok: true, test, files: written, report: shownReport, others: others.length, target };
+};
+
+/**
+ * The messages and status notes the green run showed at a step (result.json steps[].messages), or undefined when the run did not
+ * keep them (production, a run before they were kept).
+ */
+const greenMessages = (root, report, step) => {
+    try {
+        const result = JSON.parse(readFileSync(join(root, dirname(report), 'result.json'), 'utf8'));
+        const shown = (Array.isArray(result.steps) ? result.steps : []).find((item) => item?.id === step)?.messages;
+        return Array.isArray(shown) && shown.every((message) => typeof message === 'string') ? shown : undefined;
+    } catch {
+        return undefined;
+    }
+};
+
+/**
+ * The draft whose red step knows what the green run showed there (`known` of its recording): the bug's messages go, the fixed
+ * app's come. A message a pattern in knownMessages covers stays out, as when recording.
+ * @returns { draft, known?: { step, added, dropped, kept } } for the report; without `shown` the draft as it is
+ */
+export const withGreenKnown = (draft, step, shown) => {
+    const at = draft.steps.findIndex(({ id }) => id === step);
+    const recording = draft.steps[at]?.recording;
+    if (shown === undefined || recording === undefined) return { draft };
+    const covered = textMatcher((draft.knownMessages ?? []).filter((entry) => typeof entry !== 'string'));
+    const now = [...new Set(shown)].filter((message) => !covered(message)).sort();
+    const before = (recording.known ?? []).filter((entry) => typeof entry === 'string');
+    const rest = { ...recording };
+    delete rest.known;
+    const steps = draft.steps.map((item, index) => (index === at ? { ...item, recording: now.length === 0 ? rest : { ...rest, known: now } } : item));
+    return {
+        draft: { ...draft, steps },
+        known: { step, added: now.filter((message) => !before.includes(message)), dropped: before.filter((message) => !now.includes(message)), kept: now.filter((message) => before.includes(message)) },
+    };
 };
 
 /** How many deviations the red run of a design draft judged at its red step: { count }, or {} once its run folder is gone. */

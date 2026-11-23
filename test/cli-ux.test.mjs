@@ -674,6 +674,23 @@ test('run --promote: green draft and green others move the test to caw/tests, de
     ].join('\n'));
 });
 
+test('run --promote: the red step knows the messages of the green run, the bug\'s are dropped; the fix report names both', async (t) => {
+    const root = project(t);
+    // The red recording knew the bug's note; the fixed app shows another one.
+    const withKnown = { ...recorded(step('S2', 'Treffer')) };
+    withKnown.recording = { ...withKnown.recording, known: ['Added ##', 'Moved to Someday'] };
+    writeDraft(root, { steps: [recorded(step('S1', 'Suche')), withKnown] });
+    const runDir = join(root, '.caw', 'runs', '2026-11-21T10-00-00-000Z-bug-x');
+    mkdirSync(runDir, { recursive: true });
+    writeFileSync(join(runDir, 'result.json'), JSON.stringify({ status: 'pass', steps: [{ id: 'S1', status: 'pass' }, { id: 'S2', status: 'pass', messages: ['Added ##', 'Moved to Tomorrow'] }] }));
+    const runOne = async (_root, { test: id }) => ({ code: EXIT.pass, verdict: { status: 'pass' }, report: id === 'bug-x' ? '.caw/runs/2026-11-21T10-00-00-000Z-bug-x/report.md' : `.caw/runs/r-${id}/report.md` });
+    const git = { head: () => 'fff0000', changedFiles: () => ['server.mjs'] };
+    assert.equal(await run(root, ['bug-x', '--promote', '--env', 'local'], { runOne, git }), EXIT.pass);
+    assert.deepEqual(loadTest(root, 'bug-x').steps[1].recording.known, ['Added ##', 'Moved to Tomorrow']);
+    const report = readFileSync(join(runDir, 'fix-report.md'), 'utf8');
+    assert.match(report, /\n## Bekannte Meldungen bei S2, aus dem grünen Lauf\n\n- Neu: Moved to Tomorrow\n- Weggefallen \(nur im roten Zustand\): Moved to Someday\n- Geblieben: Added ##\n/);
+});
+
 test('run --promote of a design draft: only with its design met; the test moves without origin and red, the run gets the design report', async (t) => {
     const root = project(t);
     const designed = { ...recorded(step('S2', 'Notiz')), design: 'design/note.html' };

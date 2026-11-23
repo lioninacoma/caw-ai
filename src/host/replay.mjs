@@ -897,8 +897,15 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
     const known = replay.knownMessages === undefined ? null : textMatcher(replay.knownMessages);
     // Unknown status notes fail nothing, they come and go with timing. The report lists each once as a warning.
     const noted = new Set();
+    // Every message and status note per step, known or not: promoting a draft takes its red step's as known (commands.mjs).
+    const shownMessages = new Map();
     const readState = async () => {
         const state = await readPageState(session.framework ?? frameworkOf(), session.page(), authMarker, session.messageSelectors).catch(() => null);
+        if (activeOwner !== undefined) {
+            const seen = shownMessages.get(activeOwner) ?? new Set();
+            for (const message of [...(state?.messages ?? []), ...(state?.notes ?? [])]) if (typeof message === 'string' && message !== '') seen.add(message);
+            if (seen.size > 0) shownMessages.set(activeOwner, seen);
+        }
         for (const note of state?.notes ?? []) {
             if (known?.(note) || noted.has(note)) continue;
             noted.add(note);
@@ -1554,7 +1561,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         if (results.get(id)?.status === 'pass' && deviation.learned) session.warn?.({ type: 'effect', step: id, text: deviationText(deviation) });
     }
     // Secret values stay in `remembered` for the run; in results and abort, i.e. in the report, they are redacted.
-    return { results: new Map([...results].map(([id, result]) => [id, mask(result)])), broken: mask(broken), remembered, requests, effects: observed, deviations, retried, evaluated, designs: new Map([...designs].map(([id, judged]) => [id, mask(judged)])), looks: new Map([...looks].map(([id, record]) => [id, mask(record)])), seenLooks, lookHints, ...(pendingDesign === undefined ? {} : { pendingDesign: mask(pendingDesign) }) };
+    return { results: new Map([...results].map(([id, result]) => [id, mask(result)])), broken: mask(broken), remembered, requests, effects: observed, deviations, retried, evaluated, designs: new Map([...designs].map(([id, judged]) => [id, mask(judged)])), looks: new Map([...looks].map(([id, record]) => [id, mask(record)])), seenLooks, lookHints, shownMessages: new Map([...shownMessages].map(([id, seen]) => [id, mask([...seen])])), ...(pendingDesign === undefined ? {} : { pendingDesign: mask(pendingDesign) }) };
 };
 
 /**
@@ -1682,11 +1689,11 @@ export const failedStep = ({ results, broken, expectations, failures = [], evalu
  * @param withEffects  false on production: effect lines carry visible names, which may be personal data
  * @param designs      the judged target designs per step id (playReplay)
  * @param looks        what the visual layer recorded per step id (playReplay): screenshot, visual
- * @returns [{ id, status, kind?, seconds?, requests?, effects?, deviation?, design?, screenshot?, visual?, proposal? }];
+ * @returns [{ id, status, kind?, seconds?, requests?, effects?, deviation?, design?, screenshot?, visual?, messages?, proposal? }];
  *          `kind` 'design': its screen does not match its target design, 'visual': its learned look
  *          changed; `proposal`: the proven replacement of a renamed target (without the effect on production)
  */
-export const stepRecords = ({ ids, results, broken = null, requests, effects, deviations, designs, looks, durations = {}, withEffects: effectsShown = true }) => ids.map((id) => {
+export const stepRecords = ({ ids, results, broken = null, requests, effects, deviations, designs, looks, shownMessages, durations = {}, withEffects: effectsShown = true }) => ids.map((id) => {
     // The step the playback broke at has no result yet (replayVerdict fills it in): it failed, the ones after it were not reached.
     const status = results?.get(id)?.status ?? (broken?.step === id ? 'fail' : 'skipped');
     const deviation = deviations?.get(id);
@@ -1707,6 +1714,7 @@ export const stepRecords = ({ ids, results, broken = null, requests, effects, de
         ...(shownDeviation === undefined ? {} : { deviation: shownDeviation }),
         ...(design === undefined ? {} : { design: { file: design.file, verdict: design.verdict, missing: design.missing ?? [], extra: design.extra ?? [], styleDiffs: design.styleDiffs ?? [], layoutDiffs: design.layoutDiffs ?? [], textDiffs: design.textDiffs ?? [] } }),
         ...(looks?.get(id) ?? {}),
+        ...(effectsShown && shownMessages !== undefined ? { messages: [...new Set(shownMessages.get(id) ?? [])].sort() } : {}),
         ...(proposal === undefined ? {} : { proposal: effectsShown ? proposal : { ...proposal, evidence: { check: proposal.evidence.check } } }),
     };
 });

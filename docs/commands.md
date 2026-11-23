@@ -263,7 +263,10 @@ which step (run, commit), green in which run, the files changed since the red co
 repository plus untracked files inside the project folder, never an untracked folder such as a nested repository, plus a file
 modified in the working tree at red (`red.dirty`) whose content changed since, and never such a file whose content is still the
 same as at red; without
-`caw/` and `.caw/`) and how many other tests passed. A test of the same name is never overwritten (exit 3).
+`caw/` and `.caw/`) and how many other tests passed. The red step's `known` (its recording) becomes the messages and status notes
+the green run showed there: the red recording knew the bug's messages, the fixed app shows others. The report lists them under
+"Known messages at S3, from the green run" (new, dropped, kept). Every run keeps what each step showed in `result.json`
+(`steps[].messages`, redacted; not on production). A test of the same name is never overwritten (exit 3).
 
 A design draft (`origin: design`, see [Guide](guide.md#build-a-draft-test-first)) is promoted only with its target design met at
 its red step, also when `design.fail` leaves out `target`, and its run folder gets `design-report.md` instead: red at which step

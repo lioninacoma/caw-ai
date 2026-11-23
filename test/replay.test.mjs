@@ -1042,6 +1042,23 @@ const playDesign = async ({ verdict, designFail, retries, failS2 = false }) => {
     return { ...played, warnings, seen, judged, texts };
 };
 
+test('messages per step: a run keeps every message and status note each step showed, known or new, as result.json steps[].messages', async () => {
+    const state = { messages: [], notes: [], appLoaded: true, signedIn: true };
+    const base = fakeSession();
+    const page = { ...base.page(), evaluate: async () => state };
+    const session = { ...base, page: () => page, warn: () => {}, failures: () => [] };
+    const handler = async (command) => {
+        if (command.action !== 'check') return 'ok';
+        state.notes = command.id === 'S1' ? ['Added ##'] : ['Added ##', 'Moved to Tomorrow'];
+        return { pass: true, value: true };
+    };
+    const clock = fakeClock();
+    const played = await playReplay({ replay: { steps: TWO_STEPS, knownMessages: ['Added ##'] }, handler, session, base: 'https://portal.example', stepTimeoutMs: 1000, sleep: clock.sleep, now: clock.now });
+    const records = stepRecords({ ids: ['S1', 'S2'], ...played });
+    assert.deepEqual(records.map(({ messages }) => messages), [['Added ##'], ['Added ##', 'Moved to Tomorrow']]);
+    assert.deepEqual(stepRecords({ ids: ['S1', 'S2'], ...played, withEffects: false }).map(({ messages }) => messages), [undefined, undefined], 'not on production: they may be personal data');
+});
+
 test('design: a design not met fails its step with kind design, the replay goes on without a retry', async () => {
     const played = await playDesign({ verdict: 'not-met', retries: { S1: { times: 2, waitMs: 0 } } });
     assert.equal(played.broken, null, 'no stop');
