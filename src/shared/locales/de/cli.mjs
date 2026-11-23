@@ -744,6 +744,7 @@ Browser:
     'cli.audit.kind.locator-changed': 'Aktion {number} von {step} nutzt ein anderes Element, ihre Prüfung blieb: {was} → {now}.',
     'cli.listDrafts': 'Entwürfe in {dir} (nicht in run --all, bis sie übernommen sind):',
     'cli.listDraftRed': 'rot bei {step} (Lauf {run})',
+    'cli.listDraftGreen': 'grün bei {step}, bereit zum Übernehmen',
     'cli.listDraftDesign': 'Zielbild: {state}',
     'cli.listDraftNotRed': 'aufgenommen, noch nicht rot',
     'cli.validateDrafts': '{count} Entwurf/Entwürfe in {dir} ebenfalls geprüft.',

@@ -164,7 +164,7 @@ Ohne Test: je Test eine Zeile mit Zielen, Stand der Aufnahme (`aufgenommen`, `of
 
 Entwürfe aus [`reproduce`](#reproduce) in `caw/drafts` folgen in einer eigenen Tabelle, mit `rot bei S3 (Lauf …)`, sobald ein Lauf
 belegt hat, dass sie scheitern, solange der Fehler da ist, sonst `aufgenommen, noch nicht rot`; mit noch offenen Schritten
-folgt der Nachweis ihrem Stand (`offen (S5), rot bei S5 (Lauf …)`). Ein Design-Entwurf beginnt mit `Zielbild:`.
+folgt der Nachweis ihrem Stand (`offen (S5), rot bei S5 (Lauf …)`). Hat ein späterer Lauf ihn grün gezeigt (wie `caw_status` mit Phase `green`), steht dort `grün bei S3, bereit zum Übernehmen`. Ein Design-Entwurf beginnt mit `Zielbild:`.
 `list <entwurf>` zeigt seine Schritte wie die eines Tests.
 
 Ohne `caw.config.json` bricht es ab wie jeder andere Befehl (`config-missing`). Einen Testnamen, den es nicht gibt, beantwortet caw mit den bekannten Tests und bei einem Tippfehler mit dem nächstliegenden (`Meintest du create-ticket?`); `record <name>` bietet es nur für einen neuen Test an. Einen unbekannten Schritt mit den Schritten des Tests (`Schritte: S1–S6.`).

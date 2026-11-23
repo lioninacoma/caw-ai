@@ -164,7 +164,7 @@ Without a test: one row per test with its targets, its recording status (`record
 
 Drafts from [`reproduce`](#reproduce) in `caw/drafts` follow in a table of their own, with `red at S3 (run …)` once a run proved
 they fail while the bug is there, else `recorded, not red yet`; with steps still pending the proof follows their state
-(`pending (S5), red at S5 (run …)`). A design draft starts with `target design:`. `list <draft>` shows its steps like a test's.
+(`pending (S5), red at S5 (run …)`). Once a later run showed it green (as `caw_status` says, phase `green`), it reads `green at S3, ready to promote`. A design draft starts with `target design:`. `list <draft>` shows its steps like a test's.
 
 Without `caw.config.json` it stops like every other command (`config-missing`). A test name that doesn't exist names the known tests and, for a typo, the closest one (`Did you mean create-ticket?`); `record <name>` is offered only for a new test. An unknown step names the test's steps (`Steps: S1–S6.`).
 

@@ -588,6 +588,17 @@ test('drafts: list names a design draft\'s origin and its red proof also while i
     assert.ok(lines.some((line) => /^note\s+local\s+Zielbild: offen \(S2\), rot bei S2 \(Lauf 2026-11-23T09-00-00-000Z-note\)\s+liest nur$/.test(line)), lines.join('\n'));
 });
 
+test('drafts: list says green, ready to promote, once a run after the red proof passed its red step, like caw_status', async (t) => {
+    const root = project(t);
+    writeDraft(root);
+    const green = join(root, '.caw', 'runs', '2026-11-21T10-00-00-000Z-bug-x');
+    mkdirSync(green, { recursive: true });
+    writeFileSync(join(green, 'result.json'), JSON.stringify({ status: 'pass', results: [{ id: 'S1', status: 'pass' }, { id: 'S2', status: 'pass' }] }));
+    const lines = [];
+    list(root, [], { out: (text) => lines.push(text) });
+    assert.ok(lines.some((line) => /^bug-x\s+local\s+grün bei S2, bereit zum Übernehmen\s+liest nur$/.test(line)), lines.join('\n'));
+});
+
 test('drafts: list, caw_list and caw_validate show them apart; run --all leaves them out', async (t) => {
     const root = project(t);
     writeDraft(root);

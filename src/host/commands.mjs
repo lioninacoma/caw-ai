@@ -30,7 +30,7 @@ import { textMatcher } from './patterns.mjs';
 import { projectPath } from './project-path.mjs';
 import { changedFiles, dirtyFiles, shortHead } from './git.mjs';
 import { brokenChain, checkTest, draftIds, draftPath, environmentProblems, isDesignDraft, loadDraft, loadTest, pendingSteps, recordingHints, setStepLooks, staleSteps, testExists, testPath, withDefaults, writeTest } from './test-file.mjs';
-import { DESIGN_REPORT, FIX_REPORT, designMet, designOf, deviationsOf } from './bugfix.mjs';
+import { DESIGN_REPORT, FIX_REPORT, designMet, designOf, deviationsOf, fixState } from './bugfix.mjs';
 import { withLearning } from './learning.mjs';
 
 const TOOL_DIR = fileURLToPath(new URL('../../', import.meta.url));
@@ -717,7 +717,7 @@ export const list = (root, args, { out = console.log } = {}) => {
         if (rows.length > 0) columns(rows).forEach((line) => out(line));
         const chain = brokenChain(spec);
         if (chain !== null) out(`  ${t('cli.validateChain', { file: `${spec.draft === true ? DRAFT_DIR : TEST_DIR}/${test}.yaml`, chain })}`);
-        if (spec.draft === true) out(`  ${draftState(spec)}`);
+        if (spec.draft === true) out(`  ${draftState(root, spec)}`);
         return EXIT.pass;
     }
     const ids = testIds(root);
@@ -733,9 +733,9 @@ export const list = (root, args, { out = console.log } = {}) => {
             if (state === 'none') text = t('cli.listNotRecorded');
             else if (state === 'stale') text = t('cli.listStale', { ids: staleIds.join(', ') || chain });
             else if (state === 'pending') text = t('cli.listPending', { ids: staleIds.join(', ') });
-            if (draft && state === 'recorded') text = draftState(spec);
+            if (draft && state === 'recorded') text = draftState(root, spec);
             // A draft's red proof also while steps are pending (a design draft's red step), and where a design draft came from.
-            else if (draft && spec.red !== undefined) text = `${text}, ${draftState(spec)}`;
+            else if (draft && spec.red !== undefined) text = `${text}, ${draftState(root, spec)}`;
             if (draft && isDesignDraft(spec)) text = t('cli.listDraftDesign', { state: text });
             return [id, (spec.runsOn ?? spec.environments ?? []).join(', '), text, writesText(spec)];
         } catch (error) {
@@ -758,8 +758,16 @@ export const list = (root, args, { out = console.log } = {}) => {
     return EXIT.pass;
 };
 
-/** A recorded draft: red at its step (proven, with the run) or not yet proven red. */
-const draftState = (spec) => (spec.red === undefined ? t('cli.listDraftNotRed') : t('cli.listDraftRed', { step: spec.red.step, run: spec.red.run }));
+/**
+ * A recorded draft: not yet proven red, red at its step (proven, with the run), or green and ready to promote once a run after
+ * the red proof showed it so, as caw_status says (bugfix.mjs fixState).
+ */
+const draftState = (root, spec) => {
+    if (spec.red === undefined) return t('cli.listDraftNotRed');
+    const now = fixState(root, spec.id);
+    if (now?.phase === 'green' && now.next?.promote === true) return t('cli.listDraftGreen', { step: spec.red.step });
+    return t('cli.listDraftRed', { step: spec.red.step, run: spec.red.run });
+};
 /** The environments Claude may work on, as text: "dev" or "dev, local". */
 const agentEnvironments = (config) => environmentsWith(config, 'agent').join(', ') || t('cli.noEnvironment');
 
