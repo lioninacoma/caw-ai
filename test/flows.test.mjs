@@ -80,19 +80,30 @@ const harness = ({ outcomes, answers = ['adopt'], ticks = [] }) => {
     };
 };
 
-test('Recording: the first recording of a plan adopts its known messages as the baseline; recorded again they are the person\'s', async () => {
+test('Recording: messages newly known only in steps recorded for the first time are their baseline; newly known in a step recorded before they are the person\'s', async () => {
     const plain = { id: 't', steps: spec.steps.map(({ recording: _recording, ...step }) => step), expectations: spec.expectations };
-    const first = harness({ outcomes: [{ ...pass, candidate: spec, fresh: ['Gespeichert'] }, pass] });
+    const adoptOf = (h) => h.decisions.find((decision) => decision?.id === 'recording.adopt');
+    // The first recording (buildReplay found every newly known message in a step without a recording before).
+    const first = harness({ outcomes: [{ ...pass, candidate: spec, fresh: ['Gespeichert'], baseline: ['Gespeichert'] }, pass] });
     assert.equal(await recordFlow({ sandbox: 's', ...first, previous: plain }), EXIT.pass);
-    const adopting = first.decisions.find((decision) => decision?.id === 'recording.adopt');
-    assert.equal(adopting.context.firstRecording, true);
-    assert.deepEqual(adopting.context.known, ['Gespeichert']);
-    assert.equal(adopting.options.find(({ id }) => id === 'adopt').gate, 'free');
-    const again = harness({ outcomes: [{ ...pass, candidate: spec, fresh: ['Gespeichert'] }, pass] });
+    assert.deepEqual(adoptOf(first).context.known, ['Gespeichert']);
+    assert.deepEqual(adoptOf(first).context.baseline, ['Gespeichert']);
+    assert.equal(adoptOf(first).options.find(({ id }) => id === 'adopt').gate, 'free');
+    // A pending tail recorded for the first time: S1 recorded before, S2 not; its message is S2's baseline.
+    const tail = { ...plain, steps: [spec.steps[0], plain.steps[1]] };
+    const pending = harness({ outcomes: [{ ...pass, candidate: spec, fresh: ['Notiz gespeichert'], baseline: ['Notiz gespeichert'] }, pass] });
+    await recordFlow({ sandbox: 's', ...pending, previous: tail });
+    assert.equal(adoptOf(pending).options.find(({ id }) => id === 'adopt').gate, 'free');
+    // One newly known message that showed in S1 too: the person's.
+    const mixed = harness({ outcomes: [{ ...pass, candidate: spec, fresh: ['Fehler', 'Notiz gespeichert'], baseline: ['Notiz gespeichert'] }, pass] });
+    await recordFlow({ sandbox: 's', ...mixed, previous: tail });
+    assert.deepEqual(adoptOf(mixed).context.baseline, ['Notiz gespeichert']);
+    assert.equal(adoptOf(mixed).options.find(({ id }) => id === 'adopt').gate, 'human');
+    // Recorded again: nothing is a baseline.
+    const again = harness({ outcomes: [{ ...pass, candidate: spec, fresh: ['Gespeichert'], baseline: [] }, pass] });
     await recordFlow({ sandbox: 's', ...again, previous: spec });
-    const readopting = again.decisions.find((decision) => decision?.id === 'recording.adopt');
-    assert.equal(readopting.context.firstRecording, false);
-    assert.equal(readopting.options.find(({ id }) => id === 'adopt').gate, 'human');
+    assert.deepEqual(adoptOf(again).context.baseline, []);
+    assert.equal(adoptOf(again).options.find(({ id }) => id === 'adopt').gate, 'human');
 });
 
 test('Recording: passed and adopted writes the whole plan', async () => {

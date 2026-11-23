@@ -1733,10 +1733,17 @@ ${finishOf(ids)}`;
         verify('green: exit 0, next records the draft headless', built.code === 0 && green.phase === 'green' && green.next?.command === 'record' && green.next.headless === true, `${built.code} ${JSON.stringify(green.next)}`);
         verify('the red proof stays', loadTest(tddRoot, TDD_ID).red?.run === proven.red.run);
 
-        // 6. The whole draft recorded without a window: S2 recorded, origin and red proof kept; next adopts.
+        // 6. The whole draft recorded without a window: S2 recorded, origin and red proof kept; next adopts. S2 is recorded for
+        // the first time: the status "Archived" it shows is its baseline, adopted by caw and named in the decision log.
+        const runsBefore = new Set(runDirsOf(tddRoot, TDD_ID));
         const recorded = await record(tddRoot, [TDD_ID, ...recordArgs, '--headless'], { interactive: false, containerCommand: ['bash', '-c', agent(`${REACH_PLAN}${ARCHIVE_STEP}`, ['S1', 'S2'], `${S1_COMMANDS}\n${S2_COMMANDS}`)] });
         const whole = loadTest(tddRoot, TDD_ID);
         verify('draft recorded headless: exit 0, S2 recorded, origin and red kept', recorded === 0 && whole.steps[1].recording !== undefined && whole.origin === 'design' && whole.red?.run === proven.red.run, `${recorded} ${JSON.stringify(whole.red)}`);
+        const adoptedBy = runDirsOf(tddRoot, TDD_ID).filter((name) => !runsBefore.has(name)).flatMap((name) => {
+            const file = join(tddRoot, '.caw/runs', name, 'result.json');
+            return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')).decisions ?? [] : [];
+        }).find((decision) => decision.id === 'recording.adopt' && decision.option === 'adopt');
+        verify('S2\'s newly known "Archived" is its baseline: adopted by caw, named in the log', adoptedBy?.by === 'auto' && (adoptedBy.known ?? []).includes('Archived') && (whole.knownMessages ?? []).includes('Archived'), JSON.stringify(adoptedBy));
         const ready = await status();
         verify('caw_status: green, next promotes (the person\'s decision)', ready.phase === 'green' && ready.next?.promote === true && ready.next.decision === 'fix.green', JSON.stringify(ready.next));
 

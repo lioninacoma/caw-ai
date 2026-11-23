@@ -463,7 +463,7 @@ export const benchSettings = ({ root, config, spec, checked, agent, mode, run, e
  *                 failed, with `alsoOnWarnings` also for failures and warnings of an otherwise passed run;
  *                 `conclude` runs while the chat is still open and gets `advise`, which lets Claude give advice;
  *                 `adviseCommand` replaces Claude for that, like `containerCommand` when recording
- * @returns { exitCode, verdict, report, failed, candidate, fresh, expectChange, ids, removed } with report the run's report.md relative to the project
+ * @returns { exitCode, verdict, report, failed, candidate, fresh, baseline, expectChange, ids, removed } with report the run's report.md relative to the project
  */
 /**
  * Same expected result, same check: the recorded step a new check would replace although its expected result is unchanged.
@@ -1988,6 +1988,7 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             found: {
                 candidate,
                 fresh: built.fresh,
+                baseline: built.baseline,
                 ...(repairReviewer === null ? {} : { repairAdvice: repairReviewer.result }),
                 ...(expectChange.length === 0 ? {} : { expectChange }),
                 ...(range === undefined || candidate === undefined ? {} : {

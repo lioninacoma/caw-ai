@@ -224,7 +224,7 @@ export default {
     'config.report.decisions.by.terminal': 'by you in the terminal',
     'config.report.decisions.by.auto': 'by caw, nothing the test checks changes',
     'config.report.decisions.ignored': 'invalid answer ignored: {id}: {option}, an answer file without a valid proof (not from a session caw trusts)',
-    'config.report.decisions.known': 'adopted as known, the baseline of the first recording: {list}',
+    'config.report.decisions.known': 'adopted as known, the baseline of steps recorded for the first time: {list}',
     'config.report.openDecision': 'Open decision',
     'config.report.openDecision.text': 'The run stopped at {id} and wrote nothing: it needs a person. Options: {options}.',
     'config.report.thirdParty': 'Third-party hosts',

@@ -640,7 +640,7 @@ Browser:
     'cli.audit.decided': 'Außerhalb des Fensters entschieden',
     'cli.audit.decided.intro': 'Antworten in den Läufen dieses Rechners seit der Merge-Basis, die etwas geändert haben, gegeben von caw selbst (auto: ein Lauf ohne Fenster), von der Session oder vom Menschen in der Session (elicitation). Zur Information; sie ändern oben nichts.',
     'cli.audit.decided.item': '{decision}: {option} ({by}), Lauf {run}',
-    'cli.audit.decided.known': '; erste Aufnahme, ab jetzt bekannt: {list}',
+    'cli.audit.decided.known': '; Basis erstmals aufgenommener Schritte, ab jetzt bekannt: {list}',
     'cli.audit.before': 'vorher',
     'cli.audit.after': 'jetzt',
     'cli.audit.kind.test-removed': 'Der Test wurde entfernt.',

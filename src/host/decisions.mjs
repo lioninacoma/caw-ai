@@ -12,21 +12,23 @@ export const HUMAN = 'human';
 /**
  * A whole recording is harmless to adopt when it records the plan already in the file and changes nothing it checks: same steps
  * (name, action, expected result, note, retry) and writing, no changed expected result, no message newly known, no step removed,
- * fixed, still stale or failing hard on the way. The first recording of a test (`firstRecording`: none before) sets the
- * baseline: the messages it knows are that baseline, not a change, and the decision log names them (`notedOf`). Recorded again,
- * a message newly known stays the person's decision.
+ * fixed, still stale or failing hard on the way. A step recorded for the first time (none before: every step of a first
+ * recording, a pending tail) sets its baseline: a message newly known that showed only in such steps (`baseline`) is that
+ * baseline, not a change, and the decision log names it (`notedOf`). Newly known in a step that had a recording, it stays the
+ * person's decision.
  */
 export const harmlessAdopt = (context) => context.samePlan === true
-    && ['expectChange', ...(context.firstRecording === true ? [] : ['known']), 'removed', 'fixed', 'stale', 'seen'].every((key) => (context[key] ?? []).length === 0);
+    && (context.known ?? []).every((text) => (context.baseline ?? []).includes(text))
+    && ['expectChange', 'removed', 'fixed', 'stale', 'seen'].every((key) => (context[key] ?? []).length === 0);
 
 /**
- * What the decision log keeps next to an answer besides who took it: the messages a first recording adopted as known
- * (report.md and caw audit name them).
+ * What the decision log keeps next to an answer besides who took it: the messages adopted as known as the baseline of steps
+ * recorded for the first time (report.md and caw audit name them).
  */
 export const notedOf = (decision, option) => {
     const { context = {} } = decision;
-    if (decision.id !== 'recording.adopt' || option !== 'adopt' || context.firstRecording !== true) return {};
-    const known = (context.known ?? []).filter((text) => typeof text === 'string');
+    if (decision.id !== 'recording.adopt' || option !== 'adopt') return {};
+    const known = (context.baseline ?? []).filter((text) => typeof text === 'string' && (context.known ?? []).includes(text));
     return known.length === 0 ? {} : { known };
 };
 

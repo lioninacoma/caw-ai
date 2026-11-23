@@ -213,5 +213,5 @@ test('caw audit: decisions this machine took outside the window since the merge 
     assert.deepEqual(JSON.parse(printed).decided.map(({ test: id, decision, option, by }) => `${id} ${decision} ${option} ${by}`), ['bestellung recording.adopt adopt auto', 'andere fix.green promote elicitation']);
     assert.equal(auditCommand(root, ['main'], { print }), 0);
     assert.match(printed, /### Außerhalb des Fensters entschieden \(2\)/);
-    assert.match(printed, /- `bestellung`: recording\.adopt: adopt \(auto\), Lauf \S+; erste Aufnahme, ab jetzt bekannt: `Gespeichert`/);
+    assert.match(printed, /- `bestellung`: recording\.adopt: adopt \(auto\), Lauf \S+; Basis erstmals aufgenommener Schritte, ab jetzt bekannt: `Gespeichert`/);
 });

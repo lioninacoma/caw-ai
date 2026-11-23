@@ -90,7 +90,7 @@ const OUTSIDE_WINDOW = new Set(['auto', 'session', 'elicitation']);
  * The decisions taken outside the window that changed something: by caw itself (a run without a window), by the session
  * (caw_decide) or by the person in the session (elicitation). Newest first; for caw audit.
  * @param since a date: only runs started at or after it
- * @returns [{ run, test, decision, option, by, known? }]: known, the messages a first recording adopted as its baseline
+ * @returns [{ run, test, decision, option, by, known? }]: known, the messages adopted as the baseline of steps recorded for the first time
  */
 export const decisionsOutsideWindow = (root, { since } = {}) => {
     const runs = join(root, RUN_DIR, 'runs');

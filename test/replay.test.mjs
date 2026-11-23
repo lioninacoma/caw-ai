@@ -115,6 +115,46 @@ test('Recorder: messages belong to the action before them and are dropped with i
     assert.deepEqual([...recorder.messages], ['Willkommen'], 'the misclick takes its dialog with it');
 });
 
+test('Recorder: each message belongs to the step in which it was visible; what was there before the first action to the first step', async () => {
+    const shown = ['Willkommen'];
+    const recorder = createRecorder({
+        handler: async (command) => (command.action === 'check' ? { pass: true } : 'ok'),
+        session: { page: () => ({ ...pageWith(), evaluate: async () => ({ messages: [...shown] }) }) },
+        base: 'https://portal.example',
+        recordTarget: recordWith(() => NEXT_BUTTON),
+    });
+    await recorder.handler({ action: 'click', target: 'e1' });
+    await recorder.handler({ action: 'check', id: 'S1', code: 'a' });
+    shown.splice(0, 1, 'Notiz gespeichert');
+    // Visible after S1's check, before S2 acts: what S1 left on the page.
+    await recorder.handler({ action: 'click', target: 'e2' });
+    shown.push('Fehler');
+    await recorder.handler({ action: 'check', id: 'S2', code: 'b' });
+    assert.deepEqual(Object.fromEntries([...recorder.messagesByStep].map(([id, seen]) => [id, [...seen].sort()])), { S1: ['Notiz gespeichert', 'Willkommen'], S2: ['Fehler', 'Notiz gespeichert'] });
+});
+
+test('buildReplay: messages newly known only in steps without a recording before are their baseline; in a step recorded before they are not', () => {
+    const recorder = {
+        problems: [],
+        steps: [{ action: 'check', id: 'S1', code: 'true' }, { action: 'check', id: 'S2', code: 'true' }],
+        messages: new Set(['Gespeichert.', 'Fehler', 'Notiz gespeichert', 'Überall']),
+        messagesByStep: new Map([['S1', new Set(['Gespeichert.', 'Fehler', 'Überall'])], ['S2', new Set(['Notiz gespeichert', 'Überall'])]]),
+    };
+    const spec = { id: 't', steps: [{ id: 'S1', name: 'a', do: 'b', expect: 'c' }, { id: 'S2', name: 'd', do: 'e', expect: 'f' }] };
+    // S1 recorded, S2 pending: the pending tail recorded for the first time.
+    const previous = { ...spec, steps: [{ ...spec.steps[0], recording: { actions: [], check: 'true' } }, spec.steps[1]], knownMessages: ['Gespeichert.'] };
+    const tail = buildReplay({ recorder, outcome: { status: 'pass', results: [] }, spec, previous, target: 'local' });
+    assert.deepEqual(tail.fresh, ['Fehler', 'Notiz gespeichert', 'Überall']);
+    assert.deepEqual(tail.baseline, ['Notiz gespeichert'], 'only in S2; one in S1 as well stays the person\'s');
+    // The first recording: every newly known message is the baseline, with or without the plan before.
+    const plain = { ...spec, knownMessages: [] };
+    assert.deepEqual(buildReplay({ recorder, outcome: { status: 'pass', results: [] }, spec, previous: plain, target: 'local' }).baseline, ['Fehler', 'Gespeichert.', 'Notiz gespeichert', 'Überall']);
+    assert.deepEqual(buildReplay({ recorder, outcome: { status: 'pass', results: [] }, spec, target: 'local' }).baseline, ['Fehler', 'Gespeichert.', 'Notiz gespeichert', 'Überall']);
+    // Recorded again: no baseline.
+    const both = { ...previous, steps: previous.steps.map((step) => ({ ...step, recording: { actions: [], check: 'true' } })) };
+    assert.deepEqual(buildReplay({ recorder, outcome: { status: 'pass', results: [] }, spec, previous: both, target: 'local' }).baseline, []);
+});
+
 test('positionalActions: targets chosen by position or by a bare tag are listed', () => {
     const spec = { steps: [
         { id: 'S1', recording: { actions: [{ action: 'click', target: "getByRole('button', { name: 'Weiter', exact: true })" }] } },

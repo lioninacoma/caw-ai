@@ -515,16 +515,16 @@ const decisionCard = (current, changes, seen, warnings = [], { fresh = [], whole
  * The same decision as data for the session and a run without a window: what would be adopted and everything that makes it
  * more than recording the plan already in the file (decisions.mjs harmlessAdopt).
  */
-const adoptContext = (current, changes, seen, warnings = [], { fresh = [], whole = false, expectChange = [], looks = [], previous } = {}) => ({
+const adoptContext = (current, changes, seen, warnings = [], { fresh = [], baseline = [], whole = false, expectChange = [], looks = [], previous } = {}) => ({
     test: current.id,
     whole,
     steps: current.steps.length,
     samePlan: samePlan(previous, current),
-    // The test had no recording yet: what this one knows is the baseline (decisions.mjs harmlessAdopt).
-    firstRecording: whole && !(previous?.steps ?? []).some((step) => step.recording !== undefined),
     writes: current.writes === true,
     expectChange: [...changes.flatMap((change) => change.expectChange ?? []), ...expectChange].map(({ id, before, after }) => ({ step: id, before, after })),
     known: [...new Set([...fresh, ...changes.flatMap((change) => change.fresh)])],
+    // Newly known only in steps recorded for the first time: their baseline, not a change (decisions.mjs harmlessAdopt).
+    baseline: whole ? baseline : [],
     removed: changes.flatMap(({ removed = [] }) => removed),
     fixed: changedIds(changes),
     stale: staleSteps(current).map(({ id }) => id),
@@ -557,6 +557,7 @@ const changeNote = (changes) => {
  * @param whole        the whole plan is new and is adopted as a whole
  * @param discardCode  exit code on discard, otherwise that of the check run
  * @param fresh        for a whole recording: messages that newly count as known
+ * @param baseline     of those, the ones seen only in steps without a recording before: their baseline (buildReplay)
  * @param seenFailures hard failures from the previous recording, the human sees them before deciding
  * @param execute      a single run
  * @param adopt        (test, changed steps or undefined for all, { withNotes }) writes the file and returns its name
@@ -570,7 +571,7 @@ const changeNote = (changes) => {
  * @param previous     the test file as it was before: adopting a recording of the same plan that changes nothing it checks is
  *                     harmless (decisions.mjs harmlessAdopt), which a run without a window may do on its own
  */
-export const fixFlow = async ({ draft, target = null, changes: done = [], whole = false, expectChange = [], fresh = [], discardCode, seenFailures = [], sandbox, openSandbox, execute, adopt, markLooks, log, head = () => undefined, advising: advisingFirst = true, guide, previous }) => {
+export const fixFlow = async ({ draft, target = null, changes: done = [], whole = false, expectChange = [], fresh = [], baseline = [], discardCode, seenFailures = [], sandbox, openSandbox, execute, adopt, markLooks, log, head = () => undefined, advising: advisingFirst = true, guide, previous }) => {
     const fixer = createFixer({ sandbox, openSandbox });
     const changes = [...done];
     const seen = [...seenFailures];
@@ -713,7 +714,7 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
                     const looks = suggesting ? (concluded.lookCandidates ?? []).filter((id) => current.steps.some((step) => step.id === id && step.look !== true)) : [];
                     const text = decisionText(current, changes, seen, verdict.warnings, { fresh, whole, expectChange, looks });
                     const card = decisionCard(current, changes, seen, verdict.warnings, { fresh, whole, expectChange });
-                    const context = adoptContext(current, changes, seen, verdict.warnings, { fresh, whole, expectChange, looks, previous });
+                    const context = adoptContext(current, changes, seen, verdict.warnings, { fresh, baseline, whole, expectChange, looks, previous });
                     let picked = [];
                     if (looks.length === 0) choice = await decideOn(chat, { id: 'recording.adopt', context, question: text, options, card });
                     else ({ choice, picked } = await decideOn(chat, { id: 'recording.adopt', context, question: text, options, card: { ...card, picks: lookPicks(current, looks) }, via: 'picks' }));
@@ -809,7 +810,7 @@ export const recordFlow = async ({ sandbox, execute, adopt, markLooks, log, head
     });
     if (recorded.candidate === undefined) return recorded.exitCode;
     // The check run of a recording costs no further tokens unless asked: advice only comes once a step gets fixed.
-    return fixFlow({ draft: recorded.candidate, whole: true, expectChange: recorded.expectChange ?? [], fresh: recorded.fresh ?? [], seenFailures: hardFailures(recorded.verdict), sandbox, execute, adopt, markLooks, log, head, advising: false, guide, previous });
+    return fixFlow({ draft: recorded.candidate, whole: true, expectChange: recorded.expectChange ?? [], fresh: recorded.fresh ?? [], baseline: recorded.baseline ?? [], seenFailures: hardFailures(recorded.verdict), sandbox, execute, adopt, markLooks, log, head, advising: false, guide, previous });
 };
 
 /**

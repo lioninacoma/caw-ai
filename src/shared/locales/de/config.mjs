@@ -224,7 +224,7 @@ export default {
     'config.report.decisions.by.terminal': 'von dir im Terminal',
     'config.report.decisions.by.auto': 'von caw, nichts ändert sich, was der Test prüft',
     'config.report.decisions.ignored': 'ungültige Antwort ignoriert: {id}: {option}, eine Antwortdatei ohne gültigen Nachweis (nicht von einer Session, der caw vertraut)',
-    'config.report.decisions.known': 'als bekannt übernommen, die Basis der ersten Aufnahme: {list}',
+    'config.report.decisions.known': 'als bekannt übernommen, die Basis erstmals aufgenommener Schritte: {list}',
     'config.report.openDecision': 'Offene Entscheidung',
     'config.report.openDecision.text': 'Der Lauf hat bei {id} angehalten und nichts geschrieben: Das entscheidet ein Mensch. Optionen: {options}.',
     'config.report.thirdParty': 'Fremde Hosts',

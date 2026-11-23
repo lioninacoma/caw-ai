@@ -233,6 +233,22 @@ export const createRecorder = ({ handler, session, base, authMarker, runTag, rem
         get messages() {
             return new Set([...initial, ...seenAfter.flatMap((seen) => [...seen])]);
         },
+        /**
+         * The same messages per step: what was visible after an action belongs to the step of the next check (groupSteps), after
+         * a check to that check's step, before the first action to the first step. Actions after the last check belong to none.
+         */
+        get messagesByStep() {
+            const by = new Map();
+            let owner;
+            for (let index = steps.length - 1; index >= 0; index -= 1) {
+                if (steps[index].action === 'check') owner = steps[index].id;
+                if (owner === undefined) continue;
+                const seen = by.get(owner) ?? new Set();
+                for (const message of [...seenAfter[index], ...(index === 0 ? initial : [])]) seen.add(message);
+                by.set(owner, seen);
+            }
+            return by;
+        },
         /** Steps the human demonstrated in the live browser. */
         addSteps: (shown) => shown.forEach(add),
         /** The numbered list from which the agent names its detours. */
@@ -472,7 +488,8 @@ export const missingRemembered = (spec) => {
  * @param browser { locale, timezone, viewport } of the recording browser, stored with every step
  * @param red     a draft's step that must fail while the bug is there: a verdict where only it failed, with its check
  *                recorded, is a recording too
- * @returns { problems, candidate, fresh }; `fresh` lists messages the recording did not know so far
+ * @returns { problems, candidate, fresh, baseline }; `fresh` lists messages the recording did not know so far, `baseline` those
+ *          of them seen only in steps without a recording before
  */
 export const buildReplay = ({ recorder, outcome, spec, target, draft, from, previous, red, browser = {}, now = new Date() }) => {
     const problems = [...recorder.problems];
@@ -530,6 +547,14 @@ export const buildReplay = ({ recorder, outcome, spec, target, draft, from, prev
     // Newly known is what the previous recording did not know yet: its fixed texts showing again change nothing it checks.
     const before = draft === undefined ? textMatcher((previous?.knownMessages ?? []).filter((entry) => typeof entry === 'string')) : () => false;
     const fresh = seen.filter((message) => !before(message));
+    // A whole recording: newly known messages seen only in steps that had no recording before (all of them in a first
+    // recording, a pending tail recorded now) are those steps' baseline, not a change (decisions.mjs harmlessAdopt).
+    const recordedBefore = new Set((previous?.steps ?? []).filter(({ recording }) => recording !== undefined).map(({ id }) => id));
+    const byStep = [...(recorder.messagesByStep ?? new Map())];
+    const baseline = draft !== undefined ? [] : fresh.filter((message) => {
+        const at = byStep.filter(([, inStep]) => inStep.has(message)).map(([id]) => id);
+        return at.length > 0 && at.every((id) => !recordedBefore.has(id));
+    });
     const texts = given.filter((entry) => typeof entry === 'string');
     const candidate = withExpectations({
         ...(draft ?? spec),
@@ -537,7 +562,7 @@ export const buildReplay = ({ recorder, outcome, spec, target, draft, from, prev
         knownMessages: [...[...new Set([...texts, ...seen])].sort(), ...given.filter((entry) => typeof entry !== 'string')],
     });
     const lost = missingRemembered(candidate);
-    return lost.length > 0 ? { problems: lost } : { problems, candidate, fresh };
+    return lost.length > 0 ? { problems: lost } : { problems, candidate, fresh, baseline };
 };
 
 /**

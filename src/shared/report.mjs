@@ -173,7 +173,7 @@ const decisionLines = (decisions, openDecision, ignoredAnswers = []) => {
     if (decisions.length > 0 || ignoredAnswers.length > 0) {
         lines.push('', `## ${t('config.report.decisions')}`, '');
         for (const { id, option, by, known = [] } of decisions) {
-            // A first recording's known messages: its baseline, named so the reader sees what counts as known from now on.
+            // Known messages of steps recorded for the first time: their baseline, named so the reader sees what counts as known from now on.
             const noted = known.length === 0 ? '' : `; ${t('config.report.decisions.known', { list: known.map((text) => `"${cell(text)}"`).join('; ') })}`;
             lines.push(`- ${id}: ${option} (${t(`config.report.decisions.by.${by}`)})${noted}`);
         }
