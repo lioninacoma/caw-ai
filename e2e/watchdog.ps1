@@ -1,6 +1,8 @@
 # Starts the E2E and aborts it when the log has been silent for too long.
 # Usage: pwsh watchdog.ps1 <ids> <log> [silentSeconds], e.g. pwsh watchdog.ps1 N1,A e2e.log (ids: see native-e2e.mjs)
-param([string]$Filter = '', [string]$Log = 'e2e.log', [int]$SilentSeconds = 180, [string[]]$NodeArgs = @(), [string]$Folder = $PSScriptRoot)
+# 240 s of silence: above Playwright's default launch timeout of 180 s, so a Chrome launch that hangs reports its own error
+# in the log before the watchdog kills the run without a cause.
+param([string]$Filter = '', [string]$Log = 'e2e.log', [int]$SilentSeconds = 240, [string[]]$NodeArgs = @(), [string]$Folder = $PSScriptRoot)
 Set-Location $PSScriptRoot
 $Log = Join-Path $PSScriptRoot $Log
 $status = "$Log.status"
