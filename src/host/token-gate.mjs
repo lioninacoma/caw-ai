@@ -19,7 +19,7 @@ export const createTokenGate = ({ chat, prefs = readPrefs, save = (value) => wri
             { id: 'go', label: t('run.tokens.go'), primary: true },
             { id: 'always', label: t('run.tokens.always') },
             { id: 'stop', label: decline },
-        ], card: { kind: 'tokens', text: t('run.tokens.detail') } });
+        ], card: { kind: 'tokens' } });
         if (choice === 'always') {
             save('off');
             current.progress?.(t('run.tokens.remembered'));

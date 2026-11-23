@@ -392,8 +392,8 @@ const inPhase = (phase, card, design = false) => ({ ...card, phase, ...(design ?
 
 // The texts of the guide card: a bug to fix, or a target design to build.
 const GUIDE = {
-    fix: { phase: 'fix', title: 'run.guide.fixTitle', captured: 'run.guide.capturedTitle', againMuted: 'run.guide.againMuted', waitTitle: 'run.guide.waitTitle', waitText: 'run.guide.waitText', noAgentText: 'run.guide.noAgentText', appliedText: 'run.guide.appliedText', nothingText: 'run.guide.nothingText', byAgent: FIX_BY_AGENT, again: FIX_AGAIN, myself: FIX_MYSELF },
-    design: { phase: 'build', title: 'run.guide.buildTitle', captured: 'run.guide.designCapturedTitle', againMuted: 'run.guide.buildAgainMuted', waitTitle: 'run.guide.buildWaitTitle', waitText: 'run.guide.buildWaitText', noAgentText: 'run.guide.buildNoAgentText', appliedText: 'run.guide.buildAppliedText', nothingText: 'run.guide.buildNothingText', byAgent: BUILD_BY_AGENT, again: BUILD_AGAIN, myself: BUILD_MYSELF },
+    fix: { phase: 'fix', title: 'run.guide.fixTitle', captured: 'run.guide.capturedTitle', waitTitle: 'run.guide.waitTitle', waitText: 'run.guide.waitText', noAgentText: 'run.guide.noAgentText', appliedText: 'run.guide.appliedText', nothingText: 'run.guide.nothingText', byAgent: FIX_BY_AGENT, again: FIX_AGAIN, myself: FIX_MYSELF },
+    design: { phase: 'build', title: 'run.guide.buildTitle', captured: 'run.guide.designCapturedTitle', waitTitle: 'run.guide.buildWaitTitle', waitText: 'run.guide.buildWaitText', noAgentText: 'run.guide.buildNoAgentText', appliedText: 'run.guide.buildAppliedText', nothingText: 'run.guide.buildNothingText', byAgent: BUILD_BY_AGENT, again: BUILD_AGAIN, myself: BUILD_MYSELF },
 };
 
 /** The command that goes on with a draft later, on the run's environment (guide.env) like every other hint. */
@@ -419,7 +419,7 @@ const laterCommand = (guide, test, extra = '', command = 'run') => commandOn(gui
  */
 const guideFix = async (chat, { red, test, later, again = false, title, adviseFix, store, design = false, server, reloadable }) => {
     const texts = GUIDE[design ? 'design' : 'fix'];
-    const ask = { ...resultCard('next', title ?? t(texts.captured, { id: red.step }), undefined, t(again ? texts.againMuted : 'run.guide.fixMuted')), rows: redRows(red) };
+    const ask = { ...resultCard('next', title ?? t(texts.captured, { id: red.step })), rows: redRows(red) };
     let card = ask;
     // Just captured, the bar stands at "In a test"; still red after a fix, at fixing.
     let phase = again ? texts.phase : 'red';
@@ -467,7 +467,7 @@ const guideFix = async (chat, { red, test, later, again = false, title, adviseFi
                 options = [RETEST, LATER];
             } else if (outside.length > 0) {
                 // Nothing to apply here: where it lies, and the person fixes it there; testing again shows the fix all the same.
-                card = resultCard('warn', t('run.guide.outsideTitle'), outside.map(({ where, title: what }) => `${where}: ${withoutDot(what)}.`).join(' '), t('run.guide.outsideMuted'));
+                card = resultCard('warn', t('run.guide.outsideTitle'), outside.map(({ where, title: what }) => `${where}: ${withoutDot(what)}.`).join(' '));
                 options = [FIX_THERE, LATER];
             } else {
                 card = resultCard('info', t('run.guide.nothingTitle'), t(texts.nothingText));

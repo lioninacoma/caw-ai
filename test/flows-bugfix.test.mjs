@@ -89,7 +89,7 @@ test('Recording a draft guided: the bug captured in a test, the card shows step,
         { label: 'Prüfung', text: "sum==='Total: 5'", code: true },
         { label: 'Ursache', text: 'server.mjs:12 rechnet ohne Preise.' },
     ]);
-    assert.equal(fix.card.muted, 'Was Claude Code an der App ändert, übernimmt caw sofort und listet es hier; danach testet caw von selbst erneut.');
+    assert.equal(fix.card.muted, undefined, 'no sentence that only explains the buttons');
     assert.deepEqual(fix.options, ['fix-by-agent', 'fix-myself', 'later']);
     assert.deepEqual(fix.labels, ['Von Claude Code beheben lassen', 'Ich behebe selbst', 'Später']);
     assert.deepEqual(fix.primary, ['fix-by-agent', 'fix-myself'], 'both fixes side by side, none behind More');
@@ -161,7 +161,7 @@ test('Fixing by the agent: a cause outside the project is pointed out, nothing t
     assert.equal(outside.card.title, 'Die Ursache liegt außerhalb dieses Projekts');
     assert.equal(outside.card.tone, 'warn');
     assert.match(outside.text, /Repository billing-api: Der Preisdienst liefert 0\./);
-    assert.match(outside.text, /Hier gibt es nichts zu übernehmen/);
+    assert.doesNotMatch(outside.text, /Hier gibt es nichts zu übernehmen/, 'no sentence that only explains the buttons');
     assert.deepEqual(outside.options, ['fix-there', 'later']);
     assert.deepEqual(outside.labels[0], 'Ich behebe es dort');
     assert.deepEqual(h.questions[3].options, ['retest', 'later']);
@@ -192,7 +192,7 @@ test('Test run of a red draft guided: still red offers fixing again, testing aga
     assert.deepEqual(still.labels, ['Von Claude Code erneut beheben lassen', 'Ich behebe selbst', 'Erneut testen', 'Lauf beenden']);
     assert.equal(still.card.phase, 'fix');
     assert.equal(still.card.rows[0].text, 'S2 Summe');
-    assert.match(still.card.muted, /Lass Claude Code noch einmal suchen/);
+    assert.equal(still.card.muted, undefined, 'no sentence that only explains the buttons');
     assert.deepEqual(h.said[0], { next: 'run' });
     assert.deepEqual(h.said[1], { outcome: 'Später weiter mit caw run bug-x --env test.' });
     assert.deepEqual(h.adopted, [], 'the first red proof stays');
