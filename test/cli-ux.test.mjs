@@ -576,6 +576,17 @@ const writeDraft = (root, { red = { step: 'S2', run: '2026-11-20T09-00-00-000Z-b
     id: 'bug-x', role: 'tester', environments: ['local'], writes: false, notes: '', draft: true, steps, ...(red === null ? {} : { red }),
 });
 
+test('drafts: list names a design draft\'s origin and its red proof also while its red step is pending', async (t) => {
+    const root = project(t);
+    writeTest(root, {
+        id: 'note', role: 'tester', environments: ['local'], writes: false, notes: '', draft: true, origin: 'design',
+        steps: [recorded(step('S1', 'Suche')), { ...step('S2', 'Notiz'), design: 'design/note.html' }], red: { step: 'S2', run: '2026-11-23T09-00-00-000Z-note', head: 'abc1234' },
+    });
+    const lines = [];
+    list(root, [], { out: (text) => lines.push(text) });
+    assert.ok(lines.some((line) => /^note\s+local\s+Zielbild: offen \(S2\), rot bei S2 \(Lauf 2026-11-23T09-00-00-000Z-note\)\s+liest nur$/.test(line)), lines.join('\n'));
+});
+
 test('drafts: list, caw_list and caw_validate show them apart; run --all leaves them out', async (t) => {
     const root = project(t);
     writeDraft(root);

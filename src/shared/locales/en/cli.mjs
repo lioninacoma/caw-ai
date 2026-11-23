@@ -733,6 +733,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.audit.kind.locator-changed': 'Action {number} of {step} uses another element, its check stayed: {was} → {now}.',
     'cli.listDrafts': 'Drafts in {dir} (not in run --all until promoted):',
     'cli.listDraftRed': 'red at {step} (run {run})',
+    'cli.listDraftDesign': 'target design: {state}',
     'cli.listDraftNotRed': 'recorded, not red yet',
     'cli.validateDrafts': '{count} draft(s) in {dir} checked as well.',
     'cli.draftGreen': 'The draft passes now, also {step}: the bug is fixed. Promote it once the other tests pass too: {caw} run {test} --promote --env {target}',

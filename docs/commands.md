@@ -163,7 +163,8 @@ npx caw list create-ticket
 Without a test: one row per test with its targets, its recording status (`recorded`, `pending (S4, S5)`, `stale (S2, S3)`, `not recorded`) and whether it writes data. With a test: one line per step, e.g. `S2  Create a ticket  (stale)` or `S4  Export  (pending)`. [Pending](test-files.md#pending-steps) is the unrecorded tail after the last recorded step. No browser, no agent.
 
 Drafts from [`reproduce`](#reproduce) in `caw/drafts` follow in a table of their own, with `red at S3 (run …)` once a run proved
-they fail while the bug is there, else `recorded, not red yet`; `list <draft>` shows its steps like a test's.
+they fail while the bug is there, else `recorded, not red yet`; with steps still pending the proof follows their state
+(`pending (S5), red at S5 (run …)`). A design draft starts with `target design:`. `list <draft>` shows its steps like a test's.
 
 Without `caw.config.json` it stops like every other command (`config-missing`). A test name that doesn't exist names the known tests and, for a typo, the closest one (`Did you mean create-ticket?`); `record <name>` is offered only for a new test. An unknown step names the test's steps (`Steps: S1–S6.`).
 

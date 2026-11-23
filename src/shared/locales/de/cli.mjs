@@ -740,6 +740,7 @@ Browser:
     'cli.audit.kind.locator-changed': 'Aktion {number} von {step} nutzt ein anderes Element, ihre Prüfung blieb: {was} → {now}.',
     'cli.listDrafts': 'Entwürfe in {dir} (nicht in run --all, bis sie übernommen sind):',
     'cli.listDraftRed': 'rot bei {step} (Lauf {run})',
+    'cli.listDraftDesign': 'Zielbild: {state}',
     'cli.listDraftNotRed': 'aufgenommen, noch nicht rot',
     'cli.validateDrafts': '{count} Entwurf/Entwürfe in {dir} ebenfalls geprüft.',
     'cli.draftGreen': 'Der Entwurf besteht jetzt, auch {step}: Der Fehler ist behoben. Übernimm ihn, sobald auch die anderen Tests bestehen: {caw} run {test} --promote --env {target}',

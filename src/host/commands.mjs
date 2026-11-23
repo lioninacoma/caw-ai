@@ -733,6 +733,9 @@ export const list = (root, args, { out = console.log } = {}) => {
             else if (state === 'stale') text = t('cli.listStale', { ids: staleIds.join(', ') || chain });
             else if (state === 'pending') text = t('cli.listPending', { ids: staleIds.join(', ') });
             if (draft && state === 'recorded') text = draftState(spec);
+            // A draft's red proof also while steps are pending (a design draft's red step), and where a design draft came from.
+            else if (draft && spec.red !== undefined) text = `${text}, ${draftState(spec)}`;
+            if (draft && isDesignDraft(spec)) text = t('cli.listDraftDesign', { state: text });
             return [id, (spec.runsOn ?? spec.environments ?? []).join(', '), text, writesText(spec)];
         } catch (error) {
             // The table stays narrow, the reason goes below it; validate lists all findings.

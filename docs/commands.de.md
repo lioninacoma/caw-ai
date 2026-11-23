@@ -163,8 +163,9 @@ npx caw list create-ticket
 Ohne Test: je Test eine Zeile mit Zielen, Stand der Aufnahme (`aufgenommen`, `offen (S4, S5)`, `veraltet (S2, S3)`, `nicht aufgenommen`) und ob er Daten schreibt. Mit Test: je Schritt eine Zeile, etwa `S2  Ticket anlegen  (veraltet)` oder `S4  Export  (offen)`. [Offen](test-files.de.md#offene-schritte) ist das nicht aufgenommene Ende nach dem letzten aufgenommenen Schritt. Ohne Browser und ohne den Agenten.
 
 Entwürfe aus [`reproduce`](#reproduce) in `caw/drafts` folgen in einer eigenen Tabelle, mit `rot bei S3 (Lauf …)`, sobald ein Lauf
-belegt hat, dass sie scheitern, solange der Fehler da ist, sonst `aufgenommen, noch nicht rot`; `list <entwurf>` zeigt seine
-Schritte wie die eines Tests.
+belegt hat, dass sie scheitern, solange der Fehler da ist, sonst `aufgenommen, noch nicht rot`; mit noch offenen Schritten
+folgt der Nachweis ihrem Stand (`offen (S5), rot bei S5 (Lauf …)`). Ein Design-Entwurf beginnt mit `Zielbild:`.
+`list <entwurf>` zeigt seine Schritte wie die eines Tests.
 
 Ohne `caw.config.json` bricht es ab wie jeder andere Befehl (`config-missing`). Einen Testnamen, den es nicht gibt, beantwortet caw mit den bekannten Tests und bei einem Tippfehler mit dem nächstliegenden (`Meintest du create-ticket?`); `record <name>` bietet es nur für einen neuen Test an. Einen unbekannten Schritt mit den Schritten des Tests (`Schritte: S1–S6.`).
 
