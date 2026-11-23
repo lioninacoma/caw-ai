@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 
-import { changeTracker, chooseEnv, draftGreenLine, failureHints, init, junitXml, list, open, record, reportJson, run, runMode, stepsText, summaryMarkdown, validate } from '../src/host/commands.mjs';
+import { changeTracker, chooseEnv, draftGreenLine, failureHints, init, pendingLine, junitXml, list, open, record, reportJson, run, runMode, stepsText, summaryMarkdown, validate } from '../src/host/commands.mjs';
 import { parseRunArgs } from '../src/host/linux.mjs';
 import { loadTest, stepHash, writeTest } from '../src/host/test-file.mjs';
 import { listProject, validateProject } from '../src/host/project-data.mjs';
@@ -759,6 +759,16 @@ test('after a failed step: a design not met points to building and to open --des
     const check = failureHints({ id: 'S4', kind: 'check' }, { ...at, hadChat: false });
     assert.match(check[0].text, /caw record erste@S4 --env local$/, 'a failed check keeps re-recording as the last resort');
     assert.equal(check[1].text, 'Bis zum Einstieg in den Schritt: caw open erste@S4 --env local');
+});
+
+test('pending steps: "record it" only once the first pending step is ready; not while its needs or design controls are missing', () => {
+    const at = { test: 'note', target: 'local' };
+    assert.match(pendingLine(['S5', 'S6'], { ...at, verdict: { status: 'pass' } }), /Nimm sie auf: caw record note@S5 --env local$/);
+    assert.match(pendingLine(['S5', 'S6'], { ...at, verdict: { needs: { step: 'S5', ready: true, missing: [] } } }), /Nimm sie auf: caw record note@S5 --env local$/);
+    const notReady = pendingLine(['S5', 'S6'], { ...at, verdict: { needs: { step: 'S5', ready: false, missing: ['x'] } } });
+    assert.equal(notReady, 'Offen, noch nicht aufgenommen: S5, S6. Sie liefen nicht. S5 ist noch nicht bereit zur Aufnahme: Es fehlt noch, was oben steht.');
+    assert.equal(pendingLine(['S5'], { ...at, verdict: { pendingDesign: { step: 'S5', verdict: 'not-ready', missing: ['textbox "Note"'] } } }),
+        'Offen, noch nicht aufgenommen: S5. Er lief nicht. S5 ist noch nicht bereit zur Aufnahme: Es fehlt noch, was oben steht.');
 });
 
 test('a green draft proven red names --promote, but not in the run of --promote itself', () => {

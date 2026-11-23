@@ -41,7 +41,7 @@ import { recordLocator } from './record-locator.mjs';
 import { adviceView, applyEdits, applyToFiles, applyToSpec, adviceReader, changesFiles, configValue } from './advice.mjs';
 import { diagnose } from './diagnose.mjs';
 import { keptForms } from './effects.mjs';
-import { DEFAULT_DESIGN_FAIL, createDesignJudge, missingNeeds } from './design.mjs';
+import { DEFAULT_DESIGN_FAIL, createDesignJudge, missingNeeds, needLine } from './design.mjs';
 import { frameworkOf } from './framework/index.mjs';
 import { demonstrate, feedLabel, itemLabel, recordableSteps } from './demonstrate.mjs';
 import { CLAUDE_TIMEOUT_MIN, claudeFailureReason, parseEnvFile } from './linux.mjs';
@@ -2114,7 +2114,7 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             const missing = await missingNeeds(session.framework ?? frameworkOf(config), () => session.page().mainFrame(), replay.needs.locators);
             const { step } = replay.needs;
             reportBase.needs = { step, ready: missing.length === 0, missing };
-            const text = missing.length === 0 ? t('run.needs.ready', { step, command: `${cawCommand()} record ${spec.id}@${step} --env ${target}` }) : t('run.needs.missing', { step, list: missing.join('; ') });
+            const text = missing.length === 0 ? t('run.needs.ready', { step, command: `${cawCommand()} record ${spec.id}@${step} --env ${target}` }) : t('run.needs.missing', { step, list: missing.map(needLine).join('; ') });
             ui.info(text);
             chat?.notice(text);
         }
@@ -2126,7 +2126,8 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             const { step, file, note: why } = ended.pendingDesign;
             const byNeeds = reportBase.needs?.step === step ? reportBase.needs : undefined;
             const entryVerdict = byNeeds === undefined ? ended.pendingDesign.verdict : byNeeds.ready ? 'ready' : 'not-ready';
-            const missing = byNeeds === undefined ? ended.pendingDesign.missing ?? [] : byNeeds.missing;
+            // The needs' locators as the card and caw_status show what is missing: like a control line where they name one.
+            const missing = byNeeds === undefined ? ended.pendingDesign.missing ?? [] : byNeeds.missing.map(needLine);
             const seen = entryVerdict === 'ready' || entryVerdict === 'not-ready';
             reportBase.pendingDesign = { step, file, ...(entryVerdict === undefined ? {} : { verdict: entryVerdict }), ...(seen ? { missing } : why === undefined ? {} : { note: why }) };
             // The needs said it already, in their own line.

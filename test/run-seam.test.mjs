@@ -366,7 +366,7 @@ test('Seam: a pending step with needs: they, not the design\'s controls, say at 
     spec.steps.push(pending);
     spec.expectations.push({ id: 'S3', text: pending.expect });
     assert.equal(await runFlow({ spec, canFix: true, execute: h.execute, adopt: h.adopt, log: () => {}, openSandbox: async () => null }), EXIT.pass);
-    assert.deepEqual(h.result().pendingDesign, { step: 'S3', file: 'design/s3.html', verdict: 'not-ready', missing: ["getByRole('button', { name: 'Speichern' })"] });
+    assert.deepEqual(h.result().pendingDesign, { step: 'S3', file: 'design/s3.html', verdict: 'not-ready', missing: ['button "Speichern"'] }, 'what is missing reads like a control line');
 });
 
 test('Seam: the first pending step ready to record is named with the record command for the run\'s environment', async () => {

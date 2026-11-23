@@ -821,6 +821,20 @@ export const createDesignJudge = ({ cawDir, launch, read, secrets = () => [] }) 
     };
 };
 
+// One getByRole with its name, as a needs locator is usually written: `getByRole('textbox', { name: 'Note', exact: true })`.
+const ROLE_LOCATOR = /^getByRole\(\s*(['"])([a-z]+)\1\s*(?:,\s*\{[^{}]*?\bname:\s*(['"])((?:(?!\3)[^\\]|\\.)*)\3[^{}]*\})?\s*\)$/;
+
+/**
+ * A missing needs locator as the person reads it: one getByRole names its element like a control line (`textbox "Note"`), any
+ * other locator stays code.
+ */
+export const needLine = (code) => {
+    const match = ROLE_LOCATOR.exec(String(code).trim());
+    if (match === null) return code;
+    const [, , role, , name] = match;
+    return name === undefined ? role : `${role} "${name.replace(/\\(.)/g, '$1')}"`;
+};
+
 /**
  * Is the first pending step ready to record? Its `needs` locators must each find exactly one reachable element in the state the
  * run ended in. Never run as code: they are locators, parsed like a recording's targets.

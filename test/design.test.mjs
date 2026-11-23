@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 
-import { LAYOUT_TOLERANCE_PX, compareDetailed, compareStructure, createDesignJudge, designKind, designPath, designProblem, isDesignName, layoutMeasures, listDesigns, maskedView, relation, missingNeeds, normalStyle, renderDesign, structureFrom, structureOf, viewLines, writeDesign } from '../src/host/design.mjs';
+import { LAYOUT_TOLERANCE_PX, compareDetailed, compareStructure, createDesignJudge, designKind, designPath, designProblem, isDesignName, layoutMeasures, listDesigns, maskedView, relation, missingNeeds, needLine, normalStyle, renderDesign, structureFrom, structureOf, viewLines, writeDesign } from '../src/host/design.mjs';
 import { frameworkOf } from '../src/host/framework/index.mjs';
 import { captureStep, createLook, designComparison, learnLook, learnedLooks, maskProbe, styleLines, withAdoptedLooks } from '../src/host/visual.mjs';
 import { launchChrome } from './chrome.mjs';
@@ -569,6 +569,14 @@ test('the judge: the app\'s scrollbar in a window narrows no block of the design
         await judge.close();
         await context.close();
     }
+});
+
+test('needs: a missing locator reads like a control line where it names one by role and name', () => {
+    assert.equal(needLine("getByRole('textbox', { name: 'Note', exact: true })"), 'textbox "Note"');
+    assert.equal(needLine('getByRole("button", { name: "Save note" })'), 'button "Save note"');
+    assert.equal(needLine("getByRole('dialog')"), 'dialog');
+    assert.equal(needLine("getByLabel('Note')"), "getByLabel('Note')", 'other locators stay code');
+    assert.equal(needLine("getByRole('dialog').getByRole('button', { name: 'Save' })"), "getByRole('dialog').getByRole('button', { name: 'Save' })", 'a chain stays code');
 });
 
 test('needs: the locators missing on the page', async (t) => {

@@ -410,6 +410,9 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.pendingSteps': ({ ids, count, test, step, target }) => (count === 1
         ? `Pending, not recorded yet: ${ids}. It did not run. Record it: {caw} record ${test}@${step} --env ${target}`
         : `Pending, not recorded yet: ${ids}. They did not run. Record them: {caw} record ${test}@${step} --env ${target}`),
+    'cli.pendingStepsNotReady': ({ ids, count, step }) => (count === 1
+        ? `Pending, not recorded yet: ${ids}. It did not run. ${step} is not ready to record yet: what is missing stands above.`
+        : `Pending, not recorded yet: ${ids}. They did not run. ${step} is not ready to record yet: what is missing stands above.`),
     'cli.recordExists': 'Test {test} already exists, its metadata stays. --role and --read-only must match the file or be left out.',
     'cli.recordHeadless': 'Recording {test} on {env} without a window: {agent} follows the test plan; caw takes only what changes nothing the test checks (the unchanged plan, adopting the same plan, a draft\'s red proof). Anything else stops the run, writes nothing and exits 5.',
     'cli.recordHeadlessPlan': 'record --headless needs a test with a plan: {file} has none. Without a window nobody shows or describes a new test; record it with a window: {command}.',

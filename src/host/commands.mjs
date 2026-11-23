@@ -1165,7 +1165,7 @@ export const runOne = async (root, options, deps = {}, loaded = undefined) => {
     });
     if (canFix || learns) ui.info(tracker.summary());
     // After the result, so the pending steps are not mistaken for a failure; a batch names them in its table instead.
-    if (pending.length > 0 && !quiet) ui.info(t('cli.pendingSteps', { ids: pending.join(', '), count: pending.length, test, step: pending[0], target }));
+    if (pending.length > 0 && !quiet) ui.info(pendingLine(pending, { test, target, verdict: played?.verdict }));
     // A draft proven red that passes now: the bug is fixed, promoting proves it against all other tests. A design draft once
     // its design is met after the check of its recorded step (a design shows the screen after its step).
     const green = !quiet && !handover && existsSync(draftPath(root, test)) ? draftGreenLine(spec, { code, verdict: played?.verdict, target, promoting: options.promote === true }) : undefined;
@@ -1626,6 +1626,18 @@ export const fixReport = ({ id, red, green, target, others, changed, design, kno
         else lines.push(...parts.map(([key, messages]) => `- ${t(`cli.fixReport.${key}`, { list: messages.join('; ') })}`));
     }
     return `${lines.join('\n')}\n`;
+};
+
+/**
+ * The line after a run that ended before its pending steps: record them from the first, unless the run found that step not
+ * ready yet (its needs, or its target design's controls at its entry, still missing; their own line said what).
+ */
+export const pendingLine = (pending, { test, target, verdict }) => {
+    const [step] = pending;
+    const needs = verdict?.needs?.step === step ? verdict.needs : undefined;
+    const design = verdict?.pendingDesign?.step === step ? verdict.pendingDesign : undefined;
+    const notReady = needs !== undefined ? needs.ready === false : design?.verdict === 'not-ready';
+    return t(notReady ? 'cli.pendingStepsNotReady' : 'cli.pendingSteps', { ids: pending.join(', '), count: pending.length, test, step, target });
 };
 
 /**

@@ -97,7 +97,7 @@ npx caw run create-ticket --env local --strict # Exit 4, solange etwas offen ist
 
 `run` spielt die aufgenommenen Schritte ab und besteht ohne die offenen; `list` zeigt `offen (S4, S5)`, `report.md` und `result.json` (`pending` und `status: "pending"` unter `steps`) nennen sie, die Werkbank zeigt sie als nicht erreicht. Nur das Ende zählt: ein nicht aufgenommener Schritt vor einem aufgenommenen, ein nach der Aufnahme geänderter Schritt und ein Test ohne jede Aufnahme enden weiter mit Exit 4, damit das Ändern eines Schritttexts nie still seine Prüfung aus CI nimmt.
 
-Hat der erste offene Schritt `needs`, prüft ein Lauf, der gesund endet, sie auf der Seite (je etwa 2 s): Sind alle da, meldet er „S4 ist bereit zum Aufnehmen: caw record create-ticket@S4 --env local“, sonst nennt er die fehlenden. `result.json` führt sie unter `needs`.
+Hat der erste offene Schritt `needs`, prüft ein Lauf, der gesund endet, sie auf der Seite (je etwa 2 s): Sind alle da, meldet er „S4 ist bereit zum Aufnehmen: caw record create-ticket@S4 --env local“, sonst nennt er die fehlenden, ein `getByRole` mit Namen wie eine Bedienzeile (`textbox "Note"`), jeden anderen Locator als Code, und die Zeile zu den offenen Schritten rät dann noch nicht zum Aufnehmen. `result.json` führt die Locators wie geschrieben unter `needs`.
 
 ## Entwürfe
 
