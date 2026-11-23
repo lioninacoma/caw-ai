@@ -30,6 +30,31 @@ test('removeProfile: retries while Chrome holds files, and never throws', async 
     assert.equal(await removeProfile('x', { remove: always, attempts: 3, delayMs: 1 }), false);
 });
 
+test('removeProfile: a removal that got only partly through (the owner entry gone, Chrome\'s files locked) names the run again, so the next start sweeps it', async (t) => {
+    const dir = mkdtempSync(join(tmpdir(), 'caw-sweep-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const profile = join(dir, 'caw-profile-partly');
+    mkdirSync(profile);
+    writeFileSync(join(profile, 'caw-owner'), '4242');
+    writeFileSync(join(profile, 'Local State'), '{}');
+    // rmSync deletes the owner entry first, then fails on a file Chrome still holds.
+    const partly = (path) => {
+        rmSync(join(path, 'caw-owner'), { force: true });
+        throw Object.assign(new Error('locked'), { code: 'EPERM' });
+    };
+    assert.equal(await removeProfile(profile, { remove: partly, attempts: 2, delayMs: 1, owner: 4242 }), false);
+    assert.equal(existsSync(join(profile, 'caw-owner')), true, 'the profile names its run again');
+    // Once the run is gone and Chrome let go, the next start removes it, not only after a day.
+    assert.equal(sweepStaleProfiles({ dir, isAlive: () => false }), 1);
+    assert.equal(existsSync(profile), false);
+
+    // The same for a sweep that got only partly through: the next one tries again.
+    mkdirSync(profile);
+    writeFileSync(join(profile, 'caw-owner'), '4242');
+    assert.equal(sweepStaleProfiles({ dir, isAlive: () => false, remove: partly }), 0);
+    assert.equal(existsSync(join(profile, 'caw-owner')), true);
+});
+
 test('sweepStaleProfiles: removes orphans, leaves running sessions and foreign folders alone', (t) => {
     const dir = mkdtempSync(join(tmpdir(), 'caw-sweep-'));
     t.after(() => rmSync(dir, { recursive: true, force: true }));

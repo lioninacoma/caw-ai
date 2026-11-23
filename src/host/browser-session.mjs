@@ -67,17 +67,33 @@ const ORPHAN_AGE_MS = 24 * 60 * 60 * 1000;
  * Deletes the profile. On Windows, Chrome processes keep files locked briefly after closing, hence several attempts.
  * If it fails for good, that must not change the run's outcome: the verdict stands.
  */
-export const removeProfile = async (dir, { remove = rmSync, attempts = 20, delayMs = 500 } = {}) => {
+export const removeProfile = async (dir, { remove = rmSync, attempts = 20, delayMs = 500, owner = process.pid } = {}) => {
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
-        try {
-            remove(dir, { recursive: true, force: true });
-            return true;
-        } catch {
-            if (attempt < attempts) await sleepMs(delayMs);
-        }
+        if (removeOwned(dir, owner, remove)) return true;
+        if (attempt < attempts) await sleepMs(delayMs);
     }
     return false;
 };
+
+/**
+ * Removes a profile. If that gets only partly through (the owner entry deleted, a file Chrome still holds left), the profile
+ * names its run again: without that entry the next start's sweep would take it for one still being created and leave the
+ * test account's cookies there for a day.
+ * @returns whether it is gone
+ */
+function removeOwned(dir, owner, remove) {
+    try {
+        remove(dir, { recursive: true, force: true });
+        return true;
+    } catch {
+        try {
+            if (existsSync(dir) && !existsSync(join(dir, PROFILE_OWNER))) writeFileSync(join(dir, PROFILE_OWNER), String(owner));
+        } catch {
+            // Not even that: the sweep finds it after a day.
+        }
+        return false;
+    }
+}
 
 const isAliveProcess = (pid) => {
     try {
@@ -106,15 +122,12 @@ export const sweepStaleProfiles = ({ dir = tmpdir(), isAlive = isAliveProcess, r
             const path = join(dir, entry.name);
             try {
                 const owner = join(path, PROFILE_OWNER);
-                const stale = existsSync(owner)
-                    ? !isAlive(Number(readFileSync(owner, 'utf8')))
-                    : now() - statSync(path).mtimeMs > ORPHAN_AGE_MS;
-                if (stale) {
-                    remove(path, { recursive: true, force: true });
-                    removed += 1;
-                }
-            } catch {
+                const pid = existsSync(owner) ? Number(readFileSync(owner, 'utf8')) : undefined;
+                const stale = pid === undefined ? now() - statSync(path).mtimeMs > ORPHAN_AGE_MS : !isAlive(pid);
                 // Still locked: the next run tries again.
+                if (stale && removeOwned(path, pid ?? 0, remove)) removed += 1;
+            } catch {
+                // Unreadable: the next run tries again.
             }
         }
     }
