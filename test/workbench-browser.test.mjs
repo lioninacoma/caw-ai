@@ -2,7 +2,7 @@
 // reload by the human aborts the test. Skipped without Chrome.
 import assert from 'node:assert/strict';
 /* global caw -- the workbench's console object, inside page.evaluate callbacks */
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -84,7 +84,7 @@ const until = async (check, ms = 8000) => {
 };
 
 /** @param first  (bench) => runs between workbench and chat, e.g. the application tampering with the chat frame first */
-const open = async (t, { first } = {}) => {
+const open = async (t, { first, desk } = {}) => {
     const context = await browser.newContext();
     t.after(() => context.close());
     await context.newPage();
@@ -94,8 +94,9 @@ const open = async (t, { first } = {}) => {
     let aborts = 0;
     let tampered = null;
     const waiting = [];
-    const chat = await openChat({ session: { workbench: bench }, logPath: join(dir, `chat-${Date.now()}.log`), onAbort: () => { aborts += 1; }, onWaiting: (line) => waiting.push(line), onTampered: (error) => { tampered = error; } });
-    return { context, bench, chat, aborts: () => aborts, tampered: () => tampered, waiting };
+    const logPath = join(dir, `chat-${Date.now()}.log`);
+    const chat = await openChat({ session: { workbench: bench }, logPath, onAbort: () => { aborts += 1; }, onWaiting: (line) => waiting.push(line), onTampered: (error) => { tampered = error; }, desk });
+    return { context, bench, chat, aborts: () => aborts, tampered: () => tampered, waiting, logPath };
 };
 
 const pause = (ms) => new Promise((ok) => { setTimeout(ok, ms); });
@@ -1738,6 +1739,22 @@ test('chat: an advice card starts with its icon and heading, never with "null" (
     assert.equal(await frame.locator('.message.advice strong svg').count(), 1, 'the agent icon');
     chat.say('Hallo.');
     assert.ok(await until(async () => (await frame.locator('.message.claude .who svg').count()) === 1), 'the sender has its icon too');
+    return undefined;
+});
+
+test('chat: an exception while the answer from the window is processed (the desk fails to settle) goes to stderr and chat.log instead of vanishing in Playwright', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const errors = [];
+    t.mock.method(console, 'error', (...args) => { errors.push(args.join(' ')); });
+    const desk = { open: () => {}, settle: () => { throw new Error('EPERM: operation not permitted, rename decision.json'); } };
+    const { bench, chat, logPath } = await open(t, { desk });
+    const frame = bench.chatFrame();
+    void chat.choose('deciding', 'Beheben?', [{ id: 'fix', label: 'Beheben lassen', primary: true }], { title: 'Rot' }, { id: 'fix-or-not' });
+    assert.ok(await until(() => frame.isVisible('#choices button')));
+    await frame.locator('#choices button', { hasText: 'Beheben lassen' }).click();
+    assert.ok(await until(() => errors.some((line) => line.includes('EPERM: operation not permitted, rename decision.json'))), 'on stderr');
+    assert.match(errors.find((line) => line.includes('EPERM')), /^caw: Der Chat konnte die Antwort aus dem Fenster nicht verarbeiten \(choose\): /);
+    assert.match(readFileSync(logPath, 'utf8'), /error: Der Chat konnte die Antwort aus dem Fenster nicht verarbeiten \(choose\): EPERM: operation not permitted, rename decision\.json/);
     return undefined;
 });
 

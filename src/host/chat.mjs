@@ -1203,7 +1203,24 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
         }
         await chatWindow.bringToFront();
     };
-    await chatWindow.exposeBinding(BINDING, (source, event) => {
+    // Playwright hands an exception of a binding back to the page, where nobody sees it: the click would just do nothing
+    // further (the human bubble shown, the next step never started). Diagnosis only: the exception goes to stderr and chat.log
+    // and is thrown on as before.
+    const answered = (handler) => (source, event) => {
+        try {
+            return handler(source, event);
+        } catch (error) {
+            const line = t('chat.error.answer', { type: String(event?.type ?? '?'), message: error?.message ?? String(error) });
+            console.error(`caw: ${line}${error?.stack === undefined ? '' : `\n${error.stack}`}`);
+            try {
+                appendFileSync(logPath, `${new Date().toISOString()} error: ${line.replaceAll('\n', ' ')}\n`);
+            } catch {
+                // The log itself failed: stderr has it.
+            }
+            throw error;
+        }
+    };
+    await chatWindow.exposeBinding(BINDING, answered((source, event) => {
         // In the workbench every frame sees the binding, including the application. It must never speak as the human.
         // The application shares the origin with the workbench and can reload the chat iframe (srcdoc, location), with or
         // without its sandbox. The frame then stays the same, and so does the binding. Only the page the host wrote last knows
@@ -1222,7 +1239,7 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
         else if (event?.type === 'report' && next !== null) quiet(openReport());
         else if (event?.type === 'close') closeWanted?.();
         else if (event?.type === 'stay') stayWanted?.();
-    });
+    }));
     /** While developing: who additionally receives an element picked with the crosshair (the Claude Code session). null: nobody. */
     chat.onPicked = (handler) => { onPicked = handler ?? null; };
     /** The page under test touched the chat: close it, nothing more goes in or out, the run ends with chat-tampered. */
