@@ -717,6 +717,25 @@ test('drafts: loaded from caw/drafts when caw/tests has none, written back there
     assert.equal(loadTest(root, 'bug-x').draft, undefined);
 });
 
+test('drafts: rewriting a draft (its red proof, a recording) keeps the person\'s comments: the header, above a field and above a step', (t) => {
+    const root = mkdtempSync(join(tmpdir(), 'caw-draft-'));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const draft = { ...spec(recorded('S1'), recorded('S2')), id: 'bug-c', draft: true };
+    writeTest(root, draft);
+    const written = readFileSync(draftPath(root, 'bug-c'), 'utf8');
+    const commented = `# Errand note: the note under a todo.\n# Target design: design/todo-note.html\n\n${written}`
+        .replace(/^writes:/m, '# Writes: it saves a note.\nwrites:')
+        .replace(/^ {2}- id: S2$/m, '  # The step with the bug.\n  - id: S2');
+    assert.notEqual(commented, written);
+    writeFileSync(draftPath(root, 'bug-c'), commented);
+    assert.equal(writeTest(root, { ...loadDraft(root, 'bug-c'), red: { step: 'S2', run: 'r1', head: 'abc1234' } }), 'caw/drafts/bug-c.yaml');
+    const text = readFileSync(draftPath(root, 'bug-c'), 'utf8');
+    assert.match(text, /^# Errand note: the note under a todo\.\n# Target design: design\/todo-note\.html\n/);
+    assert.match(text, /^# Writes: it saves a note\.\nwrites:/m);
+    assert.match(text, /^ {2}# The step with the bug\.\n {2}- id: S2$/m);
+    assert.deepEqual(loadDraft(root, 'bug-c').red, { step: 'S2', run: 'r1', head: 'abc1234' });
+});
+
 test('a design draft: origin design only in a draft, written and read back; its red step is the last step with a design, its checks are recorded like a test', (t) => {
     assert.equal(parseTest(`${YAML}origin: design\n`, 'x', { draft: true }).origin, 'design');
     assert.throws(() => parseTest(`${YAML}origin: design\n`, 'x', { description: true }), /origin gehört nur in einen Entwurf in caw\/drafts/);

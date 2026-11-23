@@ -104,7 +104,9 @@ Hat der erste offene Schritt `needs`, prüft ein Lauf, der gesund endet, sie auf
 `caw reproduce` schreibt einen nachgestellten Fehler als Entwurf nach `caw/drafts/<id>.yaml`: dieselben Felder wie ein Testplan,
 und nach der Aufnahme je Schritt seine `recording` und `knownMessages` in derselben Datei. Entwürfe gehören nicht zu
 `run --all`; `list`, `validate`, `caw_list` und `caw_validate` zeigen sie getrennt. `record`, `run` und `open` nehmen einen
-Entwurf über seine ID wie einen Test; ein Test gleicher ID in `caw/tests` hat Vorrang.
+Entwurf über seine ID wie einen Test; ein Test gleicher ID in `caw/tests` hat Vorrang. caw schreibt den Entwurf als Ganzes neu
+(roter Nachweis, Aufnahme, gelernte Baselines), in seiner eigenen Reihenfolge der Felder; deine Kommentare bleiben: der Kopf, die über
+oder neben einem Feld der obersten Ebene, die über einem Schritt.
 
 Sein letzter Schritt ist der, der scheitern muss, solange der Fehler da ist. Hat ein Lauf das gezeigt (alle Schritte davor
 bestanden, seine Prüfung wurde ausgewertet und ist gescheitert), trägt der Entwurf den Nachweis:

@@ -104,7 +104,8 @@ When the first pending step has `needs`, a run that ends healthy checks them on 
 `caw reproduce` writes a reproduced bug as a draft to `caw/drafts/<id>.yaml`: the same fields as a test plan, and once recorded
 its `recording` per step and `knownMessages` in the same file. Drafts are not part of `run --all`; `list`, `validate`,
 `caw_list` and `caw_validate` show them apart. `record`, `run` and `open` take a draft by its id like a test; a test of the
-same id in `caw/tests` wins.
+same id in `caw/tests` wins. caw rewrites the draft as a whole (red proof, recording, learned baselines) in its own field order;
+your comments stay: the header, those above or beside a top-level field, those above a step.
 
 Its last step is the one that must fail while the bug is there. Once a run showed that (every step before it passed, its check
 evaluated and failed), the draft carries the proof:

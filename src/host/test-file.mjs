@@ -1045,7 +1045,36 @@ const writeDraft = (root, spec) => {
     mkdirSync(join(root, DRAFT_DIR), { recursive: true });
     const raw = existsSync(path) ? readFileSync(path, 'utf8') : undefined;
     const learning = splitLearning(root, spec, () => true, { whole: true });
-    return writeIfChanged(path, renderTest(learning), raw) ? `${DRAFT_DIR}/${spec.id}.yaml` : t('config.test.unchanged');
+    const text = raw === undefined ? renderTest(learning) : withCommentsOf(raw, renderTest(learning));
+    return writeIfChanged(path, text, raw) ? `${DRAFT_DIR}/${spec.id}.yaml` : t('config.test.unchanged');
+};
+
+/**
+ * A draft rewritten whole keeps the person's comments of the file before: the header, those above and beside a top-level field,
+ * those above and after a step (by its id), as setSteps does for a test.
+ */
+const withCommentsOf = (raw, text) => {
+    const options = { schema: 'core', merge: false, version: '1.2' };
+    const before = parseDocument(raw.replaceAll('\r\n', '\n'), options);
+    if (before.errors.length > 0 || !isMap(before.contents)) return text;
+    const doc = parseDocument(text, options);
+    doc.commentBefore = before.commentBefore;
+    doc.comment = before.comment;
+    const pairs = new Map(before.contents.items.map((pair) => [String(pair.key?.value ?? pair.key), pair]));
+    for (const pair of doc.contents.items) {
+        const old = pairs.get(String(pair.key?.value ?? pair.key));
+        if (old === undefined) continue;
+        if (old.key?.commentBefore !== undefined) pair.key.commentBefore = old.key.commentBefore;
+        if (old.value?.comment !== undefined && pair.value !== null && typeof pair.value === 'object') pair.value.comment = old.value.comment;
+    }
+    const steps = new Map((before.get('steps', true)?.items ?? []).filter(isMap).map((item) => [item.get('id'), item]));
+    for (const item of doc.get('steps', true)?.items ?? []) {
+        const old = isMap(item) ? steps.get(item.get('id')) : undefined;
+        if (old === undefined) continue;
+        item.commentBefore = old.commentBefore;
+        item.comment = old.comment;
+    }
+    return doc.toString(STRINGIFY);
 };
 
 /**
