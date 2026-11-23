@@ -1151,16 +1151,7 @@ export const runOne = async (root, options, deps = {}, loaded = undefined) => {
         // In the terminal the first line is labelled "next", the commands stand out.
         hint: (step, { canFix: hadChat }) => {
             if (!nextSteps) return;
-            const lines = [];
-            const rerun = (env) => `${cawCommand()} run ${test} --env ${env}`;
-            if (!hadChat) {
-                if (withAgent) lines.push({ text: t('cli.failedHintAgent', { step: step.id, test, target }), commands: [rerun(target), `${cawCommand()} record ${test}@${step.id} --env ${target}`] });
-                else if (chatTarget !== undefined) lines.push({ text: t('cli.failedHint', { step: step.id, test, target: chatTarget }), commands: [rerun(chatTarget)] });
-                else lines.push({ text: t('cli.failedHintNoAgent', { step: step.id, environments: agentEnvironments(config) }), commands: [] });
-            }
-            // open lands at the entry of the failed step: everything before it done, the step itself still open.
-            if (spec.steps.some(({ id }) => id === step.id)) lines.push({ text: t('cli.untilHint', { test, target, step: step.id }), commands: [`${cawCommand()} open ${test}@${step.id} --env ${target}`] });
-            ui.next(lines);
+            ui.next(failureHints(step, { hadChat, test, target, withAgent, chatTarget, environments: agentEnvironments(config), steps: spec.steps }));
         },
     });
     if (canFix || learns) ui.info(tracker.summary());
@@ -1621,6 +1612,33 @@ export const fixReport = ({ id, red, green, target, others, changed, design }) =
     else if (changed.length === 0) lines.push(t('cli.fixReport.changedNone'));
     else lines.push(...changed.map((file) => `- ${file}`));
     return `${lines.join('\n')}\n`;
+};
+
+/**
+ * The "next" lines after a failed step, without a chat that already led on. A step whose screen does not match its target design
+ * is fixed in the app, never by recording it again: the hint names building and the comparison with the design (open --design).
+ * @param step     the failed step: { id, kind? }
+ * @param hadChat  the run had a chat that fixes, the failure was handled there
+ * @returns [{ text, commands }] for ui.next
+ */
+export const failureHints = (step, { hadChat, test, target, withAgent, chatTarget, environments, steps }) => {
+    const lines = [];
+    const known = steps.some(({ id }) => id === step.id);
+    if (step.kind === 'design') {
+        const rerun = `${cawCommand()} run ${test} --env ${target}`;
+        if (!hadChat) lines.push({ text: t('cli.failedHintDesign', { step: step.id, test, target }), commands: [rerun] });
+        if (known) lines.push({ text: t('cli.untilHintDesign', { test, target, step: step.id }), commands: [`${cawCommand()} open ${test}@${step.id} --env ${target} --design`] });
+        return lines;
+    }
+    const rerun = (env) => `${cawCommand()} run ${test} --env ${env}`;
+    if (!hadChat) {
+        if (withAgent) lines.push({ text: t('cli.failedHintAgent', { step: step.id, test, target }), commands: [rerun(target), `${cawCommand()} record ${test}@${step.id} --env ${target}`] });
+        else if (chatTarget !== undefined) lines.push({ text: t('cli.failedHint', { step: step.id, test, target: chatTarget }), commands: [rerun(chatTarget)] });
+        else lines.push({ text: t('cli.failedHintNoAgent', { step: step.id, environments }), commands: [] });
+    }
+    // open lands at the entry of the failed step: everything before it done, the step itself still open.
+    if (known) lines.push({ text: t('cli.untilHint', { test, target, step: step.id }), commands: [`${cawCommand()} open ${test}@${step.id} --env ${target}`] });
+    return lines;
 };
 
 /**

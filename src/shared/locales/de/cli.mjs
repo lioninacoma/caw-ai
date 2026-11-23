@@ -409,6 +409,8 @@ Browser:
     'cli.failedHint': '{step} ist gescheitert. Ursache klären im Lauf mit Chat: {caw} run {test} --env {target}',
     'cli.failedHintNoAgent': '{step} ist gescheitert. Die Ursache klärt ein Lauf mit Chat, auf einer Umgebung, auf der {agent} arbeiten darf (hier: {environments}).',
     'cli.untilHint': 'Bis zum Einstieg in den Schritt: {caw} open {test}@{step} --env {target}',
+    'cli.failedHintDesign': '{step} entspricht nicht seinem Zielbild: Ändern muss sich die App, nicht der Test. Setze es um, dann erneut prüfen: {caw} run {test} --env {target}',
+    'cli.untilHintDesign': 'Der Schritt neben seinem Zielbild, mit den Abweichungen: {caw} open {test}@{step} --env {target} --design',
     'cli.pendingSteps': ({ ids, count, test, step, target }) => (count === 1
         ? `Offen, noch nicht aufgenommen: ${ids}. Er lief nicht. Nimm ihn auf: {caw} record ${test}@${step} --env ${target}`
         : `Offen, noch nicht aufgenommen: ${ids}. Sie liefen nicht. Nimm sie auf: {caw} record ${test}@${step} --env ${target}`),

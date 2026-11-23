@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 
-import { changeTracker, chooseEnv, init, junitXml, list, open, record, reportJson, run, runMode, stepsText, summaryMarkdown, validate } from '../src/host/commands.mjs';
+import { changeTracker, chooseEnv, failureHints, init, junitXml, list, open, record, reportJson, run, runMode, stepsText, summaryMarkdown, validate } from '../src/host/commands.mjs';
 import { parseRunArgs } from '../src/host/linux.mjs';
 import { loadTest, stepHash, writeTest } from '../src/host/test-file.mjs';
 import { listProject, validateProject } from '../src/host/project-data.mjs';
@@ -715,4 +715,19 @@ test('run --promote of a design draft: only with its design met; the test moves 
         '- web/note.css',
         '',
     ].join('\n'));
+});
+
+test('after a failed step: a design not met points to building and to open --design, never to recording again', () => {
+    const steps = [{ id: 'S1' }, { id: 'S4' }];
+    const at = { test: 'erste', target: 'local', withAgent: true, chatTarget: 'local', environments: 'local', steps };
+    const design = failureHints({ id: 'S4', kind: 'design' }, { ...at, hadChat: false });
+    assert.deepEqual(design.map(({ text }) => text), [
+        'S4 entspricht nicht seinem Zielbild: Ändern muss sich die App, nicht der Test. Setze es um, dann erneut prüfen: caw run erste --env local',
+        'Der Schritt neben seinem Zielbild, mit den Abweichungen: caw open erste@S4 --env local --design',
+    ]);
+    assert.ok(design.every(({ text, commands }) => commands.every((command) => text.includes(command))));
+    assert.ok(!JSON.stringify(design).includes('record'));
+    const check = failureHints({ id: 'S4', kind: 'check' }, { ...at, hadChat: false });
+    assert.match(check[0].text, /caw record erste@S4 --env local$/, 'a failed check keeps re-recording as the last resort');
+    assert.equal(check[1].text, 'Bis zum Einstieg in den Schritt: caw open erste@S4 --env local');
 });
