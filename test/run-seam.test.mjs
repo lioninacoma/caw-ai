@@ -190,6 +190,23 @@ test('Seam without a window: a failed step stops at its card without fixing; a d
     assert.equal(red.runs[0].undecided, undefined);
 });
 
+test('Seam without a window: the run that follows is announced without a window, never as a new window', async () => {
+    const h = harness({ headless: true });
+    // The terminal: what ui prints goes to stdout and stderr.
+    const printed = [];
+    const writes = [process.stdout.write, process.stderr.write];
+    const keep = (chunk) => { printed.push(String(chunk)); return true; };
+    process.stdout.write = keep;
+    process.stderr.write = keep;
+    try {
+        await h.execute({ spec: testOf(), replay: replayOf(testOf()), conclude: async () => ({ next: 'check' }) });
+    } finally {
+        [process.stdout.write, process.stderr.write] = writes;
+    }
+    const said = [...h.notices, ...printed.join('').split('\n')].filter((text) => /Fenster/.test(text));
+    assert.ok(said.length > 0 && said.every((text) => /Als Nächstes läuft der Prüflauf, ohne Fenster\./.test(text)), JSON.stringify(said));
+});
+
 /**
  * A session with a workbench after the handover: every workbench call is recorded (as [name, ...args]), the handlers for
  * refresh (F5), reloading the whole window and picking a state (F1) are kept for the test to call.

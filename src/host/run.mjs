@@ -1522,9 +1522,9 @@ ${text}`) ?? 0;
             const repro = verdict.reproduce;
             const reproduced = reproduce === undefined ? {} : { reproduce: { bug: repro?.bug, observed: repro?.observed, expected: repro?.expected, cause: repro?.cause, readOnly: repro?.writable === false } };
             await chat.finished?.({ report: join(runDir, 'report.md'), shown: posix.join(relativeRun, 'report.md'), text, command, adopt: reproduce !== undefined && draft !== undefined, kind, ...reproduced });
-            // The window changes: chat and terminal say so before it closes.
+            // The window changes: chat and terminal say so before it closes. Headless no window opens: the next run follows.
             if (after.next !== undefined) {
-                const line = t('run.newWindow', { what: t(`run.newWindow.${after.next}`) });
+                const line = headless ? t(`run.nextHeadless.${after.next}`) : t('run.newWindow', { what: t(`run.newWindow.${after.next}`) });
                 chat.notice(line);
                 ui.note(line);
             } else if (typeof after.outcome === 'string') chat.notice(after.outcome);
