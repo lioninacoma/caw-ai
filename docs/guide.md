@@ -419,7 +419,8 @@ The draft turns the bug into a test that proves the fix: red before, green after
    committed or not, in the whole repository; new files only inside the project folder; a file modified in the working tree at
    red whose content changed since, even when it is back at the commit; such a file the fix left as it was at red is left out,
    even though it differs from the red commit; without `caw/` and `.caw/`) and how
-   many other tests passed. Exit 0 promoted, 1 not green,
+   many other tests passed. That run folder and the reproduction the test came from stay in `.caw/runs` until you delete them
+   (`keepRuns` skips them). Exit 0 promoted, 1 not green,
    4 not recorded or never red.
 
 **Guided in the workbench.** With a window the chat leads through these steps in one process, each in a new window, and the

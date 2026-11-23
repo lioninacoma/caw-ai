@@ -52,6 +52,25 @@ test('runs: the red run a draft names (red.run) stays while the draft is there: 
     assert.deepEqual(pruneRuns(root, 1), [red]);
 });
 
+test('runs: a run with a fix or design report stays, and so does the reproduction its test came from, until the person deletes them', (t) => {
+    const root = mkdtempSync(join(tmpdir(), 'caw-runs-'));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const runs = join(root, '.caw', 'runs');
+    const reproduction = '2026-11-10T10-00-00-000Z-reproduce';
+    const other = '2026-11-10T11-00-00-000Z-reproduce';
+    const fixed = '2026-11-11T10-00-00-000Z-bug-x';
+    const designed = '2026-11-12T10-00-00-000Z-note';
+    const plain = '2026-11-13T10-00-00-000Z-bug-x';
+    const names = [reproduction, other, fixed, designed, plain, '2026-11-14T10-00-00-000Z-open'];
+    for (const name of names) mkdirSync(join(runs, name), { recursive: true });
+    writeFileSync(join(runs, reproduction, 'result.json'), JSON.stringify({ status: 'pass', reproduce: { reproduced: 'yes', draft: { file: 'caw/drafts/bug-x.yaml' } } }));
+    writeFileSync(join(runs, other, 'result.json'), JSON.stringify({ status: 'pass', reproduce: { reproduced: 'yes', draft: { file: 'caw/drafts/bug-y.yaml' } } }));
+    writeFileSync(join(runs, fixed, 'fix-report.md'), '# Fix report: bug-x\n');
+    writeFileSync(join(runs, designed, 'design-report.md'), '# Design report: note\n');
+    assert.deepEqual(pruneRuns(root, 1), [other, plain]);
+    assert.deepEqual(readdirSync(runs).sort(), [reproduction, fixed, designed, names[5]]);
+});
+
 test('runs: keepRuns is a whole number from 0', () => {
     const base = { environments: { local: { url: 'http://localhost:5173' } } };
     for (const keepRuns of [0, 30]) assert.ok(!validateConfig({ ...base, keepRuns }).issues.some((issue) => /keepRuns/.test(issue)), String(keepRuns));

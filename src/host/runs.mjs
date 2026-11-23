@@ -1,7 +1,8 @@
 // The run folders in .caw/runs: every run and every open leaves one (report, trace, chat log). caw keeps the newest ones
 // (keepRuns, default 30) and deletes older ones when a run starts; a run whose process still lives is never deleted, nor a
 // reproduction whose draft is still in caw/drafts: it holds the suspected cause the guided fix shows (bugfix.mjs), nor the red
-// run a draft names (red.run): the design report counts its deviations from it.
+// run a draft names (red.run): the design report counts its deviations from it. A run with a fix or design report (a promoted
+// draft's proof) and the reproduction its test came from stay until the person deletes them.
 
 import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -12,6 +13,9 @@ import { DRAFT_DIR, RUN_DIR } from '../shared/names.mjs';
 import { isAlive } from '../shared/session-agent.mjs';
 
 export const DEFAULT_KEEP_RUNS = 30;
+/** What promoting a draft writes into its green run's folder: a bug fix's report, a design draft's. */
+export const FIX_REPORT = 'fix-report.md';
+export const DESIGN_REPORT = 'design-report.md';
 const ALIVE_FILE = '.alive';
 
 /** Marks a run folder as belonging to this process, so no other run deletes it while it is open. */
@@ -30,6 +34,16 @@ const draftStillThere = (root, dir, name) => {
     if (RUN_ID.exec(name)?.[6] !== REPRODUCE_RUN) return false;
     const file = readResult(dir)?.reproduce?.draft?.file;
     return typeof file === 'string' && existsSync(join(root, file));
+};
+
+/** Does this run folder hold a promoted draft's report? */
+const hasReport = (dir) => [FIX_REPORT, DESIGN_REPORT].some((file) => existsSync(join(dir, file)));
+
+/** A reproduction whose draft was promoted: its id is the test of a run with a report (`reported`). */
+const reportedReproduction = (dir, name, reported) => {
+    if (RUN_ID.exec(name)?.[6] !== REPRODUCE_RUN || reported.size === 0) return false;
+    const file = readResult(dir)?.reproduce?.draft?.file;
+    return typeof file === 'string' && reported.has(file.split('/').at(-1).replace(/\.yaml$/, ''));
 };
 
 /** The red runs the drafts in caw/drafts name (red.run); a draft that cannot be read names none. */
@@ -58,10 +72,13 @@ export const pruneRuns = (root, keep = DEFAULT_KEEP_RUNS, { except } = {}) => {
     const deleted = [];
     const old = names.slice(0, Math.max(0, names.length - keep));
     const named = old.length === 0 ? new Set() : redRuns(root);
+    // The tests whose promotion left a report: their reproduction stays with it.
+    const reported = new Set(old.length === 0 ? [] : names.filter((name) => hasReport(join(runs, name))).map((name) => RUN_ID.exec(name)?.[6]).filter(Boolean));
     for (const name of old) {
-        if (name === except || named.has(name) || openNow(join(runs, name)) || draftStillThere(root, join(runs, name), name)) continue;
+        const dir = join(runs, name);
+        if (name === except || named.has(name) || hasReport(dir) || openNow(dir) || draftStillThere(root, dir, name) || reportedReproduction(dir, name, reported)) continue;
         try {
-            rmSync(join(runs, name), { recursive: true, force: true, maxRetries: 2 });
+            rmSync(dir, { recursive: true, force: true, maxRetries: 2 });
             deleted.push(name);
         } catch {
             // A file still in use (a report open in an editor): it goes with the next start.

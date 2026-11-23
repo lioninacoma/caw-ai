@@ -14,14 +14,13 @@ import { join, relative } from 'node:path';
 
 import { t } from '../shared/i18n.mjs';
 import { DRAFT_DIR } from '../shared/names.mjs';
-import { REPRODUCE_RUN, runsWithResult } from './runs.mjs';
+import { DESIGN_REPORT, FIX_REPORT, REPRODUCE_RUN, runsWithResult } from './runs.mjs';
 import { draftPath, isDesignDraft, loadDraft, pendingSteps, redStep, staleSteps, testPath } from './test-file.mjs';
 import { PHASE_DECISIONS } from './decisions.mjs';
 
 export const FIX_PHASES = ['reproduced', 'red', 'green', 'promoted'];
 export const DESIGN_PHASES = ['draft', 'red', 'green', 'adopted'];
-export const FIX_REPORT = 'fix-report.md';
-export const DESIGN_REPORT = 'design-report.md';
+export { DESIGN_REPORT, FIX_REPORT };
 
 /** The target design of a step as a run judged it after its passed check (result.json `steps`), or undefined. */
 const judgedAfter = (result, step) => (Array.isArray(result?.steps) ? result.steps : []).find((item) => item?.id === step)?.design;
