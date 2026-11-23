@@ -821,7 +821,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             const askBeforeReplacing = async (file) => {
                 if (input.personAsked === true || design.designPath(cawDir, file) === null) return;
                 const linked = (await stepLinks()).filter((link) => link.design === file);
-                if (linked.length > 0) throw new Error(t('run.mcp.designReplaceAsk', { file: `${PROJECT_DIR}/${file}`, steps: linked.map(({ test, step }) => `${test} ${step}`).join(', ') }));
+                if (linked.length > 0) throw new Error(t('run.mcp.designReplaceAsk', { action: input.action, file: `${PROJECT_DIR}/${file}`, steps: linked.map(({ test, step }) => `${test} ${step}`).join(', ') }));
             };
             if (input.action === 'put') {
                 if (typeof input.content !== 'string') throw new Error(t('run.mcp.designContent'));
@@ -851,7 +851,8 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                 const file = typeof name === 'string' ? snapshotName(name) : null;
                 if (file === null) throw new Error(t('run.mcp.designName'));
                 await askBeforeReplacing(file);
-                const args = ['design', 'snapshot', `${input.test}@${input.step}`, '--name', file.slice('design/'.length, -'.html'.length), '--json', ...(input.env === undefined ? [] : ['--env', input.env])];
+                // Asked above: the person's consent (personAsked) is the CLI's --replace.
+                const args = ['design', 'snapshot', `${input.test}@${input.step}`, '--name', file.slice('design/'.length, -'.html'.length), '--json', '--replace', ...(input.env === undefined ? [] : ['--env', input.env])];
                 const { code, out = '', err = '', timedOut } = await execCli(args, { timeoutMs: SNAPSHOT_TIMEOUT_MS });
                 if (timedOut) return answer(t('run.mcp.designSnapshotTimeout', { minutes: SNAPSHOT_TIMEOUT_MS / 60_000 }), { ok: false, state: 'timeout' }, true);
                 const line = out.split(/\r?\n/).map((text) => text.trim()).filter((text) => text.startsWith('{')).at(-1);

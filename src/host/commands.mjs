@@ -1851,6 +1851,17 @@ export const design = async (root, args, deps = {}) => {
     // A snapshot lands in caw/design, in the repository: never one of production, whose screens hold real data.
     if (effectiveEnvironment(config, target).production) throw new CawError('env-denied', t('cli.designSnapshotProduction', { target }));
     const cawDir = join(root, PROJECT_DIR);
+    // A design a step links is what that step is judged against: replacing it is the person's decision, said with --replace.
+    if (options.replace !== true && existsSync(join(cawDir, ...file.split('/')))) {
+        const linked = [...testIds(root).map((id) => [id, () => loadTest(root, id)]), ...draftIds(root).map((id) => [id, () => loadDraft(root, id)])].flatMap(([id, load]) => {
+            try {
+                return load().steps.filter((step) => step.design === file).map((step) => `${id} ${step.id}`);
+            } catch {
+                return [];
+            }
+        });
+        if (linked.length > 0) throw new CawError('usage', t('cli.designSnapshotReplace', { file: `${PROJECT_DIR}/${file}`, steps: linked.join(', ') }));
+    }
     let written;
     let failure;
     const snapshot = async ({ page, secrets }) => {

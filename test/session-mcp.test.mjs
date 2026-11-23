@@ -770,7 +770,7 @@ test('caw_design snapshot: runs caw design snapshot with --json, returns its res
     const { call } = session(root, { execCli });
     const taken = await call('caw_design', { action: 'snapshot', test: 'bestellung', step: 'S2', env: 'dev' });
     assert.equal(taken.isError, false);
-    assert.deepEqual(calls[0].args, ['design', 'snapshot', 'bestellung@S2', '--name', 'bestellung-S2', '--json', '--env', 'dev']);
+    assert.deepEqual(calls[0].args, ['design', 'snapshot', 'bestellung@S2', '--name', 'bestellung-S2', '--json', '--replace', '--env', 'dev'], 'caw_design asked first: the CLI replaces');
     assert.equal(calls[0].options.timeoutMs, 15 * 60_000);
     assert.match(taken.content[0].text, /Snapshot geschrieben: caw\/design\/bestellung-S2\.html, 3 Dateien/);
     assert.deepEqual(taken.structuredContent, { ...result, exit: 0 });
@@ -796,6 +796,8 @@ test('caw_design snapshot: runs caw design snapshot with --json, returns its res
     const refused = await call('caw_design', { action: 'snapshot', test: 'bestellung', step: 'S2', file: 'design/bestellung.html' });
     assert.equal(refused.isError, true);
     assert.match(refused.content[0].text, /bestellung S2/);
+    assert.match(refused.content[0].text, /dann snapshot erneut mit personAsked: true/, 'the action that was refused');
+    assert.match(refused.content[0].text, /ist das Zielbild von/);
     assert.equal(calls.length, before, 'nothing ran');
     assert.equal((await call('caw_design', { action: 'snapshot', test: 'bestellung', step: 'S2', file: 'design/bestellung.html', personAsked: true })).isError, false);
     assert.deepEqual(calls.at(-1).args.slice(0, 5), ['design', 'snapshot', 'bestellung@S2', '--name', 'bestellung']);

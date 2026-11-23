@@ -377,7 +377,9 @@ The screen at the entry of S3 as a design page, the starting point for a draft i
   inserted are kept, `@import` resolved in place; inline `<style>` stays in the page), and the fonts and images the
   stylesheets and the page reference (`<n>-<file>`), with `url()` rewritten relative. A file is stored when it comes from the
   app's origin or the page loaded it already; it is read with GET from the page itself, through the run's guards. An earlier
-  snapshot of the same name is replaced, files it no longer needs go.
+  snapshot of the same name is replaced, files it no longer needs go. A design a step links (`design:` in a test or draft) is
+  what that step is judged against: a snapshot onto it is refused before anything runs, naming the steps, unless you say
+  `--replace` (or choose another `--name`).
 
 It only reads the app, and never runs on production: an environment with `production` is refused (`env-denied`), since the snapshot would put its real data into the repository. The terminal names what could not be kept (a stylesheet of another origin without
 CORS, frames, shadow DOM, a scrolled area that shows from the top in the snapshot). Rendered offline from `caw/design` it looks

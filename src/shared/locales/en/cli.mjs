@@ -101,6 +101,7 @@ Commands:`,
       [--env <name>] [--name <name>]     design page caw/design/<name>.html (default <test>-S4) with the app's own
                                          stylesheets, fonts and images under caw/design/assets/<name>/. The starting
                                          point for a draft in the app's style; only reads the app
+      [--replace]                        Replace a design a step links (otherwise refused)
       [--json]                           The result as one JSON line
       [--start] [--step-timeout <duration>]  as for run
       [--overlay[=<parts>]]              as for run`,
@@ -195,8 +196,9 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.synopsis.record': 'caw record <test> [--env <name>] [--role <role>] [--headless]  or  caw record <test>@<S4> [--env <name>] [--agent local|docker | --attach [<key>]]',
     'cli.synopsis.open': 'caw open [--env <name>] [--role <role>]  or  caw open <test>[@<S4>] [--design] [--env <name>] [--agent local|docker | --attach [<key>]]',
     'cli.synopsis.overlay': 'caw overlay status|check [--env <name>] [--part <part>] [--apply] [--start] [--json]',
-    'cli.designAction': 'design knows snapshot: caw design snapshot <test>@<S4> [--env <name>] [--name <name>]. Not: "{action}".',
+    'cli.designAction': 'design knows snapshot: caw design snapshot <test>@<S4> [--env <name>] [--name <name>] [--replace] [--json]. Not: "{action}".',
     'cli.designSnapshotProduction': '{target} is production: a snapshot would put its real data into caw/design. Take it on a development or test environment.',
+    'cli.designSnapshotReplace': '{file} is the target design of {steps}: a snapshot onto it changes what they are judged against. Replace it with --replace, or take the snapshot under another name with --name <name>.',
     'cli.designSnapshotStep': 'design snapshot needs a step: caw design snapshot {test}@S2 takes the screen at the entry of S2.',
     'cli.designSnapshotName': '"{name}" is no name for a design page: plain segments (letters, digits, - _ .), e.g. --name order-form, not under assets/.',
     'cli.designSnapshotWritten': ({ file, count, assets }) => `Snapshot written: ${file}, ${count > 0 ? `${count} files in ${assets}` : 'without external stylesheets or files'}. Draft from it: keep its markup and classes, add only what is new.`,

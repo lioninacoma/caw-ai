@@ -103,6 +103,7 @@ Befehle:`,
       [--env <name>] [--name <name>]     Entwurfsseite caw/design/<name>.html (Standard <test>-S4) mit den eigenen
                                          Stylesheets, Schriften und Bildern der App unter caw/design/assets/<name>/.
                                          Ausgangspunkt für einen Entwurf im Stil der App; liest die App nur
+      [--replace]                        Ein Zielbild ersetzen, das ein Schritt verknüpft (sonst verweigert)
       [--json]                           Das Ergebnis als eine JSON-Zeile
       [--start] [--step-timeout <dauer>]  wie bei run
       [--overlay[=<teile>]]              wie bei run`,
@@ -199,8 +200,9 @@ Browser:
     'cli.synopsis.record': 'caw record <test> [--env <name>] [--role <rolle>] [--headless]  oder  caw record <test>@<S4> [--env <name>] [--agent local|docker | --attach [<key>]]',
     'cli.synopsis.open': 'caw open [--env <name>] [--role <rolle>]  oder  caw open <test>[@<S4>] [--design] [--env <name>] [--agent local|docker | --attach [<key>]]',
     'cli.synopsis.overlay': 'caw overlay status|check [--env <name>] [--part <teil>] [--apply] [--start] [--json]',
-    'cli.designAction': 'design kennt snapshot: caw design snapshot <test>@<S4> [--env <name>] [--name <name>]. Nicht: „{action}“.',
+    'cli.designAction': 'design kennt snapshot: caw design snapshot <test>@<S4> [--env <name>] [--name <name>] [--replace] [--json]. Nicht: „{action}“.',
     'cli.designSnapshotProduction': '{target} ist Produktion: ein Snapshot legte ihre echten Daten nach caw/design. Nimm ihn auf einer Entwicklungs- oder Testumgebung.',
+    'cli.designSnapshotReplace': '{file} ist das Zielbild von {steps}: ein Snapshot darauf ändert, woran sie gemessen werden. Ersetze es mit --replace, oder nimm den Snapshot unter anderem Namen mit --name <name>.',
     'cli.designSnapshotStep': 'design snapshot braucht einen Schritt: caw design snapshot {test}@S2 nimmt den Bildschirm am Einstieg in S2.',
     'cli.designSnapshotName': '„{name}“ ist kein Name für eine Entwurfsseite: einfache Teile (Buchstaben, Ziffern, - _ .), z. B. --name bestellformular, nicht unter assets/.',
     'cli.designSnapshotWritten': ({ file, count, assets }) => `Snapshot geschrieben: ${file}, ${count > 0 ? `${count} Dateien in ${assets}` : 'ohne externe Stylesheets oder Dateien'}. Entwurf davon ausgehend: Markup und Klassen behalten, nur Neues ergänzen.`,

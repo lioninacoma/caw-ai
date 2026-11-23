@@ -383,7 +383,9 @@ Der Bildschirm am Einstieg in S3 als Entwurfsseite, der Ausgangspunkt für einen
   Schriften und Bilder, auf die Stylesheets und Seite verweisen (`<n>-<datei>`), mit relativ umgeschriebenem `url()`. Eine
   Datei wird gespeichert, wenn sie von der Herkunft der App kommt oder die Seite sie schon geladen hat; gelesen wird sie per
   GET aus der Seite selbst, durch die Schutzregeln des Laufs. Ein früherer Snapshot gleichen Namens wird ersetzt, Dateien,
-  die er nicht mehr braucht, fallen weg.
+  die er nicht mehr braucht, fallen weg. Ein Zielbild, das ein Schritt verknüpft (`design:` in einem Test oder Entwurf), ist
+  das, woran dieser Schritt gemessen wird: ein Snapshot darauf wird abgelehnt, bevor etwas läuft, mit den Schritten, außer du
+  sagst `--replace` (oder wählst einen anderen `--name`).
 
 Er liest die App nur und läuft nie auf Produktion: eine Umgebung mit `production` wird abgelehnt (`env-denied`), weil der Snapshot ihre echten Daten ins Repository legte. Das Terminal nennt, was nicht übernommen werden konnte (ein Stylesheet einer anderen
 Herkunft ohne CORS, Frames, Shadow DOM, ein gescrollter Bereich, der im Snapshot oben steht). Offline aus `caw/design`

@@ -75,13 +75,13 @@ developers write that CSS too, which breaks the project's design guide. A draft 
 markup, so the new part is built with the framework's own classes and components.
 
 1. **Snapshot:** `caw_design` `{action: "snapshot", test, step, file?, env?}` (the person: `caw design snapshot <test>@<S4>
-   [--env <env>] [--name <name>]`). caw plays the test headless to the entry of the step, like `open <test>@<S4>` without a
+   [--env <env>] [--name <name>] [--replace]`). caw plays the test headless to the entry of the step, like `open <test>@<S4>` without a
    window, chat or learning, and writes the screen as `design/<name>.html` (default `<test>-<S4>`): the DOM without scripts,
    field values frozen into attributes (never a password or a hidden field's value; the role's secrets redacted), the app's
    stylesheets as files under `design/assets/<name>/` (inline `<style>` stays in the page, linked stylesheets and `@import`
    become `sheet-<n>.css`, fonts and images they and the page reference are stored too when they come from the app's origin
    or were loaded by the page), animations at their end. It only reads the app (GET requests through the run's guards, also
-   on production and without `writable`). The answer names files that could not be stored (`notes`: a stylesheet of another
+   without `writable`); production is refused (below). The answer names files that could not be stored (`notes`: a stylesheet of another
    origin without CORS, frames, shadow DOM, scrolled content shown from the top). The snapshot judged against the same state
    is met with no deviation and renders offline exactly like the app (measured on errand and on ExtJS 6.5 Modern with the
    Material theme: 0 deviations, 0 differing pixels).
