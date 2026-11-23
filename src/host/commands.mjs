@@ -1520,7 +1520,7 @@ const recordTest = async (root, options, deps = {}) => {
     // A draft in caw/drafts records like a test; its last step must then fail while the bug is there.
     const exists = testExists(root, test);
     // Without a window there is nobody to demonstrate, describe or steer a re-recording from a step: only a whole test with a plan.
-    if (headless && (step !== undefined || !exists || loadTest(root, test).steps.length === 0)) throw new CawError('usage', t(step === undefined ? 'cli.recordHeadlessPlan' : 'cli.recordHeadlessStep', { test, file: `${TEST_DIR}/${test}.yaml` }));
+    if (headless && (step !== undefined || !exists || loadTest(root, test).steps.length === 0)) throw new CawError('usage', t(step === undefined ? 'cli.recordHeadlessPlan' : 'cli.recordHeadlessStep', { command: `${cawCommand()} record ${test}${given === undefined ? '' : ` --env ${given}`}`, file: `${TEST_DIR}/${test}.yaml` }));
     if (step !== undefined) {
         if (!exists) throw testMissing(root, config, test, given);
         const known = withDefaults(loadTest(root, test), config);

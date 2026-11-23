@@ -47,6 +47,7 @@ test('Code line: overlay names the source (a server by its address), a build wit
     assert.equal(describeCode(CONFIG, SPEC, { source: 'deployed' }), 'ausgelieferter Stand');
     assert.equal(describeCode(CONFIG, SPEC, { source: 'deployed', url: 'http://localhost:5173' }), 'Dev-Server localhost:5173, dein aktueller Stand');
     assert.equal(describeCode(CONFIG, SPEC, { source: 'deployed', url: 'https://shop.localhost:8443' }), 'ausgelieferter Stand', 'https on *.localhost is a build');
+    assert.equal(describeCode(CONFIG, SPEC, { source: 'deployed', url: 'http://127.0.0.1:9', production: true }), 'ausgelieferter Stand', 'production is never a dev server, whatever its address');
 });
 
 test('Stale build: a source newer than the build, ignoring dependencies, caches, test plans and docs', (t) => {

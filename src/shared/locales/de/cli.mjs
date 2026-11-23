@@ -415,7 +415,7 @@ Browser:
         : `Offen, noch nicht aufgenommen: ${ids}. Sie liefen nicht. Nimm sie auf: {caw} record ${test}@${step} --env ${target}`),
     'cli.recordExists': 'Den Test {test} gibt es schon, seine Metadaten bleiben. --role und --read-only müssen zur Datei passen oder entfallen.',
     'cli.recordHeadless': '{test} auf {env} ohne Fenster aufnehmen: {agent} folgt dem Testplan; caw nimmt nur, was nichts an den Prüfungen ändert (den unveränderten Plan, die Übernahme desselben Plans, den roten Nachweis eines Entwurfs). Alles andere hält den Lauf an, schreibt nichts und endet mit Exit 5.',
-    'cli.recordHeadlessPlan': 'record --headless braucht einen Test mit Plan: {file} hat keinen. Ohne Fenster zeigt und beschreibt niemand einen neuen Test; nimm ihn mit Fenster auf: {caw} record {test}.',
+    'cli.recordHeadlessPlan': 'record --headless braucht einen Test mit Plan: {file} hat keinen. Ohne Fenster zeigt und beschreibt niemand einen neuen Test; nimm ihn mit Fenster auf: {command}.',
     'cli.recordHeadlessStep': 'record --headless nimmt den ganzen Test auf, nicht ab einem Schritt: Niemand würde die Neuaufnahme lenken. Lass @<schritt> weg oder nimm mit Fenster auf.',
     'cli.recordHeadlessOpen': 'Über {id} entscheidet ein Mensch (Optionen: {options}); nichts wurde geschrieben. Siehe {report}, dann mit Fenster aufnehmen:',
     'cli.recordStepUnknown': '{test} hat keinen Schritt {step}.{suggestion} {steps} Einen neuen Schritt trägst du zuerst in {file} ein.',

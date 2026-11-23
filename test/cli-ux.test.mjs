@@ -249,7 +249,7 @@ test('record --headless: only a whole test with a plan, also in CI; nobody shows
     const root = project(t);
     assert.equal(parseRunArgs('record', ['bestellen', '--headless']).headless, true);
     // Without a window nobody is needed: in CI it is not refused for that, but a new test has no plan to follow.
-    await assert.rejects(record(root, ['neu-test', '--env', 'local', '--headless'], { interactive: false }), (error) => error.code === 'usage' && /record --headless braucht einen Test mit Plan: caw\/tests\/neu-test\.yaml hat keinen/.test(error.message));
+    await assert.rejects(record(root, ['neu-test', '--env', 'local', '--headless'], { interactive: false }), (error) => error.code === 'usage' && /record --headless braucht einen Test mit Plan: caw\/tests\/neu-test\.yaml hat keinen\..*nimm ihn mit Fenster auf: caw record neu-test --env local\.$/.test(error.message));
     await assert.rejects(record(root, ['bestellen@S2', '--env', 'local', '--headless'], { interactive: false }), (error) => error.code === 'usage' && /nicht ab einem Schritt/.test(error.message));
 });
 
