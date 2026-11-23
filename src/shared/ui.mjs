@@ -150,11 +150,12 @@ export const createUi = ({ fancy = colorEnabled(), out: own, err = (text) => con
         head,
         /**
          * What to do next, after a run: the first line labelled "next", the commands in it in the accent colour. In pipes the
-         * lines as they are.
+         * lines as they are. A command the text does not name follows it: it is the line's point, in a CI log too.
          * @param lines [{ text, commands: ['caw run …'] }]
          */
         next: (lines) => {
-            lines.forEach(({ text, commands }, index) => {
+            lines.forEach(({ text: given, commands = [] }, index) => {
+                const text = [given, ...commands.filter((command) => !given.includes(command))].join(' ');
                 if (!fancy) out(`[caw] ${safe(text)}`);
                 else out(index === 0 ? labelled(t('cli.uiNextLabel'), withCommands(text, commands)) : labelled('', withCommands(text, commands)));
             });

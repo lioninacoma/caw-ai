@@ -164,6 +164,16 @@ test('in a terminal: the run header, the head once with the version, the next co
     assert.deepEqual(piped.lines, ['[caw] a: caw run x'], 'in pipes no head, the hint as before');
 });
 
+test('next: a command the text does not contain follows it, in a terminal and in pipes (CI log)', () => {
+    const piped = capture(false);
+    piped.ui.next([{ text: 'Siehe r.md, dann mit Fenster aufnehmen:', commands: ['caw record erste --env local'] }]);
+    assert.deepEqual(piped.lines, ['[caw] Siehe r.md, dann mit Fenster aufnehmen: caw record erste --env local']);
+    const { lines, ui } = capture(true);
+    ui.next([{ text: 'Dann mit Fenster aufnehmen:', commands: ['caw record erste --env local'] }]);
+    assert.deepEqual(lines.map(plain), ['Weiter   Dann mit Fenster aufnehmen: caw record erste --env local']);
+    assert.ok(lines[0].includes('[38;2;94;224;242mcaw record erste --env local[39m'), 'the command in accent');
+});
+
 test('in a terminal: too many failures are truncated, the report has them all', () => {
     const { lines, ui } = capture(true);
     const failures = Array.from({ length: 7 }, (_, index) => ({ type: 'http', text: `F${index}` }));
