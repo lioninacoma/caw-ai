@@ -336,9 +336,12 @@ const redAsExpected = (spec, failed, verdict) => {
 
 /**
  * The draft with its red proof: the step, the run that showed it, the commit checked out then (if git knows one) and the tracked
- * files modified in the working tree then (`head()` may give { head, dirty }).
+ * files modified in the working tree then (`head()` may give { head, dirty }). A draft red already keeps its first proof: red
+ * again later (e.g. its design still not met after recording, the building in the working tree) the fix report must still
+ * compare with the state before the fix, or every file built since counts as "dirty at red" and untouched.
  */
 const withRed = (spec, run, head) => {
+    if (spec.red !== undefined) return spec;
     const state = head();
     const commit = typeof state === 'object' && state !== null ? state.head : state;
     const dirty = typeof state === 'object' && state !== null && Array.isArray(state.dirty) && state.dirty.length > 0 ? state.dirty : undefined;

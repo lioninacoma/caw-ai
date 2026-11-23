@@ -165,6 +165,20 @@ test('git: a file dirty at red that the fix left untouched is not listed, though
     assert.deepEqual(changedFiles(root, head, dirty), ['src/b.js', 'src/c.js']);
 });
 
+test('git: the files built after the first red proof are listed against it, not against a proof taken after the building', (t) => {
+    const { root, git, write } = repository(t);
+    write('server.mjs', 'export const note = false;');
+    git('add', '-A');
+    git('commit', '-q', '-m', 'App');
+    const head = git('rev-parse', '--short', 'HEAD');
+    // First red: nothing dirty. Then the screen is built in the working tree, and a red proof taken now sees it dirty.
+    const first = dirtyFiles(root);
+    write('server.mjs', 'export const note = true;');
+    const later = dirtyFiles(root);
+    assert.deepEqual(changedFiles(root, head, later), [], 'against the later proof the built file looks untouched');
+    assert.deepEqual(changedFiles(root, head, first), ['server.mjs']);
+});
+
 test('git: a folder outside any repository is git-missing', (t) => {
     const dir = mkdtempSync(join(tmpdir(), 'caw-nogit-'));
     t.after(() => rmSync(dir, { recursive: true, force: true }));

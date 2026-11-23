@@ -318,6 +318,17 @@ test('Recording a design draft headless: the red proof is saved on its own; a de
     assert.equal(already.adopted[0].spec.red, undefined);
 });
 
+test('Recording a design draft already red: its design still not met after the recording keeps the first red proof (run, commit, files dirty then) for the report', async () => {
+    // Red at the pending step's entry before the building; the building is in the working tree when the recording shows the
+    // design still not met. A new proof would take the built file as "dirty at red" and the report would list nothing.
+    const first = { step: 'S2', run: 'r-first', head: 'abc1234', dirty: [{ file: 'web/old.css', hash: 'a'.repeat(40) }] };
+    // The recording's candidate is the draft with its steps recorded: its red proof comes along.
+    const h = harness({ outcomes: [{ ...designRun(notMet), candidate: { ...designDraft, red: first } }, designRun(notMet, 'r-again')], answers: ['adopt'] });
+    await recordFlow({ sandbox: 'box', ...h, head: () => ({ head: 'def5678', dirty: [{ file: 'web/note.css', hash: 'b'.repeat(40) }] }) });
+    assert.equal(h.adopted.length, 1, 'the recording is adopted');
+    assert.deepEqual(h.adopted[0].spec.red, first);
+});
+
 test('Test run of a design draft: its design\'s controls missing at the pending step\'s entry are the red proof, written after the run; guided, the card to build comes', async () => {
     const headless = harness({ outcomes: [entryRun(notReady)] });
     assert.equal(await runFlow({ spec: pendingDraft, handover: false, canFix: false, head: () => 'abc1234', ...headless }), EXIT.pass, 'a pending step fails nothing');

@@ -118,7 +118,7 @@ tracked files that were modified in the working tree then, as `[{ file, hash }]`
 content as a git blob id (`null` when deleted); without such files it is left out. The fix report also names a file from it whose
 content changed since, so a bug that existed only in the working tree is not lost; one whose content is still the same as at red
 is left out, even though it differs from `head`: the fix did not touch it. Only drafts may
-carry `red`; in `caw/tests` `validate` rejects it. Recording the draft again drops it. `run <id> --promote` moves a green draft
+carry `red`; in `caw/tests` `validate` rejects it. The first red proof stays: red again later (recorded anew, or a design still not met after its step was recorded) does not replace it, so the fix report compares with the state before the fix. `run <id> --promote` moves a green draft
 to `caw/tests` and `caw/recordings` without `red` ([commands](commands.md#promoting-a-draft)).
 
 **A design draft** is written for a target design ([guide](guide.md#build-a-draft-test-first)) and carries `origin: design` (only
