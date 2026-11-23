@@ -20,6 +20,7 @@ export default {
     'run.button.onlyClose': 'Lauf beenden',
     'run.button.restore': 'Neu öffnen',
     'run.button.endDevelop': 'Lauf beenden',
+    'run.button.notNow': 'Nicht jetzt',
 
     // Step list
     'run.group.advise': '{agent} untersucht',

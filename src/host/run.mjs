@@ -26,6 +26,7 @@ import { renderReport, renderReproduceReport } from '../shared/report.mjs';
 import { readReproduction, draftId, draftTestPlan, draftHint, coverageIn } from './reproduce.mjs';
 import { createHeadlessChat, openChat, parseClaudeLog, tailLines } from './chat.mjs';
 import { decide } from './decisions.mjs';
+import { designOf } from './bugfix.mjs';
 import { createDesk } from './decision-desk.mjs';
 import { terminalAsk } from './decision-prompt.mjs';
 import { isPublicKey, spawnerKey } from './decision-proof.mjs';
@@ -1356,7 +1357,7 @@ ${text}`) ?? 0;
         const runs = runsWithResult(root, chosen.spec.id);
         const judged = (id) => {
             for (const { result } of runs) {
-                const found = (result.results ?? []).find((entry) => entry.id === id)?.design ?? (result.pendingDesign?.step === id ? result.pendingDesign : undefined);
+                const found = designOf(result, id);
                 if (found?.verdict === 'met' || found?.verdict === 'not-met') return found;
             }
             return undefined;

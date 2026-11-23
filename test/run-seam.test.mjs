@@ -2,7 +2,7 @@
 // scripted playback. What the flows decide must reach the run and its files the same way the workbench does it.
 
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -72,6 +72,7 @@ const harness = ({ fail, answers = [], headless = false, session = fakeSession, 
                 if (options === undefined || options === null || !['deciding', 'discussing'].includes(state)) return;
                 const ids = options.map(({ id }) => id);
                 decisions.at(-1).options = ids;
+                decisions.at(-1).labels = options.map(({ label }) => label);
                 const wish = wishes.find((candidate) => ids.includes(candidate));
                 if (wish !== undefined) wishes.splice(wishes.indexOf(wish), 1);
                 // The click comes after the question is up, like in the window.
@@ -260,6 +261,22 @@ test('Seam: open --design compares anew after F5, a reload of the window and res
     assert.equal(h.notices.filter((text) => /neu aufgelistet/.test(text)).length, 3);
 });
 
+test('Seam: the comparison page\'s rail shows another step as the newest run judged its design after its check (steps[].design)', async () => {
+    const bench = benchSession();
+    const developing = (ids, chat) => { setImmediate(() => chat.human.choose('end')); };
+    const h = harness({ session: bench.make, seams: { designComparison: async ({ viewport }) => comparison(viewport, []) }, extra: { withDesign: true }, developing });
+    const spec = testOf();
+    spec.steps[0] = { ...spec.steps[0], design: 'design/list.html' };
+    spec.steps[1] = { ...spec.steps[1], design: 'design/form.html' };
+    const earlier = join(h.root, '.caw', 'runs', `2026-01-01T00-00-00-000Z-${spec.id}`);
+    mkdirSync(earlier, { recursive: true });
+    writeFileSync(join(earlier, 'result.json'), JSON.stringify({ status: 'fail', results: [{ id: 'S1', status: 'fail' }], steps: [{ id: 'S1', status: 'fail', kind: 'design', design: { file: 'design/list.html', verdict: 'not-met', missing: ['button "Neu"'], textDiffs: [], styleDiffs: ['a', 'b'], layoutDiffs: [] } }] }));
+    const code = await runFlow({ spec, through: 'S2', handover: true, canFix: true, execute: h.execute, adopt: h.adopt, log: () => {}, openSandbox: async () => null });
+    assert.equal(code, EXIT.pass);
+    const [, first] = bench.calls.find(([name]) => name === 'design');
+    assert.deepEqual(first.steps, [{ id: 'S1', name: spec.steps[0].name, status: 'deviations', count: 3 }, { id: 'S2', name: spec.steps[1].name, status: 'met', count: 0 }]);
+});
+
 test('Seam: the comparison page\'s "have the agent build it" asks in the chat as the design card does (design.unmet, ask); only then the agent starts', async () => {
     for (const [answer, starts] of [['ask', 1], ['close', 0]]) {
         const bench = benchSession();
@@ -281,6 +298,7 @@ test('Seam: the comparison page\'s "have the agent build it" asks in the chat as
         const question = h.decisions.find(({ text }) => /umsetzen lassen, bis er Entwurf design\/form\.html erfüllt/.test(text ?? ''));
         assert.ok(question !== undefined, h.decisions.map(({ text }) => text).join('\n'));
         assert.deepEqual(question.options, ['ask', 'close'], 'the design card\'s options');
+        assert.equal(question.labels[1], 'Nicht jetzt', 'declining only closes the question, the window stays: no "End run"');
         assert.equal(opened, starts, `${answer}: the agent ${starts === 1 ? 'starts' : 'does not start'}`);
     }
 });

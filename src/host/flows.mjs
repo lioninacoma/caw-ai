@@ -41,6 +41,8 @@ const ONLY_CLOSE = button('close', 'run.button.onlyClose', { primary: true });
 // After the handover, while developing in the prepared state.
 const RESTORE = button('restore', 'run.button.restore', { primary: true });
 const END_DEVELOP = button('end', 'run.button.endDevelop');
+// The comparison page's question to have the design built: declining only closes the question, the window stays.
+const NOT_NOW = button('close', 'run.button.notNow');
 const RESTORE_PICKED = button('restore-picked', 'run.button.restorePicked', { primary: true });
 /** The confirm button names the step it opens, so it reads as the answer to the question: "S2 öffnen". */
 const openPicked = (step) => (step === undefined ? RESTORE_PICKED : { ...RESTORE_PICKED, label: t('run.button.openStep', { step }) });
@@ -997,7 +999,7 @@ export const runFlow = async (options) => {
                             id: 'design.unmet',
                             context: { test: spec.id, step, reason: deviations.join('; '), kind: 'design', failures: 0 },
                             question: t('run.develop.buildDesignAsk', { id: step, file, count: deviations.length }),
-                            options: [BUILD_DESIGN, CLOSE],
+                            options: [BUILD_DESIGN, NOT_NOW],
                         });
                     } finally {
                         building = false;

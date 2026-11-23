@@ -20,6 +20,7 @@ export default {
     'run.button.onlyClose': 'End run',
     'run.button.restore': 'Open again',
     'run.button.endDevelop': 'End run',
+    'run.button.notNow': 'Not now',
 
     // Step list
     'run.group.advise': '{agent} investigates',
