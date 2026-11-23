@@ -135,7 +135,7 @@ Test ohne `origin` und `red`; der Lauf bekommt `design-report.md`.
 
 Ein Schritt kann den Bildschirm nennen, auf dem er enden soll: `design: design/order-form.html`. `design` und `needs` schreiben nur Menschen in die Testdatei (oder lassen ihre Claude-Code-Session einen Entwurf mit `caw_design` verknüpfen, wenn sie darum bitten); der Plan des Agenten darf sie nicht enthalten, und wenn caw einen Schritt neu schreibt (beheben, neu aufnehmen), bleiben sie erhalten.
 
-Nachdem die Prüfung des Schritts bestanden hat, rendert caw den `.html`-Entwurf in einem eigenen headless Browser ohne Skripte und Netz, im aufgenommenen Viewport des Schritts, und vergleicht ihn mit der Seite der App. Ist der Entwurf erfüllt, sieht der Schritt aus wie der Entwurf, bis auf Daten:
+Nachdem die Prüfung des Schritts bestanden hat, rendert caw den `.html`-Entwurf in einem eigenen headless Browser ohne Skripte und Netz, im aufgenommenen Viewport des Schritts abzüglich des Platzes, den die Scrollbalken der App einnehmen (ein Fenster zeigt sie, der headless Entwurfs-Browser nicht), und vergleicht ihn mit der Seite der App. Ist der Entwurf erfüllt, sieht der Schritt aus wie der Entwurf, bis auf Daten:
 
 - **Struktur:** Bedienelemente (Rolle, Beschriftung, Merkmale) und Ansichtszeilen (Überschriften, Buttons, Links, Bereiche).
 - **Feste Texte:** Überschriften, Beschriftungen, Absätze und andere Texte, die keine Daten sind. Ein anderer Text an derselben Stelle heißt `Text: heading "Note" → "Notes"`, ein fehlender Text steht unter Fehlt.

@@ -732,6 +732,18 @@ export const designText = ({ file, missing = [], extra = [], styleDiffs = [], la
     ...(extra.length === 0 ? [] : [t('session.design.extra', { list: extra.join('; ') })]),
 ].join(' ');
 
+/** The room the page's scrollbars take: { width } of a vertical one, { height } of a horizontal one; 0 without (headless). */
+const scrollbarsOf = async (page) => {
+    try {
+        return await (typeof page.mainFrame === 'function' ? page.mainFrame() : page).evaluate(() => ({
+            width: Math.max(0, window.innerWidth - document.documentElement.clientWidth),
+            height: Math.max(0, window.innerHeight - document.documentElement.clientHeight),
+        }));
+    } catch {
+        return { width: 0, height: 0 };
+    }
+};
+
 /**
  * Judges the target designs of a run. The design browser starts on the first design and is separate from the app's: headless,
  * no profile, no network, no scripts.
@@ -752,7 +764,11 @@ export const createDesignJudge = ({ cawDir, launch, read, secrets = () => [] }) 
             if (path === null) return { file, verdict: 'missing', note: t('session.design.noFile', { file }) };
             browser ??= await launch();
             const html = await read(path);
-            const rendered = await renderDesign(browser, html, viewport ?? DEFAULT_VIEWPORT, { cawDir, file });
+            // A window shows scrollbars, the headless design browser hides them: the design is laid out in the room the app's page
+            // has beside its scrollbars, else every block as wide as the page differs by the scrollbar's width.
+            const size = viewport ?? DEFAULT_VIEWPORT;
+            const bars = await scrollbarsOf(page);
+            const rendered = await renderDesign(browser, html, { width: size.width - bars.width, height: size.height - bars.height }, { cawDir, file });
             try {
                 const target = await structureOf(rendered, { texts });
                 // A click's ripple or a moving label is not the screen: measured once it settled (ExtJS Material, settleProbe).

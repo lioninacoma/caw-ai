@@ -133,7 +133,7 @@ the run gets `design-report.md`.
 
 A step can name the screen it should end on: `design: design/order-form.html`. Only people write `design` and `needs` into the test file (or have their Claude Code session link a design with `caw_design` when they ask); the agent's plan may not carry them, and when caw rewrites a step (fix, re-record) it keeps them.
 
-After the step's check passed, caw renders the `.html` design in a separate headless browser without scripts or network, at the step's recorded viewport, and compares it with the app's page. A step whose design is met looks like the design, except for data:
+After the step's check passed, caw renders the `.html` design in a separate headless browser without scripts or network, at the step's recorded viewport less the room the app's scrollbars take (a window shows them, the headless design browser does not), and compares it with the app's page. A step whose design is met looks like the design, except for data:
 
 - **Structure:** controls (role, label, flags) and view lines (headings, buttons, links, landmarks).
 - **Static texts:** headings, labels, paragraphs and other texts that are not data. A different text in the same place is named as `text: heading "Note" → "Notes"`, a text that is gone as missing.

@@ -519,6 +519,30 @@ test('the judge at a pending step\'s entry: only the design\'s controls count, r
     }
 });
 
+test('the judge: the app\'s scrollbar in a window narrows no block of the design (headless design browser)', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    // A window shows scrollbars, the headless design browser hides them (Playwright's --hide-scrollbars): an app taller than its
+    // viewport lays out its blocks narrower by the scrollbar's width than the design, which fits.
+    const windowed = await launchChrome({ ignoreDefaultArgs: ['--hide-scrollbars'] });
+    t.after(() => windowed?.close());
+    const caw = tempCaw(t);
+    writeDesign(caw, 'design/message.html', Buffer.from('<!doctype html><body><div style="border:1px solid #888"><p>Show message</p></div></body>'));
+    const judge = createDesignJudge({ cawDir: caw, launch: launchChrome, read: (path) => readFileSync(path, 'utf8') });
+    const context = await windowed.newContext({ viewport: { width: 1280, height: 720 } });
+    try {
+        const page = await context.newPage();
+        await page.setContent('<!doctype html><body><div style="border:1px solid #888"><p>Show message</p></div><div style="height:3000px"></div></body>');
+        const scrollbar = await page.evaluate(() => window.innerWidth - document.documentElement.clientWidth);
+        assert.ok(scrollbar > 0, `the app shows a scrollbar (${scrollbar}px)`);
+        const judged = await judge.judge({ file: 'design/message.html', viewport: { width: 1280, height: 720 } }, page);
+        assert.deepEqual(judged.layoutDiffs, []);
+        assert.equal(judged.verdict, 'met');
+    } finally {
+        await judge.close();
+        await context.close();
+    }
+});
+
 test('needs: the locators missing on the page', async (t) => {
     if (needsChrome()) return t.skip('no Chrome');
     const context = await browser.newContext();
