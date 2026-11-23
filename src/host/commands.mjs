@@ -1973,11 +1973,11 @@ export const design = async (root, args, deps = {}) => {
         }
     };
     const runOptions = { ...options, target, entry: options.step, headless: true, noChat: true, learn: false, advise: false, handover: false, guided: false, nextSteps: false, snapshot };
-    const played = await withLifecycle(lifecycleOf(root, config, target, options, 'open'), async (lifecycle) => runOne(root, { ...runOptions, lifecycle }, deps));
+    const played = await withLifecycle(lifecycleOf(root, config, target, options, 'open'), async (lifecycle) => (deps.runOne ?? runOne)(root, { ...runOptions, lifecycle }, deps));
     const assets = `${PROJECT_DIR}/${assetsDirOf(file)}/`;
     let result;
     if (written !== undefined) {
-        result = { ok: true, file: `${PROJECT_DIR}/${file}`, design: file, assets, bytes: written.bytes, files: written.assets, assetBytes: written.assetBytes, replaced: written.replaced, notes: written.notes, test: options.test, step: options.step, env: target, report: played.report };
+        result = { ok: true, file: `${PROJECT_DIR}/${file}`, design: file, ...(written.assets > 0 ? { assets } : {}), bytes: written.bytes, files: written.assets, assetBytes: written.assetBytes, replaced: written.replaced, notes: written.notes, test: options.test, step: options.step, env: target, report: played.report };
         ui.success(t('cli.designSnapshotWritten', { file: result.file, count: result.files, assets }));
         for (const note of written.notes) ui.info(t(`cli.designSnapshotNote.${note.kind}`, { detail: note.detail }));
     } else {

@@ -141,6 +141,32 @@ test('caw design snapshot onto a design a step links needs --replace: the CLI is
     assert.equal(readFileSync(join(root, 'caw/design/order-S2.html'), 'utf8'), '<!doctype html><title>x</title><main></main>', 'unchanged');
 });
 
+test('caw design snapshot --json names an assets folder only when it wrote one', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    const { design } = await import('../src/host/commands.mjs');
+    const root = tempCaw(t);
+    mkdirSync(join(root, 'caw/tests'), { recursive: true });
+    writeFileSync(join(root, 'caw.config.json'), JSON.stringify({ environments: { test: { url: 'http://127.0.0.1:9' } } }));
+    writeFileSync(join(root, 'caw/tests/order.yaml'), 'writes: false\nenvironments: [test]\nsteps:\n  - id: S1\n    name: Start\n    do: Open it.\n    expect: It is shown.\n');
+    const context = await browser.newContext();
+    t.after(() => context.close());
+    const page = await context.newPage();
+    await page.setContent('<!doctype html><style>main{color:#333}</style><main><h1>Order</h1></main>');
+    // The run up to the step's entry, without an app: its snapshot hook gets the page.
+    const runOne = async (_root, options) => {
+        await options.snapshot({ page, secrets: [] });
+        return { code: 0, report: '.caw/runs/r/report.md' };
+    };
+    const printed = [];
+    t.mock.method(process.stdout, 'write', (chunk) => { printed.push(String(chunk)); return true; });
+    t.mock.method(console, 'log', () => {});
+    assert.equal(await design(root, ['snapshot', 'order@S1', '--env', 'test', '--json'], { runOne }), 0);
+    const result = JSON.parse(printed.find((line) => line.startsWith('{')));
+    assert.equal(result.files, 0);
+    assert.equal(result.assets, undefined, 'no folder, no path');
+    assert.equal(existsSync(join(root, 'caw/design/assets')), false);
+});
+
 test('snapshot: static page without scripts, fields frozen (no password, no hidden value), the app\'s stylesheets, font and images as files', async (t) => {
     if (needsChrome()) return t.skip('no Chrome');
     const caw = tempCaw(t);

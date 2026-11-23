@@ -76,6 +76,16 @@ test('the report links screenshots in agent/ and marks steps never reached as sk
     assert.equal(isSkipped({ id: 'S2', status: 'fail', note: 'anderer Grund' }, results), false);
 });
 
+test('a step failed on its target design or look names that as its evidence, not eval', () => {
+    const results = [
+        { id: 'S1', status: 'fail', kind: 'design', evidence: { type: 'eval', value: 'design/a.html Texte weichen ab' }, note: 'S1 entspricht nicht seinem Zielbild' },
+        { id: 'S2', status: 'fail', evidence: { type: 'eval', value: 'sum() => false' }, note: 'x' },
+    ];
+    const md = renderReport({ status: 'fail', testId: 'x', target: 'local', results, expectations: [{ id: 'S1', text: 'a' }, { id: 'S2', text: 'b' }] });
+    assert.match(md, /\| S1 \| a \| fail \| design: design\/a\.html Texte weichen ab \|/);
+    assert.match(md, /\| S2 \| b \| fail \| eval: sum\(\) => false \|/);
+});
+
 test('the tested version is the line the terminal prints', () => {
     const base = { status: 'pass', testId: 'x', target: 'local' };
     assert.match(renderReport({ ...base, testedCode: 'Dev-Server localhost:4174, dein aktueller Stand' }), /Getesteter Stand: Dev-Server localhost:4174, dein aktueller Stand/);

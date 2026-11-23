@@ -403,7 +403,7 @@ aus der Umgebung, auf der er lief: am besten eine Testumgebung.
 | Option | |
 |---|---|
 | `--name <name>` | Name der Seite unter `caw/design`, einfache Teile (`ticket-formular`, `screens/ticket`), nicht unter `assets/`. |
-| `--json` | Das Ergebnis als eine JSON-Zeile: `ok`, `file`, `assets`, `files`, `notes`, `report` (oder `reason`). |
+| `--json` | Das Ergebnis als eine JSON-Zeile: `ok`, `file`, `assets` (nur wenn Dateien geschrieben wurden), `files`, `notes`, `report` (oder `reason`). |
 | `--start`, `--overlay[=<teile>]`, `--step-timeout <dauer>` | Wie bei `run`. |
 
 Exit-Codes: `0` geschrieben, `1` der Weg zum Schritt ist gescheitert (der Bericht nennt den Schritt), `2` der Snapshot ließ

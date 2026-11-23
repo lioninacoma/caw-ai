@@ -397,7 +397,7 @@ design and app alike. The snapshot holds the data of that state from the environ
 | Option | |
 |---|---|
 | `--name <name>` | The page's name under `caw/design`, plain segments (`ticket-form`, `screens/ticket`), not under `assets/`. |
-| `--json` | The result as one JSON line: `ok`, `file`, `assets`, `files`, `notes`, `report` (or `reason`). |
+| `--json` | The result as one JSON line: `ok`, `file`, `assets` (only when files were written), `files`, `notes`, `report` (or `reason`). |
 | `--start`, `--overlay[=<parts>]`, `--step-timeout <duration>` | As for `run`. |
 
 Exit codes: `0` written, `1` the way to the step failed (the report names the step), `2` the snapshot could not be written,

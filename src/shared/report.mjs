@@ -94,11 +94,13 @@ const cell = (text) => String(text ?? '').replaceAll('|', '\\|').replaceAll('\n'
 
 /** Screenshots are in the run's agent/ folder, next to report.md: as a link that opens from the report. */
 export const SCREENSHOT_DIR = 'agent';
-const evidenceCell = (evidence) => {
+// A step failed on its target design or its learned look: that judgement is its evidence, not a check's eval.
+const JUDGED_KINDS = ['design', 'visual'];
+const evidenceCell = (evidence, kind) => {
     if (evidence?.type === 'screenshot' && typeof evidence.value === 'string' && evidence.value !== '') {
         return `screenshot: [${cell(evidence.value)}](${encodeURI(`${SCREENSHOT_DIR}/${evidence.value}`)})`;
     }
-    return `${cell(evidence?.type)}: ${cell(evidence?.value)}`;
+    return `${cell(JUDGED_KINDS.includes(kind) ? kind : evidence?.type)}: ${cell(evidence?.value)}`;
 };
 
 /**
@@ -205,7 +207,7 @@ export const renderReport = ({ status, reason, note, testId, target, testedCode,
             // A passed step whose screen met its target design says so in its note.
             const design = steps.find((step) => step.id === id)?.design;
             const met = item?.status === 'pass' && design?.verdict === 'met' ? t('config.report.designMet', { file: String(design.file) }) : undefined;
-            lines.push(`| ${id} | ${cell(text)} | ${skipped ? 'skipped' : item?.status ?? '-'} | ${skipped ? '-' : evidenceCell(item?.evidence)} | ${cell([item?.note, met].filter(Boolean).join(' · '))} |`);
+            lines.push(`| ${id} | ${cell(text)} | ${skipped ? 'skipped' : item?.status ?? '-'} | ${skipped ? '-' : evidenceCell(item?.evidence, item?.kind)} | ${cell([item?.note, met].filter(Boolean).join(' · '))} |`);
         }
     }
     // Not part of the verdict: the steps still to be recorded did not run.
