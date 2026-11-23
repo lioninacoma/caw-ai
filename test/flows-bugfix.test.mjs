@@ -302,7 +302,7 @@ test('Recording a design draft guided: its design not met after the passed check
     assert.deepEqual(build.options, ['fix-by-agent', 'fix-myself', 'later']);
     assert.deepEqual(build.labels, ['Von Claude Code umsetzen lassen', 'Ich setze selbst um', 'Später']);
     // The agent's task: the step, its design and what deviates.
-    assert.deepEqual(asked[0].fix, { step: 'S2', name: 'Summe', expect: 'Die Notiz ist zu sehen.', design: 'design/note.html', deviations: ['missing: button "Save note"', 'text: text: heading "Note" → "Notes"', 'style: button "Save": background-color #5f8f6b → #e5533a'] });
+    assert.deepEqual(asked[0].fix, { step: 'S2', name: 'Summe', expect: 'Die Notiz ist zu sehen.', design: 'design/note.html', deviations: ['missing: button "Save note"', 'text: heading "Note" → "Notes"', 'style: button "Save": background-color #5f8f6b → #e5533a'] });
     assert.match(h.questions[2].text, /Geändert: web\/note\.css\. Erneut testen zeigt, ob S2 sein Zielbild jetzt erfüllt\./);
 });
 

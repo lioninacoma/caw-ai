@@ -371,10 +371,7 @@ const redRows = (red) => {
         const rows = red.deviations.slice(0, ROWS_SHOWN).map((line) => {
             const [, kind, text] = DEVIATION.exec(line) ?? [];
             if (kind === undefined) return { label: '–', text: line };
-            // A changed text's line starts with its kind already ("text: heading …"): the row's label says it.
-            const lead = t('session.design.text', { element: '\u0000', now: '' }).split('\u0000')[0].toLowerCase();
-            const shown = kind === 'text' && text.toLowerCase().startsWith(lead) ? text.slice(lead.length) : text;
-            return { label: t(`run.guide.dev.${kind}`), text: shown };
+            return { label: t(`run.guide.dev.${kind}`), text };
         });
         const more = red.deviations.length - ROWS_SHOWN;
         return [step, { label: t('run.guide.buildDesign'), text: red.design, code: true }, ...rows, ...(more > 0 ? [{ label: '…', text: t('run.guide.devMore', { count: more }) }] : [])];

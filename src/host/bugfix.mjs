@@ -12,6 +12,7 @@
 import { existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
+import { t } from '../shared/i18n.mjs';
 import { DRAFT_DIR } from '../shared/names.mjs';
 import { REPRODUCE_RUN, runsWithResult } from './runs.mjs';
 import { draftPath, isDesignDraft, loadDraft, pendingSteps, redStep, staleSteps, testPath } from './test-file.mjs';
@@ -84,8 +85,14 @@ export const designRedOf = (draft, result) => {
         ...(found?.name === undefined ? {} : { name: found.name }),
         ...(found?.expect === undefined ? {} : { expect: found.expect }),
         ...(found?.design === undefined ? {} : { design: found.design }),
-        deviations: deviationsOf(designOf(result, step)).map(({ kind, text }) => `${kind}: ${text}`),
+        deviations: deviationsOf(designOf(result, step)).map(({ kind, text }) => `${kind}: ${kind === 'text' ? withoutTextLead(text) : text}`),
     };
+};
+
+/** A changed text's line starts with its kind already ("text: heading …", German "Text: …"): once is enough. */
+const withoutTextLead = (text) => {
+    const lead = t('session.design.text', { element: '\u0000', now: '' }).split('\u0000')[0].toLowerCase();
+    return text.toLowerCase().startsWith(lead) ? text.slice(lead.length) : text;
 };
 
 /**

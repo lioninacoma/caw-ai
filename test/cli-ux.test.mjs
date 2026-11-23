@@ -202,6 +202,7 @@ test('help: reproduce writes its draft to caw/drafts, record names --headless in
     assert.match(helpText('reproduce'), /caw\/drafts/);
     assert.doesNotMatch(helpText('reproduce'), /Entwurf eines Testplans in den Laufordner/);
     assert.match(synopsisOf('record'), /--headless/);
+    assert.match(synopsisOf('design'), /\[--replace\]/, 'the usage under a refusal that recommends --replace names it');
 });
 
 /** Runs fn with CI set: there nobody picks the developer's own environment. */

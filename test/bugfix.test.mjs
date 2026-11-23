@@ -135,7 +135,7 @@ test('designRed, designReady, designMet: red while the controls are missing at t
         step: 'S3', name: 'Notiz', expect: 'Die Notiz ist zu sehen.', design: 'design/note.html',
         deviations: ['missing: textbox "Note"', 'missing: button "Save note"'],
     });
-    assert.deepEqual(designRedOf(designDraft, afterCheck('r', notMet)).deviations, ['missing: button "Save note"', 'text: text: heading "Note" → "Notes"', 'layout: gap button "Save" → block "Note": 19px → 43px']);
+    assert.deepEqual(designRedOf(designDraft, afterCheck('r', notMet)).deviations, ['missing: button "Save note"', 'text: heading "Note" → "Notes"', 'layout: gap button "Save" → block "Note": 19px → 43px']);
 });
 
 test('fixPhase of a design draft: draft, red while its controls are missing at the entry, record once they are there, green only after recording, adopted', () => {
