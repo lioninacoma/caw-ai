@@ -774,6 +774,12 @@ test('caw_design snapshot: runs caw design snapshot with --json, returns its res
     assert.equal(calls[0].options.timeoutMs, 15 * 60_000);
     assert.match(taken.content[0].text, /Snapshot geschrieben: caw\/design\/bestellung-S2\.html, 3 Dateien/);
     assert.deepEqual(taken.structuredContent, { ...result, exit: 0 });
+    // A page without stylesheets of its own: no files and no assets folder, the text says so instead of "0 files in …".
+    reply = { code: 0, out: `${JSON.stringify({ ...result, files: 0 })}\n`, err: '' };
+    const [bare] = (await call('caw_design', { action: 'snapshot', test: 'bestellung', step: 'S2' })).content[0].text.split('\n');
+    assert.match(bare, /Snapshot geschrieben: caw\/design\/bestellung-S2\.html, ohne externe Stylesheets oder Dateien\./);
+    assert.doesNotMatch(bare, /0 Dateien|assets/);
+    reply = { code: 0, out: `${JSON.stringify(result)}\n`, err: '' };
     for (const [args, pattern] of [
         [{ action: 'snapshot', test: 'bestellung' }, /step/],
         [{ action: 'snapshot', test: 'bestellung', step: 'zwei' }, /test und step/],

@@ -448,7 +448,7 @@ export default {
     'run.mcp.designList': '{count} Entwurfsdateien, {links} davon an Schritten.',
     'run.mcp.designAction': 'action ist snapshot, put, list oder link.',
     'run.mcp.designSnapshotStep': 'snapshot braucht test und step, z. B. test: "bestellung", step: "S3": der Bildschirm am Einstieg in S3.',
-    'run.mcp.designSnapshotWritten': 'Snapshot geschrieben: {file}, {count} Dateien in {assets}. Entwurf davon ausgehend: Markup und Klassen behalten, nur Neues ergänzen.',
+    'run.mcp.designSnapshotWritten': ({ file, count, assets }) => `Snapshot geschrieben: ${file}, ${count > 0 ? `${count} Dateien in ${assets}` : 'ohne externe Stylesheets oder Dateien'}. Entwurf davon ausgehend: Markup und Klassen behalten, nur Neues ergänzen.`,
     'run.mcp.designSnapshotTimeout': 'Der Snapshot hat länger als {minutes} Minuten gedauert und wurde abgebrochen.',
     'run.mcp.designSnapshotFailed': 'caw design snapshot hat kein Ergebnis geliefert (Exit {code}):\n{output}',
     'run.mcp.designStylesFrom': ({ removed, linked, from, styled }) => `Eigene Stylesheets (${removed}) ersetzt durch die ${linked} von ${from}.${styled > 0 ? ` ${styled} Elemente tragen ein style-Attribut: aus dem Markup des Snapshots ist das der Look der App, sonst eigenes CSS des Entwurfs.` : ''}`,

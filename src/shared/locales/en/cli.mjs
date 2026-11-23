@@ -198,7 +198,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.designAction': 'design knows snapshot: caw design snapshot <test>@<S4> [--env <name>] [--name <name>]. Not: "{action}".',
     'cli.designSnapshotStep': 'design snapshot needs a step: caw design snapshot {test}@S2 takes the screen at the entry of S2.',
     'cli.designSnapshotName': '"{name}" is no name for a design page: plain segments (letters, digits, - _ .), e.g. --name order-form, not under assets/.',
-    'cli.designSnapshotWritten': 'Snapshot written: {file}, {count} files in {assets}. Draft from it: keep its markup and classes, add only what is new.',
+    'cli.designSnapshotWritten': ({ file, count, assets }) => `Snapshot written: ${file}, ${count > 0 ? `${count} files in ${assets}` : 'without external stylesheets or files'}. Draft from it: keep its markup and classes, add only what is new.`,
     'cli.designSnapshotNotReached': 'No snapshot: the run did not reach the entry of {step} of {test}. Report: {report}',
     'cli.designSnapshotNote.sheet': 'A stylesheet of another origin could not be read (no CORS) and is missing: {detail}',
     'cli.designSnapshotNote.file': 'A file the page references was not stored; offline it is missing: {detail}',

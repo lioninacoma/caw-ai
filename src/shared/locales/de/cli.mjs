@@ -202,7 +202,7 @@ Browser:
     'cli.designAction': 'design kennt snapshot: caw design snapshot <test>@<S4> [--env <name>] [--name <name>]. Nicht: „{action}“.',
     'cli.designSnapshotStep': 'design snapshot braucht einen Schritt: caw design snapshot {test}@S2 nimmt den Bildschirm am Einstieg in S2.',
     'cli.designSnapshotName': '„{name}“ ist kein Name für eine Entwurfsseite: einfache Teile (Buchstaben, Ziffern, - _ .), z. B. --name bestellformular, nicht unter assets/.',
-    'cli.designSnapshotWritten': 'Snapshot geschrieben: {file}, {count} Dateien in {assets}. Entwurf davon ausgehend: Markup und Klassen behalten, nur Neues ergänzen.',
+    'cli.designSnapshotWritten': ({ file, count, assets }) => `Snapshot geschrieben: ${file}, ${count > 0 ? `${count} Dateien in ${assets}` : 'ohne externe Stylesheets oder Dateien'}. Entwurf davon ausgehend: Markup und Klassen behalten, nur Neues ergänzen.`,
     'cli.designSnapshotNotReached': 'Kein Snapshot: Der Lauf hat den Einstieg in {step} von {test} nicht erreicht. Bericht: {report}',
     'cli.designSnapshotNote.sheet': 'Ein Stylesheet einer anderen Herkunft war nicht lesbar (kein CORS) und fehlt: {detail}',
     'cli.designSnapshotNote.file': 'Eine Datei, auf die die Seite verweist, wurde nicht gespeichert; offline fehlt sie: {detail}',
