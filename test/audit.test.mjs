@@ -91,10 +91,28 @@ test('auditChanges: known messages added', () => {
 
 test('auditChanges: the known messages of a first recording are its baseline, listed for information, not a weakening', () => {
     const plan = BASE.map((recorded) => Object.fromEntries(Object.entries(recorded).filter(([key]) => key !== 'recording')));
-    const findings = audit(spec(BASE, { knownMessages: ['Gespeichert.'] }), { before: spec(plan) });
+    const first = [step('S1', BASE[0].expect, { recording: { known: ['Gespeichert.'] } }), BASE[1]];
+    const findings = audit(spec(first, { knownMessages: ['Gespeichert.'] }), { before: spec(plan) });
     assert.deepEqual(kinds(findings), ['info:known-messages-baseline']);
     assert.match(findings[0].text, /Gespeichert\.$/);
     assert.doesNotMatch(findings[0].text, /\.\.$/);
+});
+
+test('auditChanges: a newly known message is a baseline only where every step that made it known had no recording before', () => {
+    // Before: S1 recorded, S2 pending. After: S2 recorded (its first recording), S1 recorded again.
+    const before = spec([BASE[0], { id: 'S2', name: 'Schritt S2', do: 'Tu S2', expect: BASE[1].expect }], { knownMessages: ['Gespeichert.'] });
+    const after = spec([
+        step('S1', BASE[0].expect, { recording: { known: ['Gespeichert.', 'Server nicht erreichbar.'] } }),
+        step('S2', BASE[1].expect, { check: 'rows() === 1', recording: { known: ['Archiviert.', 'Gespeichert.'] } }),
+    ], { knownMessages: ['Archiviert.', 'Gespeichert.', 'Server nicht erreichbar.', 'Von Hand.'] });
+    const findings = audit(after, { before });
+    assert.deepEqual(kinds(findings), ['weakening:known-messages-added', 'info:known-messages-baseline']);
+    assert.match(findings[0].text, /Server nicht erreichbar\..*Von Hand\./, 'made known in a step recorded before, or by hand');
+    assert.doesNotMatch(findings[0].text, /Archiviert/);
+    assert.match(findings[1].text, /Archiviert\.$/, 'only S2, recorded for the first time, made it known');
+    // The same message made known by S1 as well: the person's.
+    const both = spec([after.steps[0], step('S2', BASE[1].expect, { check: 'rows() === 1', recording: { known: ['Archiviert.'] } })].map((entry, index) => (index === 0 ? { ...entry, recording: { ...entry.recording, known: ['Archiviert.'] } } : entry)), { knownMessages: ['Archiviert.', 'Gespeichert.'] });
+    assert.deepEqual(kinds(audit(both, { before })), ['weakening:known-messages-added']);
 });
 
 test('auditChanges: learned effect lines removed (any list), console errors accepted, forgotten', () => {

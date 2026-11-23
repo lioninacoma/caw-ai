@@ -371,6 +371,27 @@ steps:
     assert.deepEqual(read.knownMessages, ['Yes No']);
 });
 
+test('known messages per step: a step\'s recording keeps the messages it made known (known), knownMessages only the rest; read back the test knows both', (t) => {
+    const root = testRoot(t);
+    const first = recorded('S1');
+    const second = recorded('S2', [], { after: 'S1' });
+    const given = { ...spec({ ...first, recording: { ...first.recording, known: ['Willkommen'] } }, { ...second, recording: { ...second.recording, known: ['Archived', 'Willkommen'] } }),
+        knownMessages: ['Archived', 'Von Hand', 'Willkommen', { pattern: '^Prüfsumme \\S+$' }] };
+    writeTest(root, given);
+    const file = readFileSync(recordingPath(root, 't'), 'utf8');
+    assert.match(file, / {4}check: checkS1\(\)\n {4}known:\n {6}- Willkommen\n {2}- id: S2\n/);
+    assert.match(file, / {4}check: checkS2\(\)\n {4}known:\n {6}- Archived\n {6}- Willkommen\nknownMessages:\n {2}- Von Hand\n {2}- pattern: \^Prüfsumme \\S\+\$\n$/, 'each message once: the steps\' in the steps');
+    const read = loadTest(root, 't');
+    assert.deepEqual(read.knownMessages, ['Archived', 'Von Hand', 'Willkommen', { pattern: '^Prüfsumme \\S+$' }]);
+    assert.deepEqual(read.steps.map(({ recording }) => recording.known), [['Willkommen'], ['Archived', 'Willkommen']]);
+    assert.equal(writeTest(root, read), 'keine Änderung', 'stable when written again');
+    // Only from the steps: no knownMessages in the file, the test still knows them.
+    writeTest(root, { ...given, knownMessages: ['Archived', 'Willkommen'] });
+    assert.doesNotMatch(readFileSync(recordingPath(root, 't'), 'utf8'), /knownMessages/);
+    assert.deepEqual(loadTest(root, 't').knownMessages, ['Archived', 'Willkommen']);
+    assert.throws(() => parseRecordings('test: t\nsteps:\n  - id: S1\n    hash: h\n    recordedOn: a\n    recordedAt: z\n    locale: de-DE\n    timezone: Europe/Berlin\n    actions: []\n    check: x()\n    known: [{pattern: x}]\n'), /known/);
+});
+
 test('two files: effects still learning stay in .caw/learning; frozen, only the recording changes', (t) => {
     const root = testRoot(t);
     const whole = spec(recorded('S1'), recorded('S2', [], { after: 'S1' }));

@@ -272,6 +272,7 @@ export default {
     'config.test.recording.after': 'recording.after must be a step ID.',
     'config.test.recording.timeout': 'recording.timeoutMs must be a positive number.',
     'config.test.recording.viewport': 'recording.viewport must be { width, height } in whole pixels (320–7680 × 240–4320).',
+    'config.test.recording.known': 'recording.known must be a list of the texts this step made known.',
     'config.test.recording.actions': 'recording.actions must be a list.',
     'config.test.retry.object': 'retry must be an object with times.',
     'config.test.retry.unknown': 'Unknown field {key} in retry.{hint}',

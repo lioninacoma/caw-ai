@@ -667,7 +667,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.audit.kind.expect-changed-check': 'The expected result of {step} changed from "{was}" to "{expect}", and with it the check.',
     'cli.audit.kind.environments-narrowed': 'The test no longer runs on {list}.',
     'cli.audit.kind.known-messages-added': 'Messages now accepted as known: {list}.',
-    'cli.audit.kind.known-messages-baseline': 'First recording; its baseline, known from now on: {list}.',
+    'cli.audit.kind.known-messages-baseline': 'Steps recorded for the first time; their baseline, known from now on: {list}.',
     'cli.audit.kind.retry-added': '{step} is now retried, up to {times} times.',
     'cli.audit.kind.retry-raised': '{step} is retried up to {times} times instead of {was}.',
     'cli.audit.kind.timeout-raised': 'The check of {step} waits up to {now} instead of {was}.',

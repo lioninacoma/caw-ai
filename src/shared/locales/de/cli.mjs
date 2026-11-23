@@ -672,7 +672,7 @@ Browser:
     'cli.audit.kind.expect-changed-check': 'Das erwartete Ergebnis von {step} wurde von „{was}“ zu „{expect}“, und mit ihm die Prüfung.',
     'cli.audit.kind.environments-narrowed': 'Der Test läuft nicht mehr auf {list}.',
     'cli.audit.kind.known-messages-added': 'Jetzt als bekannt akzeptierte Meldungen: {list}.',
-    'cli.audit.kind.known-messages-baseline': 'Erste Aufnahme; ihre Basis, ab jetzt bekannt: {list}.',
+    'cli.audit.kind.known-messages-baseline': 'Erstmals aufgenommene Schritte; ihre Basis, ab jetzt bekannt: {list}.',
     'cli.audit.kind.retry-added': '{step} wird jetzt wiederholt, bis zu {times}-mal.',
     'cli.audit.kind.retry-raised': '{step} wird bis zu {times}-mal statt {was}-mal wiederholt.',
     'cli.audit.kind.timeout-raised': 'Die Prüfung von {step} wartet bis zu {now} statt {was}.',

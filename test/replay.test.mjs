@@ -155,6 +155,23 @@ test('buildReplay: messages newly known only in steps without a recording before
     assert.deepEqual(buildReplay({ recorder, outcome: { status: 'pass', results: [] }, spec, previous: both, target: 'local' }).baseline, []);
 });
 
+test('buildReplay: each recorded step keeps the messages it made known (known), without those a pattern covers', () => {
+    const recorder = {
+        problems: [],
+        steps: [{ action: 'check', id: 'S1', code: 'true' }, { action: 'check', id: 'S2', code: 'true' }],
+        messages: new Set(['Added', 'Archived', 'Prüfsumme 1a2b']),
+        messagesByStep: new Map([['S1', new Set(['Added', 'Prüfsumme 1a2b'])], ['S2', new Set(['Added', 'Archived'])]]),
+    };
+    const spec = { id: 't', steps: [{ id: 'S1', name: 'a', do: 'b', expect: 'c' }, { id: 'S2', name: 'd', do: 'e', expect: 'f' }] };
+    const previous = { ...spec, steps: [{ ...spec.steps[0], recording: { actions: [], check: 'true', known: ['Added'] } }, spec.steps[1]], knownMessages: ['Added', { pattern: '^Prüfsumme' }] };
+    const { candidate } = buildReplay({ recorder, outcome: { status: 'pass', results: [] }, spec, previous, target: 'local' });
+    assert.deepEqual(candidate.steps.map(({ recording }) => recording.known), [['Added'], ['Added', 'Archived']]);
+    assert.deepEqual(candidate.knownMessages, ['Added', 'Archived', { pattern: '^Prüfsumme' }]);
+    // A step that showed nothing new to know has no list.
+    const quiet = { ...recorder, messages: new Set(['Added']), messagesByStep: new Map([['S1', new Set(['Added'])], ['S2', new Set()]]) };
+    assert.equal(buildReplay({ recorder: quiet, outcome: { status: 'pass', results: [] }, spec, previous, target: 'local' }).candidate.steps[1].recording.known, undefined);
+});
+
 test('positionalActions: targets chosen by position or by a bare tag are listed', () => {
     const spec = { steps: [
         { id: 'S1', recording: { actions: [{ action: 'click', target: "getByRole('button', { name: 'Weiter', exact: true })" }] } },

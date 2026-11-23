@@ -42,7 +42,7 @@ const MAX_RETRY_WAIT_MS = 300_000;
 const HUMAN_STEP_FIELDS = ['design', 'needs', 'look'];
 const STEP_FIELDS = [...PLAN_STEP_FIELDS, ...HUMAN_STEP_FIELDS, 'recording'];
 // `locale`, `timezone` and `viewport`: the recording browser's, pinned on replay (the viewport headless, or browser.viewport).
-const RECORDING_FIELDS = ['hash', 'after', 'recordedOn', 'recordedAt', 'locale', 'timezone', 'viewport', 'actions', 'check', 'timeoutMs', 'network', 'effects', 'visual'];
+const RECORDING_FIELDS = ['hash', 'after', 'recordedOn', 'recordedAt', 'locale', 'timezone', 'viewport', 'actions', 'check', 'timeoutMs', 'network', 'effects', 'visual', 'known'];
 const EFFECT_FIELDS = new Set(['action', ...EFFECT_LISTS]);
 
 /** The learned effects: how many runs they were learned from, and per action number lists of lines without values. */
@@ -259,6 +259,7 @@ const readRecording = (raw, at, problems, lineOf, { framework }) => {
     if (raw.network !== undefined) checkNetwork(raw.network, [...at, 'network'], report);
     if (raw.effects !== undefined) checkEffects(raw.effects, [...at, 'effects'], report);
     if (raw.visual !== undefined) checkVisual(raw.visual, [...at, 'visual'], report);
+    if (raw.known !== undefined && !(Array.isArray(raw.known) && raw.known.every(isText))) report([...at, 'known'], t('config.test.recording.known'));
     if (!Array.isArray(raw.actions)) {
         report([...at, 'actions'], t('config.test.recording.actions'));
         return undefined;
@@ -414,7 +415,7 @@ export const parseTest = (text, label = t('config.test.label'), { description = 
         ...(value.origin === undefined ? {} : { origin: value.origin }),
         ...(value.red === undefined ? {} : { red: { step: value.red.step, run: value.red.run, ...(value.red.head === undefined ? {} : { head: value.red.head }) } }),
         steps,
-        ...(value.knownMessages === undefined ? {} : { knownMessages: value.knownMessages }),
+        ...knownOf(value.knownMessages, steps),
     });
 };
 
@@ -516,12 +517,29 @@ export const parseRecordings = (text, label = t('config.test.recordings.label'),
     return { test: value.test, byId, ...(value.knownMessages === undefined ? {} : { knownMessages: value.knownMessages }) };
 };
 
+/**
+ * The messages a test knows: those its steps made known when they were recorded (`known` in a step's recording) and the file's
+ * own `knownMessages` (patterns, texts added by hand). The fixed texts sorted, then the patterns in their order.
+ */
+const knownOf = (given, steps) => {
+    const fromSteps = steps.flatMap(({ recording }) => recording?.known ?? []);
+    if (given === undefined && fromSteps.length === 0) return {};
+    const texts = [...new Set([...(given ?? []).filter((entry) => typeof entry === 'string'), ...fromSteps])].sort();
+    return { knownMessages: [...texts, ...(given ?? []).filter((entry) => typeof entry !== 'string')] };
+};
+
+/** What the file's own `knownMessages` keeps: every known message no step's `known` names, patterns always. */
+const ownKnown = (spec) => {
+    const fromSteps = new Set(spec.steps.flatMap(({ recording }) => recording?.known ?? []));
+    const own = (spec.knownMessages ?? []).filter((entry) => typeof entry !== 'string' || !fromSteps.has(entry));
+    return own.length === 0 ? undefined : own;
+};
+
 /** Merges recordings into the description. The recording file wins over an old recording inside the description. */
-export const mergeRecordings = (spec, { byId, knownMessages }) => ({
-    ...spec,
-    steps: spec.steps.map((step) => (byId.has(step.id) ? { ...step, recording: byId.get(step.id) } : step)),
-    ...(knownMessages === undefined ? {} : { knownMessages }),
-});
+export const mergeRecordings = (spec, { byId, knownMessages }) => {
+    const steps = spec.steps.map((step) => (byId.has(step.id) ? { ...step, recording: byId.get(step.id) } : step));
+    return { ...spec, steps, ...knownOf(knownMessages, steps) };
+};
 
 /** The app's framework as the config names it; 'web' if there is no readable config (it is reported elsewhere). */
 const frameworkIn = (root) => {
@@ -823,6 +841,7 @@ const recordingFields = (recording) => ({
     ...(recording.network === undefined ? {} : { network: recording.network }),
     ...(recording.effects === undefined ? {} : { effects: recording.effects }),
     ...(recording.visual === undefined ? {} : { visual: recording.visual }),
+    ...(recording.known === undefined || recording.known.length === 0 ? {} : { known: recording.known }),
 });
 
 /** Actions and baselines on one line each: the recording gets much shorter and reads like a list. */
@@ -906,7 +925,8 @@ export const renderTest = (spec) => {
         if (node !== undefined) node.flow = true;
     }
     setSteps(doc, spec);
-    if (spec.knownMessages !== undefined) doc.set('knownMessages', spec.knownMessages);
+    const own = ownKnown(spec);
+    if (own !== undefined) doc.set('knownMessages', own);
     return doc.toString(STRINGIFY);
 };
 
@@ -930,7 +950,8 @@ export const renderRecordings = (spec) => {
         return node;
     });
     doc.set('steps', list);
-    if (spec.knownMessages !== undefined) doc.set('knownMessages', spec.knownMessages);
+    const own = ownKnown(spec);
+    if (own !== undefined) doc.set('knownMessages', own);
     return doc.toString(STRINGIFY);
 };
 

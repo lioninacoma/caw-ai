@@ -556,9 +556,17 @@ export const buildReplay = ({ recorder, outcome, spec, target, draft, from, prev
         return at.length > 0 && at.every((id) => !recordedBefore.has(id));
     });
     const texts = given.filter((entry) => typeof entry === 'string');
+    // Each recorded step keeps the messages it made known, those it showed that no pattern covers (caw audit tells a step's
+    // first recording, its baseline, from a step that knows more than before).
+    const covered = textMatcher(given.filter((entry) => typeof entry !== 'string'));
+    const shown = new Map(byStep);
+    const withKnown = recorded.map((step) => {
+        const made = [...(shown.get(step.id) ?? [])].filter((message) => !covered(message)).sort();
+        return made.length === 0 ? step : { ...step, recording: { ...step.recording, known: made } };
+    });
     const candidate = withExpectations({
         ...(draft ?? spec),
-        steps: kept !== undefined ? [...kept, ...recorded] : draft === undefined ? recorded : draft.steps.map((step) => recorded.find(({ id }) => id === step.id) ?? step),
+        steps: kept !== undefined ? [...kept, ...withKnown] : draft === undefined ? withKnown : draft.steps.map((step) => withKnown.find(({ id }) => id === step.id) ?? step),
         knownMessages: [...[...new Set([...texts, ...seen])].sort(), ...given.filter((entry) => typeof entry !== 'string')],
     });
     const lost = missingRemembered(candidate);

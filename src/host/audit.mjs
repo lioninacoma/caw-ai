@@ -337,10 +337,18 @@ export const auditChanges = (before, after) => {
         }
         const lost = runsOn(before.config, old).filter((name) => !runsOn(after.config, spec).includes(name));
         if (lost.length > 0) findings.push(finding('environments-narrowed', 'weakening', { test, before: runsOn(before.config, old), after: runsOn(after.config, spec), vars: { list: lost.join(', ') } }));
+        // A newly known message is a step's baseline (for information, as `record` adopts it) when every step that made it known
+        // (`known` in its recording) had no recording before; one by hand or from a step recorded before is a weakening.
+        const recordedBefore = new Set(old.steps.filter(({ recording }) => recording !== undefined).map(({ id }) => id));
+        const isBaseline = (message) => {
+            const by = spec.steps.filter(({ recording }) => (recording?.known ?? []).includes(message));
+            return by.length > 0 && by.every(({ id }) => !recordedBefore.has(id));
+        };
         const known = added(old.knownMessages, spec.knownMessages);
-        // The test's first recording: the messages it knows are its baseline (as `record` adopts them), for information.
-        const first = !old.steps.some(({ recording }) => recording !== undefined);
-        if (known.length > 0) findings.push(finding(first ? 'known-messages-baseline' : 'known-messages-added', first ? 'info' : 'weakening', { test, before: old.knownMessages, after: spec.knownMessages, vars: { list: listed(known) } }));
+        const accepted = known.filter((message) => !isBaseline(message));
+        const baseline = known.filter(isBaseline);
+        if (accepted.length > 0) findings.push(finding('known-messages-added', 'weakening', { test, before: old.knownMessages, after: spec.knownMessages, vars: { list: listed(accepted) } }));
+        if (baseline.length > 0) findings.push(finding('known-messages-baseline', 'info', { test, before: old.knownMessages, after: spec.knownMessages, vars: { list: listed(baseline) } }));
         const steps = pairSteps(old.steps, spec.steps);
         const step = (s, more = {}) => ({ test, step: s.id, expect: s.expect, ...more });
         for (const removed of steps.removed) findings.push(finding('step-removed', 'weakening', step(removed, { before: removed })));
