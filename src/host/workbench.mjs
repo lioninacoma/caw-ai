@@ -5,8 +5,8 @@
 // the prefs) or a step fails; then a narrow list on the left with the top-level steps, a click unfolds a step's actions.
 // On a production or read-only environment the address bar carries its badge (shield or lock, as in the settings page).
 //
-// No toolbars: the header holds the steps toggle, the product, the breadcrumb with the test and a badge with the run's mode,
-// the run facts, the REC/PLAY/PAUSE chip and one ⋯ menu (also Ctrl+K) that lists every function with its key. F4 shows or
+// No toolbars: the header holds the steps toggle, the product, the breadcrumb with the test (once) and a badge with the run's
+// mode (none without one), the run facts and one ⋯ menu (also Ctrl+K) that lists every function with its key. F4 shows or
 // hides the steps, F6 folds the panel. F8 shows only the application with one line back, F10 stops all animation, Ctrl+,
 // opens the settings page, a view of the workbench (not a dialog) that changes only cosmetic prefs and shows the rest
 // read-only. The chat forwards these keys, and posts them for its slash commands (CHAT_KEYS).
@@ -189,19 +189,18 @@ html,body{height:100%;margin:0}
 body{background:var(--bg)}
 .pa{height:100vh;display:flex}
 #bench{flex:1;min-width:0;display:flex;flex-direction:column}
-/* The header: steps toggle, product, breadcrumb with the run's title, facts, transport chip and the one menu. */
+/* The header: steps toggle, product, breadcrumb with the test and the mode badge, facts and the one menu. */
 .top{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;min-height:48px;padding:0 16px;background:var(--nav);color:var(--nav-text);border-bottom:1px solid var(--nav-line)}
 .brand{flex:none;display:flex;align-items:center;gap:10px;color:var(--nav-text)}
 .brand .word{font:600 20px/1 var(--font);letter-spacing:-.04em}
 .crumb{display:flex;align-items:center;gap:8px;min-width:0;flex:1 1 200px;font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden}
 .crumb .sl{color:var(--line2);font-size:18px;font-weight:300}
 .crumb b{color:var(--text);font-weight:500;overflow:hidden;text-overflow:ellipsis}
-#title{flex:0 1 auto;min-width:0;display:block;line-height:20px;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+#title{flex:0 1 auto;min-width:0;display:block;line-height:20px;overflow:hidden;text-overflow:ellipsis;font-weight:500}#title:empty{display:none}
 .top-r{margin-left:auto;display:flex;align-items:center;gap:10px;min-width:0}
 .facts{display:flex;gap:14px;margin:0;padding:0;list-style:none;font:400 11.5px/1 var(--font-mono);color:var(--nav-muted);white-space:nowrap;min-width:0;overflow:hidden}
 .facts li{overflow:hidden;text-overflow:ellipsis}
 #notice{font-size:12px;color:var(--warn)}
-#transport{display:none}#transport.on{display:inline-flex}
 #more[aria-expanded=true]{background:var(--panel2);color:var(--text)}
 /* The ⋯ menu: every function with its key. */
 #menu{position:fixed;top:44px;right:12px;z-index:35;width:280px;max-width:calc(100vw - 24px);max-height:calc(100vh - 56px);overflow:auto}
@@ -278,8 +277,9 @@ grid-template-areas:"steps browser chat"}
 #steps>li[data-kind=step]>.pts{margin:0 0 4px 22px;border-left:1px solid var(--line);padding:2px 0}
 #steps>li[data-kind=step]>.pts:empty{display:none}
 #steps>li[data-kind=step]>.pts>li{grid-template-columns:minmax(0,1fr);padding:3px 12px 3px 14px;font:400 12px/1.4 var(--font-mono);color:var(--muted)}
-#steps>li[data-kind=step] .pts .text{display:block;position:relative;padding-left:46px}
-#steps>li[data-kind=step] .pts .text>.kind{position:absolute;left:0;top:0;width:42px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* The kind in a column as wide as the step's longest kind (fitKinds), the names aligned after it. */
+#steps>li[data-kind=step] .pts .text{display:block;position:relative;padding-left:var(--kp,0px)}
+#steps>li[data-kind=step] .pts .text>.kind{position:absolute;left:0;top:0;width:var(--kw,auto);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pts .text>.ms{float:right;margin-left:8px;line-height:calc(13px*1.4)}#steps>li[data-kind=step] .pts .text>.ms{font-size:10.5px;line-height:calc(12px*1.4)}
 #steps>li[data-kind=step] .pts .text>.name{color:var(--text)}
 #steps>li[data-kind=step] .pts>li[data-state=running]{box-shadow:inset 1px 0 0 var(--run);margin-left:-1px;padding-left:15px}
@@ -493,8 +493,8 @@ td.m{width:64px;color:var(--muted)}td.m.w{color:var(--warn)}td.p{width:auto;colo
 </style></head><body class="${classes}"><div class="pa"><div id="bench">
 <div class="soloBar">${logo({ size: 18, label: 'caw' })}<span id="soloUrl"></span><span id="soloConn" hidden></span><button class="btn btn-s btn-sm cbtn" type="button" id="chatPop" data-press="Ctrl+J" aria-pressed="false" title="${t('workbench.page.showChat')} (${ctrl} J)">${icon('msg')}${t('workbench.chat')}<kbd>${ctrl} J</kbd><span class="new" title="${t('workbench.chatNew')}" hidden></span></button><button class="lnk" type="button" data-solo data-press="F8">${t('workbench.backToBench')}<kbd>F8</kbd></button></div>
 <header class="top"><button type="button" class="stoggle" id="stepsToggle" aria-expanded="false" aria-controls="stepsCard" data-press="F4" title="${t('workbench.page.showSteps')} (F4)">${icon('chev-r')}<span>${t('workbench.steps')}</span><span id="tally"></span></button><div class="brand" title="${esc(LONG_NAME)}">${logo({ size: 28, label: 'caw' })}<b class="word" aria-hidden="true">caw</b></div>
-<nav class="crumb" aria-label="${t('workbench.crumb')}"><span class="sl" id="projectSep" hidden>/</span><span id="project" hidden></span><span class="sl">/</span><b id="crumbTest">${esc(test || 'caw')}</b><span id="title" class="bdg line" data-test="${esc(test)}">${esc(test || 'caw')}</span></nav>
-<div class="top-r"><ul class="facts" id="facts" aria-label="${t('workbench.runFacts')}"></ul><span id="notice" role="status" hidden></span><span id="transport" class="tp" role="img"><i></i><span></span></span><button type="button" class="ib" id="more" aria-haspopup="menu" aria-expanded="false" aria-controls="menu" aria-label="${t('workbench.more')}" title="${t('workbench.more')} (${ctrl} K)">${icon('more')}</button></div></header>
+<nav class="crumb" aria-label="${t('workbench.crumb')}"><span class="sl" id="projectSep" hidden>/</span><span id="project" hidden></span><span class="sl">/</span><b id="crumbTest">${esc(test || 'caw')}</b><span id="title" class="bdg line" data-test="${esc(test)}"></span></nav>
+<div class="top-r"><ul class="facts" id="facts" aria-label="${t('workbench.runFacts')}"></ul><span id="notice" role="status" hidden></span><button type="button" class="ib" id="more" aria-haspopup="menu" aria-expanded="false" aria-controls="menu" aria-label="${t('workbench.more')}" title="${t('workbench.more')} (${ctrl} K)">${icon('more')}</button></div></header>
 <div id="menu" class="pop" role="menu" aria-label="${t('workbench.menu')}" hidden>${menu}</div>
 <main class="panes">
 <section class="pa-steps win" id="stepsCard" aria-label="${t('workbench.steps')}"><p id="leftNote" hidden></p><div id="track"><ol id="steps" aria-label="${t('workbench.steps')}"></ol></div></section>
@@ -562,8 +562,6 @@ const setCount=(name,value,bad)=>{for(const node of document.querySelectorAll('[
   const foot=name==='requests'?$('footRequests'):$('footConsole');foot.textContent=(bad===true?'✕ ':'')+fill(name==='requests'?(value===1?'workbench.page.footRequest':'workbench.page.footRequests'):'workbench.page.footConsole',{count:value});foot.classList.toggle('bad',bad===true);};
 setCount('requests',0);setCount('console',0);
 let aborted=false;
-// What the run does, for the chip at the top right: record, play, pause or null (no chip). Set by the host.
-let transport=null;
 // What the chat currently wants: ask from the mood, plus its state (showing: the human is demonstrating).
 let asking=false,chatState=null;
 // One heading "Run" right before the first step, none without steps.
@@ -575,6 +573,9 @@ const section=()=>{const list=$('steps'),first=items().find((li)=>li.dataset.kin
   const steps=items().filter((li)=>li.dataset.kind==='step'),timed=steps.filter((li)=>li.dataset.ms!==undefined);
   sec.querySelector('.ms').textContent=timed.length>0&&!steps.some((li)=>li.dataset.state==='running')?duration(timed.reduce((total,li)=>total+Number(li.dataset.ms),0)):'';
   if(sec.nextElementSibling!==first)list.insertBefore(sec,first);};
+// The action kinds of a step in their own column, as wide as its longest kind (mono: one ch per character, at most 16).
+const fitKinds=()=>{for(const list of document.querySelectorAll('#steps>li[data-kind=step]>.pts')){const n=Math.min(16,Math.max(0,...[...list.querySelectorAll(':scope>li>.text>.kind')].map((kind)=>kind.textContent.length)));
+  list.style.setProperty('--kw',n>0?'calc('+n+'ch + 1px)':'auto');list.style.setProperty('--kp',n>0?'calc('+n+'ch + 9px)':'0px');}};
 // The steps toggle follows the steps: how many passed, with ✓ when all did, ✗ when one failed, ● while one runs. The panel
 // says what happens; the header has no status of its own.
 const summarize=()=>{
@@ -584,11 +585,7 @@ const summarize=()=>{
   const failed=all.find((li)=>li.dataset.state==='fail'),running=list.find((li)=>li.dataset.state==='running')??all.find((li)=>li.dataset.state==='running');
   const tone=n===0?'':failed&&!aborted?'fail':running?'run':pass===n?'pass':'';
   const tally=$('tally');tally.className=tone;tally.textContent=n===0?T['workbench.page.stepsNone']:({fail:'✗ ',run:'● ',pass:'✓ '}[tone]??'')+pass+'/'+n;
-  // Only while something runs: record or play from the host, pause while that run is paused (F9). Cancelled: nothing.
-  const mode=transport===null||aborted?null:chatState==='paused'||chatState==='pausing'?'pause':transport;
-  const chip=$('transport'),name=mode===null?'':mode[0].toUpperCase()+mode.slice(1);chip.className='tp'+(mode===null?'':' on '+({record:'rec',play:'play',pause:'pause'})[mode]);chip.dataset.kind=mode??'';
-  chip.querySelector('span').textContent=mode===null?'':T['workbench.page.transport'+name];
-  const word=mode===null?'':T['workbench.page.transport'+name+'Title'];chip.setAttribute('aria-label',word);chip.title=word;
+  fitKinds();
   menuLabels();
 };
 // The host decides on refresh: after the hand-over reload the page without cache, during a running test not at all.
@@ -1006,11 +1003,11 @@ window.workbench={
   // While the host captures a step: the frame unscaled and on top, also over the comparison page; resolves once it is laid out.
   unscaled:(on)=>{document.body.classList.toggle('capture',on===true);return new Promise((resolve)=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(true))));},
   // The first entry is the title: [label, sentence, badge]. The badge shows the mode only ("Claude records"), the breadcrumb
-  // already names the test; the sentence is its tooltip. Without a badge it shows the sentence. The rest are the facts, shown
-  // by their values in mono.
+  // names the test; the sentence is the tooltip of both. Without a mode there is no badge: the sentence would name the test a
+  // second time. The rest are the facts, shown by their values in mono.
   facts:(entries)=>{const [first,...rest]=entries;const title=$('title');
-    if(first){const text=String(first[1]);const nodes=[document.createTextNode(first[2]===undefined||first[2]===null?text:String(first[2]))];
-      if(settingsOn())titleNodes=nodes;else title.replaceChildren(...nodes);title.title=text;}
+    if(first){const text=String(first[1]);const nodes=first[2]===undefined||first[2]===null?[]:[document.createTextNode(String(first[2]))];
+      if(settingsOn())titleNodes=nodes;else title.replaceChildren(...nodes);title.title=text;$('crumbTest').title=text;}
     // App only names who answers in its bar: the agent fact (--attach), e.g. "Claude Code connected".
     const conn=rest.find(([label])=>label===AGENT_FACT);$('soloConn').hidden=!conn;$('soloConn').textContent=conn?String(conn[1]):'';
     $('facts').replaceChildren(...rest.map(([label,value])=>{const li=document.createElement('li');li.title=label+': '+value;li.setAttribute('aria-label',label+': '+value);li.textContent=String(value);return li;}));},
@@ -1055,8 +1052,6 @@ window.workbench={
   solo:(on)=>{if(on===true)openSettings(false);showSolo(on===true);},
   // The chat over the app, set by the host: after a reload, or because the chat needs a decision while App only is on.
   chatPop:(on)=>{showPop(on===true);},
-  // Record (Claude records or fixes), play (replay, check run, restoring a state) or pause; anything else hides the chip.
-  transport:(value)=>{transport=['record','play','pause'].includes(value)?value:null;summarize();},
   // The tests from which a state can be reached here; empty hides F1 and the steps' hover action.
   states:(list)=>{STATES=Array.isArray(list)?list.filter((test)=>Array.isArray(test?.steps)&&test.steps.some((step)=>step.ok)):[];for(const b of document.querySelectorAll('[data-states]'))b.hidden=STATES.length===0;openable();if(!stateDlg.hidden)renderStates();},
   // Refresh only works if the host allows it; otherwise the menu item is locked.
@@ -1200,6 +1195,7 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
     const view = frameView(page, frame, () => bench.app);
     const call = (name, ...args) => page.evaluate(([fn, values]) => window.workbench?.[fn](...values), [name, args]).catch(() => {});
     // The host remembers what it has shown and restores it after a workbench reload.
+    let transportWatch = null;
     const shown = { facts: null, steps: null, states: new Map(), points: new Map(), url: null, mood: null, left: null, chatState: null, transport: null, solo: false, chatPop: false, catalog: null, viewport: null, settings: null, design: null, designOpen: false };
     // The host remembers solo view so it comes back after a workbench reload. The browser window stays untouched.
     bench.fullscreen = async (on) => {
@@ -1251,7 +1247,6 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
             if (shown.mood !== null) await call('mood', shown.mood);
             if (shown.left !== null) await call('left', ...shown.left);
             if (shown.chatState !== null) await call('chatState', shown.chatState);
-            if (shown.transport !== null) await call('transport', shown.transport);
             // Solo view survives the reload; the window is still in that mode anyway.
             if (shown.solo) await call('solo', true);
             if (shown.chatPop) await call('chatPop', true);
@@ -1364,10 +1359,18 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
             shown.chatState = state;
             return call('chatState', state);
         },
-        /** The chip at the top right while something runs: 'record', 'play' or null (nothing runs). Pausing (F9) shows pause on its own. */
-        transport: (kind) => {
-            shown.transport = kind;
-            return call('transport', kind);
+        /**
+         * What the run does: 'record', 'play' or null (nothing runs). The header shows no chip for it; the panel names recording
+         * in its working block (chat.mjs, watchTransport). Kept by the host, so a workbench reload changes nothing.
+         */
+        transport: async (kind) => {
+            shown.transport = kind === 'record' || kind === 'play' ? kind : null;
+            transportWatch?.(shown.transport);
+        },
+        transportNow: () => shown.transport,
+        /** The chat follows the transport (one watcher). */
+        watchTransport: (fn) => {
+            transportWatch = fn;
         },
         /** The page is no longer reliably in the run's state (true, with text) or back in it (false). */
         left: (on, text = '') => {

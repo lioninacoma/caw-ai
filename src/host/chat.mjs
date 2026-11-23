@@ -1226,7 +1226,9 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
     };
     const render = (state, options) => {
         current = [state, options ?? null];
-        const { text, label, button } = statusTexts(state);
+        const { text, label: plain, button } = statusTexts(state);
+        // While the agent records (or fixes) the working block says so; the header has no chip of its own.
+        const label = state === 'running' && bench?.transportNow?.() === 'record' ? t('chat.status.running.recordLabel') : plain;
         return inChat((args) => window.setStatus(...args), [state, text, label, button, options ?? null]);
     };
     const chat = createChat({
@@ -1383,6 +1385,10 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
     };
     await show();
     await render('running');
+    // Recording starts or ends while the agent works: the working block follows.
+    bench.watchTransport?.(() => {
+        if (current[0] === 'running' && chat.available()) quiet(render(...current));
+    });
     // The workbench was reloaded: history and state come back. If the test was running, it is no longer reliable.
     // While demonstrating, the reload is part of the shown path and ends up as a hint in the recording.
     bench.onReload?.(async ({ human = true } = {}) => {

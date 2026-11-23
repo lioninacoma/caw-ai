@@ -2,6 +2,7 @@
 export default {
     'chat.status.running.text': 'Pause before you click in the app.',
     'chat.status.running.label': '{agent} working',
+    'chat.status.running.recordLabel': '{agent} recording',
     'chat.status.running.button': 'Pause',
     'chat.status.pausing.text': '{agent} stops before the next action. Don’t click yet.',
     'chat.status.pausing.label': 'Pausing …',

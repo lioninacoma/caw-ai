@@ -86,7 +86,7 @@ test('style: logo, favicon and icons', () => {
 });
 
 test('style: the base components and the motion rules', () => {
-    for (const selector of ['.btn{', '.btn-p{', '.btn-s{', '.btn-sm{', '.lnk{', '.ib{', '.bdg{', 'kbd{', '.pill{', '.pill .dot', '.tp{', '.tp.rec', '.tp.play', '.tp.pause',
+    for (const selector of ['.btn{', '.btn-p{', '.btn-s{', '.btn-sm{', '.lnk{', '.ib{', '.bdg{', 'kbd{', '.pill{', '.pill .dot',
         '.card{', '.pop{', '.pop-i{', '.pop-h{', '.pop-sep{', '.field{', '.seg{', '.switch{', '.banner{', '.dl{', '.spinner{', '.spin{']) {
         assert.ok(BASE_CSS.includes(selector), selector);
     }

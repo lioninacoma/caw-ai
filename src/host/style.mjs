@@ -8,7 +8,7 @@
 // - Fonts: Geist and Geist Mono (assets/fonts, variable weights 100 to 900) as data URLs: the test browser blocks foreign
 //   hosts, and the chat has no origin of its own.
 // - Logo, favicon and line icons as inline SVG, all in currentColor.
-// - Base components: buttons, link, icon button, badge, kbd, status pill, transport chip, card, menu, field, segmented control,
+// - Base components: buttons, link, icon button, badge, kbd, status pill, card, menu, field, segmented control,
 //   switch, banner and diff lines. Animations stop with prefers-reduced-motion and with .still (animations off).
 // - No ligatures anywhere: Geist Mono's "liga" draws "--" in one cell, so "first-errand --env" read as "first-errand--env". Every
 //   `font` shorthand resets font-variant-ligatures, hence !important on all elements.
@@ -166,7 +166,7 @@ export const FAVICON = `<link rel="icon" type="image/svg+xml" href="data:image/s
 /**
  * The base components. Pages add their own layout on top.
  * .btn (36 px) with .btn-p (primary, ink), .btn-s (secondary), .btn-sm (28 px); .lnk; .ib (icon button); .bdg (badge);
- * kbd; .pill with .dot (status); .tp (transport chip REC/PLAY/PAUSE); .card; .pop with .pop-h, .pop-i, .pop-sep (menu);
+ * kbd; .pill with .dot (status); .card; .pop with .pop-h, .pop-i, .pop-sep (menu);
  * .field; .seg (segmented control); .switch; .banner; .dl (diff lines); .i (icon), .spin, .spinner.
  */
 export const BASE_CSS = `*,*::before,*::after{box-sizing:border-box}
@@ -205,11 +205,6 @@ kbd{display:inline-flex;align-items:center;font:500 10.5px/1 var(--font-mono);pa
 .pill .dot{color:var(--faint)}
 .pill.run .dot{color:var(--run);animation:caw-pulse 1.4s ease-in-out infinite}.pill.pass .dot{color:var(--pass)}.pill.fail .dot{color:var(--fail)}
 .pill.turn .dot{color:var(--warn)}.pill.agent .dot{color:var(--agent);animation:caw-pulse 1.4s ease-in-out infinite}
-.tp{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 8px;border-radius:var(--rp);font:700 10.5px/1 var(--font-mono);letter-spacing:.08em;box-shadow:inset 0 0 0 1px currentColor;white-space:nowrap}
-.tp i{width:9px;height:9px;background:currentColor;border-radius:50%;flex:none}
-.tp.rec{color:var(--fail)}.tp.rec i{animation:caw-pulse 1.6s ease-in-out infinite}
-.tp.play{color:var(--pass)}.tp.play i{border-radius:0;clip-path:polygon(0 0,100% 50%,0 100%)}
-.tp.pause{color:var(--warn)}.tp.pause i{border-radius:0;background:linear-gradient(90deg,currentColor 0 35%,transparent 35% 65%,currentColor 65%)}
 .card{display:flex;flex-direction:column;border-radius:var(--r2);background:var(--panel);border:1px solid var(--line);overflow:hidden}
 .card-h{display:flex;align-items:center;gap:8px;padding:12px 14px 0;font:500 13px/1.2 var(--font);color:var(--text)}
 .card-b{display:flex;flex-direction:column;gap:10px;padding:10px 14px 14px;font-size:13px;line-height:1.5}

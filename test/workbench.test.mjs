@@ -18,13 +18,13 @@ test('workbench: the steps are hidden unless the person chose them open; without
     assert.match(workbenchHtml({ appUrl: 'about:blank', title: 't', prefs: { steps: 'closed' } }), /<body class="[^"]*fold-steps/);
 });
 
-test('workbench: the chip at the top right (REC, PLAY, PAUSE) is there but off without a run; recording pulses only without F10', () => {
-    const html = workbenchHtml({ appUrl: 'about:blank', title: 't' });
-    assert.match(html, /<span id="notice" role="status" hidden><\/span><span id="transport" class="tp" role="img"><i><\/i><span><\/span><\/span><button type="button" class="ib" id="more"/, 'right of the facts, before ⋯');
-    assert.doesNotMatch(html, /class="pill"|id="browserState"/, 'one status display: the panel');
-    assert.match(html, /#transport\{display:none\}/, 'no chip without a run');
-    assert.match(html, /chip\.className='tp'\+\(mode===null\?'':' on '\+\(\{record:'rec',play:'play',pause:'pause'\}\)\[mode\]\)/);
-    assert.match(html, /\.still \*,\.still \*::before,\.still \*::after\{animation:none!important/, 'F10 also stops the recording pulse');
+test('workbench: no transport chip in the header, only the facts and the ⋯ menu on the right; the badge starts empty', () => {
+    const html = workbenchHtml({ appUrl: 'about:blank', title: 'caw · t' });
+    assert.match(html, /<span id="notice" role="status" hidden><\/span><button type="button" class="ib" id="more"/, 'no chip before ⋯');
+    assert.doesNotMatch(html, /id="transport"|class="tp"|class="pill"|id="browserState"/, 'one status display: the panel');
+    assert.match(html, /<b id="crumbTest">t<\/b><span id="title" class="bdg line" data-test="t"><\/span>/, 'the test once, the badge waits for the mode');
+    assert.match(html, /#title:empty\{display:none\}/);
+    assert.match(html, /\.still \*,\.still \*::before,\.still \*::after\{animation:none!important/, 'F10 stops all animation');
 });
 
 test('workbench: Graphite in the personal mode, no theme machinery, and a title cannot end a <script>', () => {

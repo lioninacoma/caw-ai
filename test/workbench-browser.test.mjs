@@ -489,40 +489,54 @@ test('workbench: the logo is an SVG in currentColor; system mode follows the bro
     return undefined;
 });
 
-test('workbench: the chip at the top right shows record, play and pause and survives a reload', async (t) => {
+test('workbench: no transport chip in the header; the panel says recording and paused, F9 stays at "Pause"', async (t) => {
     if (browser === null) return t.skip('no Chrome');
+    const { bench, chat, frame } = await chatReady(t);
+    const page = bench.page;
+    assert.equal(await page.locator('#transport, header .tp').count(), 0, 'one status display: the panel');
+    assert.ok(await until(async () => (await frame.textContent('#workLabel')) === 'Claude Code arbeitet'));
+    await bench.transport('record');
+    assert.ok(await until(async () => (await frame.textContent('#workLabel')) === 'Claude Code nimmt auf'), 'recording, in the working block');
+    assert.match(await frame.textContent('#toggle'), /^Pause\s*F9$/, 'the F9 hint under what runs');
+    chat.enter('paused');
+    assert.ok(await until(async () => (await frame.textContent('#workLabel')) === 'Pausiert'), 'paused, in the working block');
+    chat.leave();
+    assert.ok(await until(async () => (await frame.textContent('#workLabel')) === 'Claude Code nimmt auf'));
+    await bench.transport('play');
+    assert.ok(await until(async () => (await frame.textContent('#workLabel')) === 'Claude Code arbeitet'), 'only recording is named');
+    // Reloading the whole workbench (here by the app itself) keeps it.
+    await bench.transport('record');
+    await bench.view.frame.evaluate((url) => { top.location.href = url; }, `${base}/weiter`);
+    assert.ok(await until(async () => (await bench.chatFrame().textContent('#workLabel').catch(() => '')) === 'Claude Code nimmt auf'), 'after the reload');
+    assert.equal(await page.locator('#transport').count(), 0);
+    return undefined;
+});
+
+test('workbench: an action kind gets the width it needs in the 240 px steps column, without ellipsis', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    writeFileSync(join(process.env.CAW_AI_HOME, 'prefs.json'), JSON.stringify({ tokenNotice: 'off', steps: 'open' }));
+    t.after(() => writeFileSync(join(process.env.CAW_AI_HOME, 'prefs.json'), JSON.stringify({ tokenNotice: 'off' })));
     const { bench } = await open(t);
     const page = bench.page;
-    const chip = () => page.evaluate(() => {
-        const node = document.getElementById('transport');
-        return { on: node.classList.contains('on'), kind: node.dataset.kind, text: node.textContent, label: node.getAttribute('aria-label'), pulse: getComputedStyle(node.querySelector('i')).animationName };
-    });
-    assert.equal((await chip()).on, false, 'no chip without a run');
-    await bench.transport('record');
-    assert.deepEqual(await chip(), { on: true, kind: 'record', text: 'REC', label: 'Aufnahme', pulse: 'caw-pulse' });
-    await page.evaluate(() => document.body.classList.add('still'));
-    assert.equal((await chip()).pulse, 'none', 'animations off: no pulse');
-    await page.evaluate(() => document.body.classList.remove('still'));
-    await bench.chatState('paused');
-    assert.deepEqual(await chip(), { on: true, kind: 'pause', text: 'PAUSE', label: 'Pausiert', pulse: 'none' }, 'F9');
-    await bench.chatState('running');
-    assert.equal((await chip()).kind, 'record', 'recording again');
-    await bench.transport('play');
-    assert.deepEqual(await chip(), { on: true, kind: 'play', text: 'PLAY', label: 'Wiedergabe', pulse: 'none' });
-    await bench.mood('aborted');
-    assert.equal((await chip()).on, false, 'cancelled: nothing runs, no chip');
-    await bench.mood('wait');
-    assert.equal((await chip()).kind, 'play');
-    await bench.transport(null);
-    await bench.chatState('paused');
-    assert.equal((await chip()).on, false, 'F9 without a running run: no chip');
-    await bench.chatState('running');
-    await bench.transport('play');
-    // Reloading the whole workbench (here by the app itself) brings the chip back.
-    await bench.view.frame.evaluate((url) => { top.location.href = url; }, `${base}/weiter`);
-    assert.ok(await until(async () => (await chip().catch(() => ({}))).kind === 'play'), 'PLAY again after the reload');
-    await bench.transport(null);
-    assert.equal((await chip()).on, false);
+    const kinds = ['select', 'click', 'fill', 'check', 'goto', 'press', 'Klick', 'Doppelklick', 'Hochladen', 'Prüfung'];
+    await bench.steps([{ id: 'S1', name: 'Auf morgen schieben', points: kinds.map((kind, index) => ({ id: `a${index}`, kind, label: '„Tomorrow“' })) }]);
+    await page.click('#steps>li[data-id=S1]>.head>button.text');
+    assert.ok(await until(() => page.isVisible('#steps>li[data-id=S1] .pts li[data-id=a0]')));
+    // 240 px from 1500 px on, 220 px below.
+    for (const [width, column] of [[1600, 240], [1280, 220]]) {
+        await page.setViewportSize({ width, height: 900 });
+        assert.ok(await until(async () => Math.round((await page.locator('#stepsCard').boundingBox()).width) === column), `${column} px`);
+        const shown = await page.$$eval('#steps>li[data-id=S1] .pts .kind', (list) => list.map((node) => {
+            const name = node.parentElement.querySelector('.name').getBoundingClientRect();
+            const box = node.getBoundingClientRect();
+            return { kind: node.textContent, cut: node.scrollWidth > node.clientWidth, overlaps: box.right > name.left + 0.5 };
+        }));
+        assert.deepEqual(shown, kinds.map((kind) => ({ kind, cut: false, overlaps: false })), `${column} px`);
+        // The names start in one column.
+        const lefts = await page.$$eval('#steps>li[data-id=S1] .pts .name', (list) => list.map((node) => Math.round(node.getBoundingClientRect().left)));
+        assert.equal(new Set(lefts).size, 1);
+    }
+    return undefined;
 });
 
 test('chat: after the run the window stays open until the human closes it or the time is up', async (t) => {
@@ -574,7 +588,10 @@ test('workbench: the badge shows the mode only, the sentence is its tooltip; the
     t.after(() => context.close());
     await context.newPage();
     const bench = await openWorkbench(context, { appUrl: `${base}/start`, hosts: ['127.0.0.1'], title: 'caw · morning-errand' });
-    assert.equal(await bench.page.textContent('#title'), 'morning-errand');
+    // Before the run's mode is known the header names the test once: in the breadcrumb, no badge repeating it.
+    assert.equal(await bench.page.textContent('#crumbTest'), 'morning-errand');
+    assert.equal(await bench.page.isVisible('#title'), false, 'no badge with the same name');
+    assert.equal((await bench.page.textContent('header.top')).split('morning-errand').length - 1, 1, 'the name once');
     await bench.facts([['', 'Claude Code nimmt morning-errand auf', 'Claude Code nimmt auf'], ['Umgebung', 'staging']]);
     assert.ok(await until(async () => (await bench.page.textContent('#title')) === 'Claude Code nimmt auf'));
     assert.equal(await bench.page.getAttribute('#title', 'title'), 'Claude Code nimmt morning-errand auf');
@@ -582,16 +599,25 @@ test('workbench: the badge shows the mode only, the sentence is its tooltip; the
     // The facts by their values, the label in title and aria-label.
     assert.deepEqual(await bench.page.locator('#facts li').allTextContents(), ['staging']);
     assert.equal(await bench.page.getAttribute('#facts li', 'aria-label'), 'Umgebung: staging');
-    // Without a badge it shows the sentence.
+    // Without a mode no badge (the sentence would repeat the test); the sentence is the breadcrumb's tooltip.
     await bench.facts([['', 'morning-errand wird ohne Claude Code geprüft']]);
     assert.ok(await until(async () => (await bench.page.locator('#facts li').count()) === 0));
-    assert.equal(await bench.page.textContent('#title'), 'morning-errand wird ohne Claude Code geprüft');
+    assert.equal(await bench.page.isVisible('#title'), false);
+    assert.equal(await bench.page.getAttribute('#crumbTest', 'title'), 'morning-errand wird ohne Claude Code geprüft');
+    assert.equal((await bench.page.textContent('header.top')).split('morning-errand').length - 1, 1, 'the name once');
     // While the settings are open the badge says so, and comes back with the run's mode.
     await bench.facts([['', 'Claude Code behebt S2 von morning-errand', 'Claude Code behebt S2']]);
     await bench.page.keyboard.press('Control+Comma');
     assert.equal(await bench.page.textContent('#title'), 'Einstellungen');
     await bench.page.keyboard.press('Escape');
     assert.equal(await bench.page.textContent('#title'), 'Claude Code behebt S2');
+    assert.equal(await bench.page.isVisible('#title'), true);
+    // Settings over a run without a mode: the badge says "Einstellungen" and goes again.
+    await bench.facts([['', 'morning-errand wird ohne Claude Code geprüft']]);
+    await bench.page.keyboard.press('Control+Comma');
+    assert.equal(await bench.page.textContent('#title'), 'Einstellungen');
+    await bench.page.keyboard.press('Escape');
+    assert.equal(await bench.page.isVisible('#title'), false);
 });
 
 test('workbench: the steps are hidden until shown; "Schritte" carries the tally; a step unfolds its actions, a failed one by itself; the choice is remembered', async (t) => {
