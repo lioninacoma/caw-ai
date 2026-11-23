@@ -14,7 +14,7 @@ import { elementHint, frameworkOf } from './framework/index.mjs';
 import { locatorLabel } from './locator.mjs';
 import { webContext, webPick } from './accessible-name.mjs';
 import { extjsCandidates, extjsMatches } from '../ext/extjs/extjs-query.mjs';
-import { MARK_ATTRIBUTE, recordLocator, roleAndName } from './record-locator.mjs';
+import { MARK_ATTRIBUTE, pointerdownLocator, recordLocator, roleAndName } from './record-locator.mjs';
 import { HASH_LIMIT_BYTES, matchFixture } from './fixtures.mjs';
 import { readPrefs } from '../shared/prefs.mjs';
 import { TOKENS, modeOf } from './style.mjs';
@@ -320,7 +320,12 @@ export const markedTarget = async (session, frame, mark, seen = null, proposal =
     const framework = session.framework ?? frameworkOf();
     const locator = frame.locator(`[${MARK_ATTRIBUTE}="${String(mark).replace(/["\\]/g, '')}"]`);
     try {
-        const target = await recordLocator(appFrameOf(session, frame), locator, { framework: framework.name, timeout: HINT_TIMEOUT_MS, seen, proposal });
+        const root = appFrameOf(session, frame);
+        const found = await recordLocator(root, locator, { framework: framework.name, timeout: HINT_TIMEOUT_MS, seen, proposal });
+        // The click removed the element before the host looked (a dialog's Schließen, an option whose list closes): what the page
+        // checked at the pointerdown counts. Only in the application's own frame: an inner frame's path went with the element.
+        const removed = found === null && frame === root && await locator.count().then((count) => count === 0, () => false);
+        const target = removed ? pointerdownLocator(proposal, { framework: framework.name }) : found;
         if (target === null || framework.hint === undefined) return { target };
         const element = await locator.elementHandle({ timeout: HINT_TIMEOUT_MS }).catch(() => null);
         const hint = element === null ? null : await elementHint(framework, element);

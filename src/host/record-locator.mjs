@@ -42,6 +42,16 @@ const chainAst = (chain) => chain.map((link) => {
     return { method: 'locator', args: [link.css] };
 });
 
+/**
+ * What a demonstration's page checked at the pointerdown (webPick, or an ExtJS chain), as a locator inside `frames`; null if the
+ * page found none or it would not hold up (rejectReason).
+ */
+export const pointerdownLocator = (proposal, { framework = 'web', frames = [] } = {}) => {
+    if (proposal === null || proposal === undefined) return null;
+    const code = printLocator([...frames, ...chainAst(proposal)]);
+    return rejectReason(code, { framework }) === null ? code : null;
+};
+
 const withTimeout = (promise, ms = NORMALIZE_TIMEOUT_MS) => {
     let timer;
     return Promise.race([
@@ -198,8 +208,7 @@ export const recordLocator = async (root, locator, { framework = 'web', timeout 
         const frames = ast.slice(0, ast.findLastIndex(({ method }) => method === 'contentFrame') + 1);
         const fits = (candidate) => (rejectReason(printLocator(candidate), { framework }) === null ? only(candidate) : false);
         // The demonstration found a chain at the pointerdown, while a list or dialog was still open; now the element is gone.
-        const fromPointerdown = () => (proposal !== null && rejectReason(printLocator([...frames, ...chainAst(proposal)]), { framework }) === null
-            ? printLocator([...frames, ...chainAst(proposal)]) : null);
+        const fromPointerdown = () => pointerdownLocator(proposal, { framework, frames });
         // Gone or hidden now: nothing here can be checked any more, what the page checked at the pointerdown counts.
         const gone = !(await element.isVisible().catch(() => false));
         if (gone && fromPointerdown() !== null) return fromPointerdown();

@@ -5,6 +5,7 @@ import { after, before, test } from 'node:test';
 
 import { roleAndName, webPick } from '../src/host/accessible-name.mjs';
 import { locatorFor } from '../src/host/agent-commands.mjs';
+import { markedTarget } from '../src/host/demonstrate.mjs';
 import { frameView } from '../src/host/app-view.mjs';
 import { buildLocator, parseLocator } from '../src/host/locator.mjs';
 import { MARK_ATTRIBUTE, recordLocator } from '../src/host/record-locator.mjs';
@@ -143,6 +144,26 @@ test('record, demonstration: a dialog the click closes is scoped as Playwright n
     // A dialog name with a record number: only its beginning, as on the Claude path.
     await page.setContent('<div role="dialog" aria-label="Vorgang 1000001 bearbeiten"><button id="c">Schließen</button></div><button>Schließen</button>');
     assert.equal(await pickThenClose('#c'), "getByRole('dialog', { name: /^Vorgang/ }).getByRole('button', { name: 'Schließen', exact: true })");
+    return undefined;
+});
+
+test('record, demonstration: an element the click removed from the page before the host looked is recorded by what the page checked at the pointerdown', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    const frame = page.mainFrame();
+    // The click's handler removes the element at once; the host resolves the mark only afterwards (it races the click).
+    const pickThenRemove = async (selector, remove, { pick = true } = {}) => {
+        const proposal = pick ? await page.locator(selector).evaluate((element, [webPickCode, name]) => new Function('element', `return (${webPickCode})(element, ${name});`)(element), [String(webPick), String(roleAndName)]) : null;
+        await page.locator(selector).evaluate((element, attribute) => element.setAttribute(attribute, 'm1'), MARK_ATTRIBUTE);
+        await page.evaluate(remove);
+        return (await markedTarget({}, frame, 'm1', null, proposal)).target;
+    };
+    await page.setContent('<div role="dialog" aria-labelledby="t"><h2 id="t">Vorgang 1000001 bearbeiten</h2><button id="c">Schließen</button></div><button>Schließen</button>');
+    assert.equal(await pickThenRemove('#c', () => document.querySelector('[role=dialog]').remove()), "getByRole('dialog', { name: /^Vorgang/ }).getByRole('button', { name: 'Schließen', exact: true })", 'a dialog removed by its Schließen');
+    await page.setContent('<input role="combobox" aria-label="Sachgebiet"><ul role="listbox"><li role="option" id="o">Beitrag</li><li role="option">Beratung</li></ul>');
+    assert.equal(await pickThenRemove('#o', () => document.querySelector('[role=listbox]').remove()), "getByRole('option', { name: 'Beitrag', exact: true })", 'an option whose list the click removed');
+    // Without what the page checked there is nothing to record.
+    await page.setContent('<button id="x">Weg</button>');
+    assert.equal(await pickThenRemove('#x', () => document.querySelector('#x').remove(), { pick: false }), null);
     return undefined;
 });
 

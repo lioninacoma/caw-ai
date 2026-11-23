@@ -13,8 +13,8 @@ import { launchChrome } from './chrome.mjs';
 
 const ORIGIN = 'https://caw.test';
 // "Speichern" closes its dialog after the click: the mark is set on pointerdown, the host resolves it meanwhile. That takes
-// 200-600 ms under load (measured in the full suite); an element gone before that is recorded with the generator's locator,
-// without the exact name, or reported as unstable.
+// 200-600 ms under load (measured in the full suite). Here the dialog stays long enough for the host to see it; an element
+// already gone is recorded by what the page checked at the pointerdown (GONE below).
 const FORM = `<!doctype html><title>Form</title><label>Titel <input></label>
 <label>Tag <select><option value="work">#work</option><option value="home">#home</option></select></label>
 <div id="d" role="dialog" aria-label="Neue Aufgabe"><button onclick="setTimeout(() => document.getElementById('d').remove(), 1000)">Speichern</button></div>
@@ -23,6 +23,9 @@ const FORM = `<!doctype html><title>Form</title><label>Titel <input></label>
 const UPLOAD = `<!doctype html><title>Upload</title><button onclick="document.getElementById('f').click()">Dokument hochladen</button><input type="file" id="f" hidden><button>Weiter</button>`;
 // A combobox chosen by keyboard, as ExtJS does it: the arrows move the highlight, Enter sets the value from script (no input event).
 const COMBO = `<!doctype html><meta charset="utf-8"><title>Notiz</title><label>Priorität <input id="prio" onkeydown="const list = ['hoch', 'mittel', 'niedrig']; const i = Number(this.dataset.at ?? -1);if (event.key === 'ArrowDown') this.dataset.at = Math.min(i + 1, 2); else if (event.key === 'ArrowUp') this.dataset.at = Math.max(i - 1, 0);else if (event.key === 'Enter') this.value = list[i] ?? '';"></label><button>Speichern</button>`;
+// Schließen removes its dialog in the click itself, an option removes its list: both are gone before the host reads the mark.
+const GONE = `<!doctype html><meta charset="utf-8"><title>Vorgang</title><div id="d" role="dialog" aria-labelledby="h"><h2 id="h">Vorgang 1000001 bearbeiten</h2><button onclick="document.getElementById('d').remove()">Schließen</button></div><button>Schließen</button>
+<input role="combobox" aria-label="Sachgebiet"><ul id="l" role="listbox"><li role="option" onclick="document.getElementById('l').remove()">Beitrag</li><li role="option">Beratung</li></ul>`;
 // A row that opens only on double-click, as grids do; a single click only selects it.
 const GRID = `<!doctype html><title>Liste</title><div role="grid"><div role="row" ondblclick="document.title = 'offen'" onclick="this.ariaSelected = 'true'"><span role="gridcell">1000001</span><span role="gridcell">Muster, Erika</span></div>
 <div role="row"><span role="gridcell">9000001</span><span role="gridcell">Beispiel, Max</span></div></div>`;
@@ -35,7 +38,7 @@ before(async () => {
     browser = await launchChrome();
     context = await browser?.newContext();
     page = await context?.newPage();
-    await page?.route(`${ORIGIN}/**`, (route) => route.fulfill({ contentType: 'text/html', body: route.request().url().endsWith('/pay') ? '<button>Bezahlen</button>' : route.request().url().endsWith('/grid') ? GRID : route.request().url().endsWith('/upload') ? UPLOAD : route.request().url().endsWith('/combo') ? COMBO : FORM }));
+    await page?.route(`${ORIGIN}/**`, (route) => route.fulfill({ contentType: 'text/html', body: route.request().url().endsWith('/pay') ? '<button>Bezahlen</button>' : route.request().url().endsWith('/grid') ? GRID : route.request().url().endsWith('/upload') ? UPLOAD : route.request().url().endsWith('/combo') ? COMBO : route.request().url().endsWith('/gone') ? GONE : FORM }));
     dir = mkdtempSync(join(tmpdir(), 'caw-demo-'));
 });
 after(async () => {
@@ -122,6 +125,31 @@ test('demonstration: the page cannot slip in notes, checkpoints, checks or ready
     assert.deepEqual(items.map(({ action }) => action), ['click']);
     assert.equal(items[0].target, "getByRole('dialog', { name: 'Neue Aufgabe', exact: true }).getByRole('button', { name: 'Speichern', exact: true })");
     assert.deepEqual(Object.keys(items[0]).filter((key) => ['code', 'text', 'secret'].includes(key)), [], 'no page-made field');
+    return undefined;
+});
+
+test('demonstration: a click that removes its element at once (a dialog\'s Schließen, an option and its list) is recorded by role and name from the pointerdown', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    await page.goto(`${ORIGIN}/gone`);
+    const items = await demonstrate({
+        session: session(),
+        ui: { step: () => {} },
+        dir,
+        operator: {
+            nextLine: async () => {
+                await page.getByRole('dialog').getByRole('button', { name: 'Schließen' }).click();
+                await page.getByRole('option', { name: 'Beitrag' }).click();
+                return '';
+            },
+        },
+    });
+    assert.equal(await page.getByRole('dialog').count(), 0);
+    const { steps, problems } = recordableSteps(items);
+    assert.deepEqual(problems, []);
+    assert.deepEqual(steps.map(({ action, target }) => [action, target]), [
+        ['click', "getByRole('dialog', { name: /^Vorgang/ }).getByRole('button', { name: 'Schließen', exact: true })"],
+        ['click', "getByRole('option', { name: 'Beitrag', exact: true })"],
+    ]);
     return undefined;
 });
 
