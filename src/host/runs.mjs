@@ -1,11 +1,14 @@
 // The run folders in .caw/runs: every run and every open leaves one (report, trace, chat log). caw keeps the newest ones
 // (keepRuns, default 30) and deletes older ones when a run starts; a run whose process still lives is never deleted, nor a
-// reproduction whose draft is still in caw/drafts: it holds the suspected cause the guided fix shows (bugfix.mjs).
+// reproduction whose draft is still in caw/drafts: it holds the suspected cause the guided fix shows (bugfix.mjs), nor the red
+// run a draft names (red.run): the design report counts its deviations from it.
 
 import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
-import { RUN_DIR } from '../shared/names.mjs';
+import { parse } from 'yaml';
+
+import { DRAFT_DIR, RUN_DIR } from '../shared/names.mjs';
 import { isAlive } from '../shared/session-agent.mjs';
 
 export const DEFAULT_KEEP_RUNS = 30;
@@ -29,6 +32,19 @@ const draftStillThere = (root, dir, name) => {
     return typeof file === 'string' && existsSync(join(root, file));
 };
 
+/** The red runs the drafts in caw/drafts name (red.run); a draft that cannot be read names none. */
+const redRuns = (root) => {
+    const dir = join(root, DRAFT_DIR);
+    if (!existsSync(dir)) return new Set();
+    return new Set(readdirSync(dir).filter((name) => name.endsWith('.yaml')).map((name) => {
+        try {
+            return parse(readFileSync(join(dir, name), 'utf8'))?.red?.run;
+        } catch {
+            return undefined;
+        }
+    }).filter((run) => typeof run === 'string'));
+};
+
 /**
  * Deletes the oldest run folders beyond `keep`. Run ids start with their time, so the name order is the age order.
  * @param keep   how many to keep; 0 keeps all
@@ -40,8 +56,10 @@ export const pruneRuns = (root, keep = DEFAULT_KEEP_RUNS, { except } = {}) => {
     if (keep === 0 || !existsSync(runs)) return [];
     const names = readdirSync(runs, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map(({ name }) => name).sort();
     const deleted = [];
-    for (const name of names.slice(0, Math.max(0, names.length - keep))) {
-        if (name === except || openNow(join(runs, name)) || draftStillThere(root, join(runs, name), name)) continue;
+    const old = names.slice(0, Math.max(0, names.length - keep));
+    const named = old.length === 0 ? new Set() : redRuns(root);
+    for (const name of old) {
+        if (name === except || named.has(name) || openNow(join(runs, name)) || draftStillThere(root, join(runs, name), name)) continue;
         try {
             rmSync(join(runs, name), { recursive: true, force: true, maxRetries: 2 });
             deleted.push(name);

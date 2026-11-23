@@ -37,6 +37,21 @@ test('runs: a reproduction whose draft is still in caw/drafts stays, it holds th
     assert.deepEqual(pruneRuns(root, 1), [reproduction]);
 });
 
+test('runs: the red run a draft names (red.run) stays while the draft is there: the design report counts its deviations from it', (t) => {
+    const root = mkdtempSync(join(tmpdir(), 'caw-runs-'));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const runs = join(root, '.caw', 'runs');
+    const red = '2026-11-10T10-00-00-000Z-note';
+    const names = [red, '2026-11-11T10-00-00-000Z-note', '2026-11-12T10-00-00-000Z-open'];
+    for (const name of names) mkdirSync(join(runs, name), { recursive: true });
+    mkdirSync(join(root, 'caw', 'drafts'), { recursive: true });
+    writeFileSync(join(root, 'caw', 'drafts', 'note.yaml'), `# a comment\nid: note\nred: {step: S2, run: ${red}, head: abc1234}\nsteps: []\n`);
+    writeFileSync(join(root, 'caw', 'drafts', 'broken.yaml'), 'red: [unclosed\n');
+    assert.deepEqual(pruneRuns(root, 1), [names[1]]);
+    rmSync(join(root, 'caw', 'drafts', 'note.yaml'));
+    assert.deepEqual(pruneRuns(root, 1), [red]);
+});
+
 test('runs: keepRuns is a whole number from 0', () => {
     const base = { environments: { local: { url: 'http://localhost:5173' } } };
     for (const keepRuns of [0, 30]) assert.ok(!validateConfig({ ...base, keepRuns }).issues.some((issue) => /keepRuns/.test(issue)), String(keepRuns));
