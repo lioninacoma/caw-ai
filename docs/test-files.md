@@ -137,6 +137,17 @@ After the step's check passed, caw renders the `.html` design in a separate head
 
 Something missing, a changed text, a differing style or layout fails the step with kind `design`; controls that only the app has are reported but do not fail (a design usually leaves out the app's frame). The replay goes on, the step gets no retry and learns no effects in that run. With `design.fail: []` in the config it only warns.
 
+The app's page is measured once it settled: animations that end have ended and the DOM stayed unchanged for 300 ms, at most 3 s (a click's ripple or a label still moving in ExtJS Material otherwise showed as 12 deviations). A design may link files beside it in `caw/design` relatively, such as the stylesheets, fonts and images of a [snapshot](commands.md#design-snapshot) under `design/assets/<name>/`; only those are served, nothing else loads.
+
+#### Structure areas
+
+An element of the design marked `data-caw-match="structure"` is compared, with everything inside it, by structure only:
+
+- **compared:** presence (controls, view lines, texts, as above), static texts, order and the relation of each element to its neighbour (below, above, right of, left of, inside);
+- **not compared:** looks (fonts, colors, backgrounds, paddings, radii, borders and shadows of blocks), gaps, indents and sizes, and the gap from the element before the area into it and out of it.
+
+Outside the area everything stays exact. Use it for a part that may look as the app's framework draws it; a draft from a snapshot needs none. The deviation lines are the same as without it. Measured on ExtJS: a draft in CSS of its own differs from the app in 65 places (38 styles, 23 layout, 4 missing), with the whole screen marked as a structure area in 5 (the 4 missing are the app's buttons and checkbox without an accessible name, which a plain draft names; the fifth is a label that sits inside an empty field); swapped buttons, a changed title and a missing button are still caught. Adding an area to a design a step links changes that design: `caw audit` reports it as a weakening (`design-file-changed`) and names how many areas were added.
+
 #### What is data
 
 The same rule holds in the design and in the app. Data keeps its place in the layout and its font, but its text is not compared:

@@ -499,7 +499,7 @@ export const sessionHint = (mode, runId, { creating = false } = {}) => {
     return `${task} ${asked}`;
 };
 
-export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true, reproduce, withDesign = false, suggestLooks = false, terminal, seams = {} }) => {
+export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true, reproduce, withDesign = false, suggestLooks = false, terminal, snapshot, seams = {} }) => {
     // Tests only: the browser session, the chat, the playback and the design comparison without Chrome (test/run-seam.test.mjs).
     const { openRunSession: openSession = openRunSession, openChat: openWindowChat = openChat, playReplay: replayWith = playReplay, designComparison: compareWith = designComparison } = seams;
     // Mutable: repairing in the same browser turns the test run into a run that fixes exactly this step.
@@ -568,7 +568,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     let headerMode = ['record'];
     if (reproduce !== undefined) headerMode = ['reproduce'];
     else if (replay !== undefined && conversation !== undefined && conversation.lazy !== true && conversation.testing !== true) headerMode = ['verify'];
-    else if (replay?.entry !== undefined) headerMode = ['entry', { id: replay.entry.id }];
+    else if (replay?.entry !== undefined) headerMode = [snapshot === undefined ? 'entry' : 'snapshot', { id: replay.entry.id }];
     else if (replay !== undefined && replay.steps.length === 0) headerMode = ['open'];
     else if (replay !== undefined && runAs === 'open') headerMode = ['openTest'];
     else if (replay !== undefined) headerMode = ['replay'];
@@ -2117,6 +2117,8 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             ui.info(text);
             chat?.notice(text);
         }
+        // caw design snapshot: the screen in the state the run reached, read before anything else touches the page.
+        if (snapshot !== undefined && healthy) await snapshot({ page: session.page(), secrets: session.secrets?.() ?? [] });
         // Its target design at its entry (playReplay): how far the screen is built, before it can be recorded. Fails nothing.
         if (ended.pendingDesign !== undefined) {
             const { step, file, verdict: judged, missing = [], extra = [], styleDiffs = [], layoutDiffs = [], textDiffs = [], note: why } = ended.pendingDesign;

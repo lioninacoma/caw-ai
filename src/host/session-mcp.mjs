@@ -32,6 +32,8 @@ const EXPLORE_FILE = 'caw/.explore.json';
 const LAST_RUN_FILE = 'last-run.json';
 const OVERLAY_CHECK_FILE = 'overlay-check.json';
 const OVERLAY_CHECK_TIMEOUT_MS = 180_000;
+// caw_design snapshot plays a test headless to a step: as long as a test may take.
+const SNAPSHOT_TIMEOUT_MS = 15 * 60_000;
 /** Typed fields of caw_start: which command takes which, and which it needs. A step goes with its test as `<test>@<step>`. */
 const FIELDS = {
     run: { needs: ['test'], takes: ['test', 'env', 'overlay', 'headless', 'learn', 'promote', 'strict', 'start', 'reset'] },
@@ -762,9 +764,14 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
     {
         name: 'caw_design',
         description: 'Target designs for test steps, under caw/design. You fetch a design yourself (a Claude Design artifact, a Figma export) '
-            + 'and write it here; never write into caw/ with your own tools. {action: "put", file, content}: writes '
-            + 'design/<name>.html (one screen, inline CSS; rendered later without scripts or network). '
-            + 'Replacing a design a step links needs personAsked: true, like link. {action: "list"}: the design files and which steps link them '
+            + 'and write it here; never write into caw/ with your own tools. {action: "snapshot", test, step, file?, env?}: plays the test '
+            + 'headless to the entry of the step (only reads the app) and writes the screen as design/<name>.html (default <test>-<step>) '
+            + 'with the app\'s own stylesheets, fonts and images under design/assets/<name>/: the starting point for a draft in the app\'s '
+            + 'style (add only what is new, with the app\'s classes). {action: "put", file, content, stylesFrom?}: writes '
+            + 'design/<name>.html (one screen; rendered later without scripts or network; files it links relatively are served from '
+            + 'caw/design). stylesFrom: "design/<snapshot>.html" replaces the draft\'s own <style> and <link rel=stylesheet> with the '
+            + 'snapshot\'s, so it uses the app\'s CSS. Replacing a design a step links needs personAsked: true, like link (also for snapshot). '
+            + '{action: "list"}: the design files and which steps link them '
             + '(or carry look: true, a learned look the person set by hand). '
             + '{action: "link", test, step, file | null, personAsked: true}: sets or removes design: on one step of caw/tests/<test>.yaml '
             + '(or of the draft caw/drafts/<test>.yaml when there is no such test). '
@@ -773,12 +780,14 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
         inputSchema: {
             type: 'object',
             properties: {
-                action: { type: 'string', enum: ['put', 'list', 'link'] },
+                action: { type: 'string', enum: ['snapshot', 'put', 'list', 'link'] },
                 file: { type: ['string', 'null'], description: 'Relative to the caw folder, e.g. design/order-form.html' },
                 content: { type: 'string', description: 'put: the text of an .html file' },
-                test: { type: 'string', description: 'link: the test id' },
-                step: { type: 'string', description: 'link: the step id, e.g. S3' },
-                personAsked: { type: 'boolean', description: 'link: true only when the person asked to link this design to this step; put: true only when the person asked to replace a design a step links' },
+                stylesFrom: { type: 'string', description: 'put: a snapshot, e.g. design/order-S3.html, whose stylesheets replace the draft\'s own' },
+                test: { type: 'string', description: 'link, snapshot: the test id' },
+                step: { type: 'string', description: 'link, snapshot: the step id, e.g. S3' },
+                env: { type: 'string', description: 'snapshot: the environment, if the test runs on more than one' },
+                personAsked: { type: 'boolean', description: 'link: true only when the person asked to link this design to this step; put, snapshot: true only when the person asked to replace a design a step links' },
             },
             required: ['action'],
             additionalProperties: false,
@@ -808,17 +817,55 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                     }
                 });
             };
+            // A design a step links is what that step is judged against: replacing it is the person's decision, like link.
+            const askBeforeReplacing = async (file) => {
+                if (input.personAsked === true || design.designPath(cawDir, file) === null) return;
+                const linked = (await stepLinks()).filter((link) => link.design === file);
+                if (linked.length > 0) throw new Error(t('run.mcp.designReplaceAsk', { file: `${PROJECT_DIR}/${file}`, steps: linked.map(({ test, step }) => `${test} ${step}`).join(', ') }));
+            };
             if (input.action === 'put') {
                 if (typeof input.content !== 'string') throw new Error(t('run.mcp.designContent'));
                 if (design.designKind(input.file) === null) throw new Error(t('run.mcp.designName'));
-                const data = Buffer.from(input.content, 'utf8');
-                // A design a step links is what that step is judged against: replacing it is the person's decision, like link.
-                if (input.personAsked !== true && design.designPath(cawDir, input.file) !== null) {
-                    const linked = (await stepLinks()).filter((link) => link.design === input.file);
-                    if (linked.length > 0) throw new Error(t('run.mcp.designReplaceAsk', { file: `${PROJECT_DIR}/${input.file}`, steps: linked.map(({ test, step }) => `${test} ${step}`).join(', ') }));
+                let content = input.content;
+                let styles;
+                if (input.stylesFrom !== undefined) {
+                    const from = typeof input.stylesFrom === 'string' ? design.designPath(cawDir, input.stylesFrom) : null;
+                    if (from === null) throw new Error(t('run.mcp.designMissing', { file: String(input.stylesFrom) }));
+                    const { withStylesFrom } = await import('./design-snapshot.mjs');
+                    const swapped = withStylesFrom(content, input.file, readFileSync(from, 'utf8'), input.stylesFrom);
+                    content = swapped.html;
+                    styles = { from: input.stylesFrom, removed: swapped.removed, linked: swapped.linked, styled: swapped.styled };
                 }
-                const written = design.writeDesign(cawDir, input.file, data);
-                return answer(t('run.mcp.designWritten', { file: `${PROJECT_DIR}/${written.file}` }), written);
+                await askBeforeReplacing(input.file);
+                const written = design.writeDesign(cawDir, input.file, Buffer.from(content, 'utf8'));
+                const said = t('run.mcp.designWritten', { file: `${PROJECT_DIR}/${written.file}` });
+                if (styles === undefined) return answer(said, written);
+                return answer(`${said} ${t('run.mcp.designStylesFrom', { ...styles, from: `${PROJECT_DIR}/${styles.from}` })}`, { ...written, styles });
+            }
+            if (input.action === 'snapshot') {
+                for (const field of ['test', 'step']) textField(input, field);
+                if (!/^S[1-9]\d*$/.test(input.step)) throw new Error(t('run.mcp.designSnapshotStep'));
+                if (input.env !== undefined) textField(input, 'env');
+                const { snapshotName } = await import('./design-snapshot.mjs');
+                const name = input.file ?? `${input.test}-${input.step}`;
+                const file = typeof name === 'string' ? snapshotName(name) : null;
+                if (file === null) throw new Error(t('run.mcp.designName'));
+                await askBeforeReplacing(file);
+                const args = ['design', 'snapshot', `${input.test}@${input.step}`, '--name', file.slice('design/'.length, -'.html'.length), '--json', ...(input.env === undefined ? [] : ['--env', input.env])];
+                const { code, out = '', err = '', timedOut } = await execCli(args, { timeoutMs: SNAPSHOT_TIMEOUT_MS });
+                if (timedOut) return answer(t('run.mcp.designSnapshotTimeout', { minutes: SNAPSHOT_TIMEOUT_MS / 60_000 }), { ok: false, state: 'timeout' }, true);
+                const line = out.split(/\r?\n/).map((text) => text.trim()).filter((text) => text.startsWith('{')).at(-1);
+                let data;
+                try {
+                    data = line === undefined ? undefined : JSON.parse(line);
+                } catch {
+                    data = undefined;
+                }
+                if (data === undefined || data === null || typeof data !== 'object') {
+                    return answer(t('run.mcp.designSnapshotFailed', { code: String(code), output: `${err}${out}`.trim().split('\n').slice(-5).join('\n') }), { ok: false, exit: code }, true);
+                }
+                if (data.ok !== true) return answer(String(data.reason ?? ''), { ...data, exit: code }, true);
+                return answer(t('run.mcp.designSnapshotWritten', { file: data.file, count: data.files, assets: data.assets }), { ...data, exit: code });
             }
             if (input.action === 'link') {
                 if (input.personAsked !== true) throw new Error(t('run.mcp.designAsk'));

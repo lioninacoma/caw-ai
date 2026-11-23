@@ -19,6 +19,7 @@ Jeder Befehl läuft im Wurzelordner deines Projekts: `npx caw <befehl>` (oder `p
 | [`run`](#run) | Einen Test abspielen, oder mehrere für CI | nur auf Wunsch |
 | [`open`](#open) | Die App öffnen, mit Werkbank und Chat; mit Test an seinem Ende oder am Einstieg in einen Schritt | nur auf Wunsch |
 | [`reproduce`](#reproduce) | Der Agent stellt einen Fehlerbericht allein nach: Bericht und, wenn nachgestellt, ein Entwurf in `caw/drafts` | ja |
+| [`design snapshot`](#design-snapshot) | Der Bildschirm am Einstieg in einen Schritt als Entwurfsseite mit den eigenen Stylesheets der App: Ausgangspunkt für einen Entwurf | nein |
 | [`role`](#role) | Rollen und ihre Testnutzer auflisten, hinzufügen oder entfernen; `role login` speichert eine Sitzung (SSO) | nein |
 | [`skill`](#skill) | Den Claude-Code-Skill `caw-attach` für deine eigene Session schreiben oder aktualisieren | nein |
 | [`export`](#export) | Den aufgenommenen Test als Playwright-Test, der ohne caw läuft | nein |
@@ -361,6 +362,44 @@ Nachstellen **Rot aufnehmen** an und führt dann im selben Prozess durch den Fix
 Exit-Codes: `0` nachgestellt, `1` nicht nachgestellt oder unklar, `2` Umgebungsfehler (auch wenn der Ausgangszustand von
 `--from` nicht erreicht wurde: `reproduce-state`), `3` ungültige Eingabe.
 
+## design snapshot
+
+```bash
+npx caw design snapshot ticket-anlegen@S3 --env local
+npx caw design snapshot ticket-anlegen@S3 --env local --name ticket-formular
+```
+
+Der Bildschirm am Einstieg in S3 als Entwurfsseite, der Ausgangspunkt für einen Entwurf im eigenen Stil der App
+([Entwurf aus der App](guide.de.md#gegen-ein-zielbild-entwickeln)). caw spielt den Test headless bis zum Einstieg in S3 ab, wie
+`open ticket-anlegen@S3`, aber ohne Fenster, Chat und Lernen, und schreibt:
+
+- `caw/design/<name>.html` (Standard `<test>-S3`): das DOM der Seite ohne Skripte, Event-Handler, Inhalte von Frames und
+  `<base>`; Feldwerte als Attribute eingefroren (`value`, `checked`, `selected`, der Text einer Textarea), nie ein Passwort
+  oder der Wert eines versteckten Felds; die Geheimnisse der Rolle geschwärzt wie in `result.json`; jede Animation und
+  jeder Übergang an ihrem Ende;
+- `caw/design/assets/<name>/`: die Stylesheets der App als Dateien (`sheet-<n>.css`, aus dem CSSOM der Seite: Regeln, die ein
+  Skript eingefügt hat, bleiben, `@import` wird an Ort und Stelle aufgelöst; Inline-`<style>` bleibt in der Seite), und die
+  Schriften und Bilder, auf die Stylesheets und Seite verweisen (`<n>-<datei>`), mit relativ umgeschriebenem `url()`. Eine
+  Datei wird gespeichert, wenn sie von der Herkunft der App kommt oder die Seite sie schon geladen hat; gelesen wird sie per
+  GET aus der Seite selbst, durch die Schutzregeln des Laufs. Ein früherer Snapshot gleichen Namens wird ersetzt, Dateien,
+  die er nicht mehr braucht, fallen weg.
+
+Er liest die App nur, auch auf Produktion. Das Terminal nennt, was nicht übernommen werden konnte (ein Stylesheet einer anderen
+Herkunft ohne CORS, Frames, Shadow DOM, ein gescrollter Bereich, der im Snapshot oben steht). Offline aus `caw/design`
+gerendert sieht er aus wie die App, und gegen denselben Zustand beurteilt ist er ohne Abweichung erfüllt (gemessen am Beispiel
+errand und an ExtJS 6.5 Modern mit dem Theme Material). Daten bleiben, wie der Bildschirm sie zeigt; die
+[Datenregel](test-files.de.md#was-daten-sind) gilt für Entwurf und App gleich. Der Snapshot enthält die Daten dieses Zustands
+aus der Umgebung, auf der er lief: am besten eine Testumgebung.
+
+| Option | |
+|---|---|
+| `--name <name>` | Name der Seite unter `caw/design`, einfache Teile (`ticket-formular`, `screens/ticket`), nicht unter `assets/`. |
+| `--json` | Das Ergebnis als eine JSON-Zeile: `ok`, `file`, `assets`, `files`, `notes`, `report` (oder `reason`). |
+| `--start`, `--overlay[=<teile>]`, `--step-timeout <dauer>` | Wie bei `run`. |
+
+Exit-Codes: `0` geschrieben, `1` der Weg zum Schritt ist gescheitert (der Bericht nennt den Schritt), `2` der Snapshot ließ
+sich nicht schreiben, `3` ungültige Eingabe. Aus deiner Session: `caw_design` `{action: "snapshot", test, step, file?, env?}`.
+
 ## role
 
 ```bash
@@ -422,7 +461,7 @@ Startet Claude Code über `.mcp.json` (`claude mcp add caw --scope project -- np
 | `caw_validate` | `validate` als Daten; Entwürfe aus `caw/drafts` unter `drafts` | nein |
 | `caw_list` | `list` als Daten; Entwürfe unter `drafts`, jeder mit `red` (`{ step, run, head }` oder `null`) und, wie in `caw_status`, `phase` und `next` (ein Zielbild-Entwurf mit `origin: design`) | nein |
 | `caw_reproductions` | Die Nachstellungen in `.caw/runs`, die neueste zuerst: `runId`, `date`, `ref`, `status`, `reproduced`, `observed`, `expected`, `cause`, `covered`, `draft`, `phase`, `next`, `report`; `refs` (Liste) behält nur diese und nennt Refs ohne Lauf als `missing` (nie gelaufen oder durch `keepRuns` gelöscht), `since` (ISO-Datum) behält neuere Läufe | nein |
-| `caw_design` | Zielbilder unter `caw/design`: `put` schreibt `design/<name>.html`, nachdem Name, Größe und dass es eine HTML-Seite ist geprüft sind, und ersetzt ein Design, das ein Schritt nennt, nur mit `personAsked: true`; `list` liefert die Entwurfsdateien und die Schritte, die sie nennen; `link` setzt oder entfernt `design:` an einem Schritt von `caw/tests/<test>.yaml`, oder des Entwurfs `caw/drafts/<test>.yaml`, wenn es diesen Test nicht gibt (mit `personAsked: true`, nur auf Wunsch des Menschen) | nein |
+| `caw_design` | Zielbilder unter `caw/design`: `snapshot` führt `design snapshot` aus (`test`, `step`, `file`, `env`; über ein Design, das ein Schritt nennt, nur mit `personAsked: true`); `put` schreibt `design/<name>.html`, nachdem Name, Größe und dass es eine HTML-Seite ist geprüft sind, mit `stylesFrom` (ein Snapshot) die eigenen Stylesheets durch die des Snapshots ersetzt, und ersetzt ein Design, das ein Schritt nennt, nur mit `personAsked: true`; `list` liefert die Entwurfsdateien und die Schritte, die sie nennen; `link` setzt oder entfernt `design:` an einem Schritt von `caw/tests/<test>.yaml`, oder des Entwurfs `caw/drafts/<test>.yaml`, wenn es diesen Test nicht gibt (mit `personAsked: true`, nur auf Wunsch des Menschen) | nein |
 | `caw_overlay` | Nur mit `overlay`-Block: `action: status` (`overlay status` im Prozess, schnell), `check` oder `apply` (`overlay check`, `--apply`; wartet bis zu 3 Minuten); `env`, `part` | nein |
 | `caw_attach` | Diese Session verbinden: liefert ihren Schlüssel und den Befehl, den sie mit dem Monitor-Werkzeug startet; jede Chat-Nachricht und jede Aufgabe eines verbundenen Fensters erreicht die Session dann als Zeile. |
 | `caw_start` | `run`, `record`, `open` oder `reproduce` mit dieser Session verbunden starten (`--attach=<key>`) (`reproduce`: `bug`, `from`, `role`, `env`, `ref`, `headless`; `test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset` oder `args`; `step` bei `record` und `open`, nur mit `test`; `promote` bei `run` eines Entwurfs; `strict` bei `run`; `design` bei `open`). Mit `overlay` prüft es zuerst den lokalen Code-Server: `down`, `wrong-app` oder `stale` liefert `state`, `url`, `start` und `partDir`, statt zu starten; `moved` startet mit `--overlay <foundUrl>`. Nie `--start` zusammen mit `overlay`: Die Session startet den lokalen Code-Server selbst, nachdem sie dich gefragt hat. `start` und `reset` führen die konfigurierten Befehle der Umgebung aus | nur deine Session |

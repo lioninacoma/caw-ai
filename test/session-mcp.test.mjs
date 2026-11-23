@@ -761,6 +761,63 @@ test('caw_design: put replaces a design a step links only on the person\'s reque
     assert.equal(readFileSync(join(root, 'caw', 'design', 'bestellung.html'), 'utf8'), other);
 });
 
+test('caw_design snapshot: runs caw design snapshot with --json, returns its result; a snapshot over a linked design needs the person\'s request', async (t) => {
+    const root = project(t);
+    const calls = [];
+    const result = { ok: true, file: 'caw/design/bestellung-S2.html', design: 'design/bestellung-S2.html', assets: 'caw/design/assets/bestellung-S2/', files: 3, notes: [] };
+    let reply = { code: 0, out: `[caw] noise\n${JSON.stringify(result)}\n`, err: '' };
+    const execCli = async (args, options) => { calls.push({ args, options }); return reply; };
+    const { call } = session(root, { execCli });
+    const taken = await call('caw_design', { action: 'snapshot', test: 'bestellung', step: 'S2', env: 'dev' });
+    assert.equal(taken.isError, false);
+    assert.deepEqual(calls[0].args, ['design', 'snapshot', 'bestellung@S2', '--name', 'bestellung-S2', '--json', '--env', 'dev']);
+    assert.equal(calls[0].options.timeoutMs, 15 * 60_000);
+    assert.match(taken.content[0].text, /Snapshot geschrieben: caw\/design\/bestellung-S2\.html, 3 Dateien/);
+    assert.deepEqual(taken.structuredContent, { ...result, exit: 0 });
+    for (const [args, pattern] of [
+        [{ action: 'snapshot', test: 'bestellung' }, /step/],
+        [{ action: 'snapshot', test: 'bestellung', step: 'zwei' }, /test und step/],
+        [{ action: 'snapshot', test: 'bestellung', step: 'S2', file: 'design/assets/x' }, /unter design\//],
+    ]) {
+        const refused = await call('caw_design', args);
+        assert.equal(refused.isError, true, JSON.stringify(args));
+        assert.match(refused.content[0].text, pattern, JSON.stringify(args));
+    }
+    // A design a step links: replaced by a snapshot only on the person's request, like put.
+    await call('caw_design', { action: 'put', file: 'design/bestellung.html', content: '<!doctype html><body><button>Bestellen</button></body>' });
+    await call('caw_design', { action: 'link', test: 'bestellung', step: 'S2', file: 'design/bestellung.html', personAsked: true });
+    const before = calls.length;
+    const refused = await call('caw_design', { action: 'snapshot', test: 'bestellung', step: 'S2', file: 'design/bestellung.html' });
+    assert.equal(refused.isError, true);
+    assert.match(refused.content[0].text, /bestellung S2/);
+    assert.equal(calls.length, before, 'nothing ran');
+    assert.equal((await call('caw_design', { action: 'snapshot', test: 'bestellung', step: 'S2', file: 'design/bestellung.html', personAsked: true })).isError, false);
+    assert.deepEqual(calls.at(-1).args.slice(0, 5), ['design', 'snapshot', 'bestellung@S2', '--name', 'bestellung']);
+    // The way to the step failed: the CLI's reason is the answer.
+    reply = { code: 1, out: `${JSON.stringify({ ok: false, reason: 'Kein Snapshot: S1 fehlgeschlagen.' })}\n`, err: '' };
+    const failed = await call('caw_design', { action: 'snapshot', test: 'bestellung', step: 'S2' });
+    assert.equal(failed.isError, true);
+    assert.match(failed.content[0].text, /Kein Snapshot/);
+});
+
+test('caw_design put with stylesFrom: the draft\'s own stylesheets are replaced by the snapshot\'s', async (t) => {
+    const root = project(t);
+    const { call } = session(root);
+    mkdirSync(join(root, 'caw', 'design', 'assets', 'bestellung-S2'), { recursive: true });
+    writeFileSync(join(root, 'caw', 'design', 'bestellung-S2.html'), '<!doctype html><html><head><link rel="stylesheet" href="assets/bestellung-S2/sheet-1.css"></head><body><main class="app"></main></body></html>');
+    const draft = '<!doctype html><html><head><style>.app{color:red}</style></head><body><main class="app"><button class="btn" style="color:blue">Bestellen</button></main></body></html>';
+    const put = await call('caw_design', { action: 'put', file: 'design/bestellung-neu.html', content: draft, stylesFrom: 'design/bestellung-S2.html' });
+    assert.equal(put.isError, false);
+    assert.match(put.content[0].text, /Eigene Stylesheets \(1\) ersetzt durch die 1 von caw\/design\/bestellung-S2\.html\. 1 Elemente tragen ein style-Attribut/);
+    const written = readFileSync(join(root, 'caw', 'design', 'bestellung-neu.html'), 'utf8');
+    assert.match(written, /<link rel="stylesheet" href="assets\/bestellung-S2\/sheet-1\.css">/);
+    assert.doesNotMatch(written, /color:red/);
+    assert.deepEqual(put.structuredContent.styles, { from: 'design/bestellung-S2.html', removed: 1, linked: 1, styled: 1 });
+    const missing = await call('caw_design', { action: 'put', file: 'design/x.html', content: draft, stylesFrom: 'design/fehlt.html' });
+    assert.equal(missing.isError, true);
+    assert.match(missing.content[0].text, /schreib sie erst mit put/);
+});
+
 test('a design draft for the session: caw_design links its step, caw_list and caw_status name origin, phase and next from draft over red to green', async (t) => {
     const root = project(t);
     const { call } = session(root);

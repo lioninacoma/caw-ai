@@ -1069,7 +1069,7 @@ export const changeTracker = (root) => {
  */
 export const runOne = async (root, options, deps = {}, loaded = undefined) => {
     const { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive, git } = deps;
-    const { test, handover = false, stepTimeoutSec, entry, through, design = false, advise: withAdvice, headless, noChat, learn = false, strict = false, agent, attach, timeoutMin, maxActions, overlay, start, lifecycle, quiet = false, nextSteps = true, guided = true, conversation } = options;
+    const { test, handover = false, stepTimeoutSec, entry, through, design = false, advise: withAdvice, headless, noChat, learn = false, strict = false, agent, attach, timeoutMin, maxActions, overlay, start, lifecycle, quiet = false, nextSteps = true, guided = true, conversation, snapshot } = options;
     const { config, spec, target, checked } = loaded ?? loadChecked(root, test, options.target, 'run', { overlay, start });
     const position = entry === undefined ? -1 : spec.steps.findIndex(({ id }) => id === entry);
     if (entry !== undefined && position === -1) throw stepUnknown('cli.stepUnknown', spec, entry);
@@ -1091,7 +1091,8 @@ export const runOne = async (root, options, deps = {}, loaded = undefined) => {
     const canFix = withAgent && !noChat && !inCi;
     // Baselines are learned by every run outside CI, headless or in the window; a CI job only with --learn (its files are
     // usually gone after the job). open never learns.
-    const learns = !handover && (learn || !inCi);
+    // A snapshot (caw design snapshot) only reads, like open.
+    const learns = !handover && snapshot === undefined && (learn || !inCi);
     // Reject right away rather than run silently without advice: whoever passes --explain expects it.
     if (withAdvice && !withAgent) throw new CawError('usage', t('cli.adviseAgentOnly', { environments: agentEnvironments(config), target }));
     if (withAdvice && !canFix) throw new CawError('usage', t('cli.adviseNeedsChat'));
@@ -1100,7 +1101,7 @@ export const runOne = async (root, options, deps = {}, loaded = undefined) => {
     if (!quiet) ui.head();
     if (!quiet) ui.info(runMode({ withAgent, noChat, headless, inCi, withAdvice, environments: agentEnvironments(config), env: target, language: teamLanguage(config), learn: learns, opened: handover, file: `${spec.draft === true ? DRAFT_DIR : RECORDING_DIR}/${test}.yaml` }));
     const { runFlow } = await import('./flows.mjs');
-    const runs = claudeRuns(root, config, { spec, checked, target, timeoutMin: timeoutMin ?? CLAUDE_TIMEOUT_MIN, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, conversation, headless, withDesign: design });
+    const runs = claudeRuns(root, config, { spec, checked, target, timeoutMin: timeoutMin ?? CLAUDE_TIMEOUT_MIN, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, conversation, headless, withDesign: design, ...(snapshot === undefined ? {} : { snapshot, command: 'open' }) });
     const { execute } = runs;
     // A design not met: "Open with design" opens the window at that step with the design beside the app, as open <test>@S<n>
     // --design does (the step passed its check, so it is played through), in this process with the chat so far.
@@ -1819,4 +1820,52 @@ export const open = async (root, args, deps = {}) => {
         const runOptions = { ...options, test: spec.id, handover: true, learn: false, advise: false, headless: false, noChat: false, quiet: true };
         return (await runOne(root, runOptions, deps, { config, spec, target, checked })).code;
     });
+};
+
+/**
+ * `caw design snapshot <test>@S<n> [--env e] [--name n]`: plays the test headless to the entry of the step, like open <test>@S<n>
+ * but without window, chat or learning, and writes the screen as a design page design/<n>.html (default <test>-S<n>) with the
+ * app's stylesheets and the files they need under design/assets/<n>/ (design-snapshot.mjs). Only reads the app; whoever drafts
+ * starts from it and adds what is new with the app's own classes. --json: one JSON line with the result (caw_design snapshot).
+ * @returns 0 written, 1 the way to the step failed, 2 the snapshot could not be written, 3 invalid input
+ */
+export const design = async (root, args, deps = {}) => {
+    const [action, ...rest] = args;
+    if (action !== 'snapshot') throw new CawError('usage', t('cli.designAction', { action: action ?? '' }));
+    const options = parseRunArgs('design', rest);
+    if (options.step === undefined) throw new CawError('usage', t('cli.designSnapshotStep', { test: options.test }));
+    const { assetsDirOf, snapshotName, snapshotOf, writeSnapshot } = await import('./design-snapshot.mjs');
+    const name = options.name ?? `${options.test}-${options.step}`;
+    const file = snapshotName(name);
+    if (file === null) throw new CawError('usage', t('cli.designSnapshotName', { name }));
+    const { config, spec, target } = loadChecked(root, options.test, options.target, 'run', { overlay: options.overlay, start: options.start });
+    if (!spec.steps.some(({ id }) => id === options.step)) throw stepUnknown('cli.stepUnknown', spec, options.step);
+    const cawDir = join(root, PROJECT_DIR);
+    let written;
+    let failure;
+    const snapshot = async ({ page, secrets }) => {
+        try {
+            const taken = await snapshotOf(page, file, { secrets });
+            written = { ...writeSnapshot(cawDir, file, taken), notes: taken.notes };
+        } catch (error) {
+            failure = error;
+        }
+    };
+    const runOptions = { ...options, target, entry: options.step, headless: true, noChat: true, learn: false, advise: false, handover: false, guided: false, nextSteps: false, snapshot };
+    const played = await withLifecycle(lifecycleOf(root, config, target, options, 'open'), async (lifecycle) => runOne(root, { ...runOptions, lifecycle }, deps));
+    const assets = `${PROJECT_DIR}/${assetsDirOf(file)}/`;
+    let result;
+    if (written !== undefined) {
+        result = { ok: true, file: `${PROJECT_DIR}/${file}`, design: file, assets, bytes: written.bytes, files: written.assets, assetBytes: written.assetBytes, replaced: written.replaced, notes: written.notes, test: options.test, step: options.step, env: target, report: played.report };
+        ui.success(t('cli.designSnapshotWritten', { file: result.file, count: result.files, assets }));
+        for (const note of written.notes) ui.info(t(`cli.designSnapshotNote.${note.kind}`, { detail: note.detail }));
+    } else {
+        const why = failure?.message ?? t('cli.designSnapshotNotReached', { test: options.test, step: options.step, report: played.report ?? '' });
+        result = { ok: false, test: options.test, step: options.step, env: target, reason: why, report: played.report };
+        ui.warn(why);
+    }
+    if (options.json === true) process.stdout.write(`${JSON.stringify(result)}\n`);
+    if (written !== undefined) return EXIT.pass;
+    if (failure !== undefined) return EXIT.error;
+    return played.code === EXIT.pass ? EXIT.fail : played.code;
 };

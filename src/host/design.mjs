@@ -2,8 +2,8 @@
 // structure: the same controls, the same view lines and a few computed styles per control. A design comes from a person (Claude
 // Design, Figma), the attached Claude Code session writes it with caw_design; caw itself never fetches anything.
 
-import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 import { t } from '../shared/i18n.mjs';
 import { controlsProbe } from './effects.mjs';
@@ -91,15 +91,29 @@ export const designProblem = (kind, data) => {
 };
 
 /**
- * Writes a design file under caw/design. The folders on the way must not be links, and an existing file is replaced only if it
- * is a regular file: nothing ends up outside caw/design.
+ * Writes a design page under caw/design (caw_design put), checked as a whole first.
  * @returns { file, kind, bytes, replaced }
  */
 export const writeDesign = (cawDir, name, data) => {
     const kind = designKind(name);
     if (kind === null) throw new Error(t('run.mcp.designName'));
-    const problem = designProblem(kind, data);
-    if (problem !== null) throw new Error(problem);
+    return { kind, ...writeDesignFile(cawDir, name, data, { html: true }) };
+};
+
+/**
+ * Writes a file under caw/design: a design page or a file beside it (a snapshot's stylesheet, font or image). The folders on the
+ * way must not be links, and an existing file is replaced only if it is a regular file: nothing ends up outside caw/design.
+ * @param html true: a design page, checked like caw_design put checks it
+ * @returns { file, bytes, replaced }
+ */
+export const writeDesignFile = (cawDir, name, data, { html = false } = {}) => {
+    const segments = typeof name === 'string' ? name.split('/') : [];
+    if (segments.length < 2 || segments[0] !== DESIGN_DIR || !segments.slice(1).every((segment) => SEGMENT.test(segment))) throw new Error(t('run.mcp.designName'));
+    if (html) {
+        if (designKind(name) === null) throw new Error(t('run.mcp.designName'));
+        const problem = designProblem('html', data);
+        if (problem !== null) throw new Error(problem);
+    }
     const root = join(cawDir, DESIGN_DIR);
     const path = resolve(cawDir, name);
     if (!inside(root, path)) throw new Error(t('run.mcp.designName'));
@@ -115,7 +129,7 @@ export const writeDesign = (cawDir, name, data) => {
     const replaced = existsSync(path);
     if (replaced && (lstatSync(path).isSymbolicLink() || !lstatSync(path).isFile())) throw new Error(t('run.mcp.designLink', { file: name }));
     writeFileSync(path, data);
-    return { file: name, kind, bytes: data.length, replaced };
+    return { file: name, bytes: data.length, replaced };
 };
 
 /** The files in caw/design, relative to the caw folder, with their kind; links and other files are left out. */
@@ -214,7 +228,8 @@ export const normalStyle = (style = {}) => Object.fromEntries(Object.entries(STY
  *   element, nothing inside it is compared;
  * - a value: what a field holds (also an `<output>`), and a text that is the value of a field on the same page;
  * - a text with a digit (numbers, IDs, dates, counters, the run tag) or with one of `texts` (the run tag, remembered values).
- * @returns [{ kind: 'text'|'block'|'media'|'area', order, end?, sub, x, y, width, height, ... }]
+ * An element marked `data-caw-match="structure"` (in a design) adds its range as kind 'structure' (structureFrom).
+ * @returns [{ kind: 'text'|'block'|'media'|'area'|'structure', order, end?, sub, x, y, width, height, ... }]
  */
 export function layoutProbe({ texts = [] } = {}) {
     const all = [...document.body.querySelectorAll('*')];
@@ -257,6 +272,8 @@ export function layoutProbe({ texts = [] } = {}) {
     const out = [];
     const visit = (node, inData) => {
         if (SKIP.has(node.tagName)) return;
+        // A structure area of a design (data-caw-match="structure"): its range, everything in it is compared by structure only.
+        if (node.getAttribute('data-caw-match') === 'structure') out.push({ kind: 'structure', order: order.get(node), end: lastOrder(node) });
         const style = getComputedStyle(node);
         if (style.display === 'contents') {
             for (const child of node.children) visit(child, inData);
@@ -404,7 +421,8 @@ export const layoutMeasures = (target, actual) => {
     for (let index = 0; index < matched.length; index += 1) {
         const b = matched[index];
         const b2 = now.get(b.key);
-        for (const name of b.size) measures.push({ type: 'size', b, name, target: b[name], actual: b2[name] });
+        // In a structure area only the relation counts: no sizes, gaps or indents.
+        if (b.loose !== true) for (const name of b.size) measures.push({ type: 'size', b, name, target: b[name], actual: b2[name] });
         if (index === 0) continue;
         const a = matched[index - 1];
         const a2 = now.get(a.key);
@@ -416,7 +434,9 @@ export const layoutMeasures = (target, actual) => {
             measures.push({ type: 'relation', a, b, target: was.where, actual: is.where });
             continue;
         }
-        if (!skipped) measures.push({ type: 'gap', a, b, target: was.gap, actual: is.gap });
+        // A gap to or from a structure area depends on its padding: not compared; the indent of an element outside it is.
+        if (!skipped && a.loose !== true && b.loose !== true) measures.push({ type: 'gap', a, b, target: was.gap, actual: is.gap });
+        if (b.loose === true) continue;
         if (was.where === 'inside') {
             measures.push({ type: 'indent', a, b, target: was.indent, actual: is.indent });
         } else if (was.where === 'below' || was.where === 'above') {
@@ -473,7 +493,7 @@ const styleItemsOf = (target, actual) => {
     const now = new Map(actual.map((element) => [element.key, element]));
     return target.flatMap((element) => {
         const other = now.get(element.key);
-        if (other === undefined) return [];
+        if (other === undefined || element.loose === true) return [];
         return Object.entries(element.style).filter(([name, value]) => other.style[name] !== undefined && other.style[name] !== value)
             .map(([name, value]) => ({ text: `${element.shown}: ${name} ${value} → ${other.style[name]}`, design: element, app: other }));
     });
@@ -492,6 +512,10 @@ export const structureFrom = ({ controls = [], aria = '', layout, texts = [] }) 
     const count = new Map();
     const styles = {};
     const placed = [];
+    // Structure areas (data-caw-match="structure"): what lies in one is marked loose, compared without styles, gaps and sizes.
+    const areas = (layout ?? []).filter(({ kind }) => kind === 'structure');
+    const loose = (at) => areas.some(({ order, end }) => at >= order && at <= end);
+    const looseControls = [];
     const controlLines = controls.map(({ line, style, at }) => {
         const shown = withoutData(neutral(line));
         const seen = (count.get(shown) ?? 0) + 1;
@@ -499,9 +523,52 @@ export const structureFrom = ({ controls = [], aria = '', layout, texts = [] }) 
         const key = seen === 1 ? shown : `${shown} #${seen}`;
         if (style !== undefined) styles[key] = normalStyle(style);
         if (at !== undefined) placed.push({ shown: key, key, at });
+        if (at !== undefined && loose(at.order)) looseControls.push(key);
         return shown;
     });
-    return { lines: [...new Set([...controlLines, ...maskedView(aria, texts)])], styles, elements: layout === undefined ? [] : layoutElements(placed, layout) };
+    const elements = layout === undefined ? [] : layoutElements(placed, layout.filter(({ kind }) => kind !== 'structure')).map((element) => (loose(element.order) ? { ...element, loose: true } : element));
+    return { lines: [...new Set([...controlLines, ...maskedView(aria, texts)])], styles, elements, ...(areas.length === 0 ? {} : { loose: looseControls }) };
+};
+
+// How long a page may take at most to settle before it is measured or snapshot (a click's ripple, a fade, a label moving), and
+// how long the DOM must stay unchanged after the animations. Measured on ExtJS Material: a ripple and a floating label end within 1 s.
+const SETTLE_TIMEOUT_MS = 3000;
+const SETTLE_QUIET_MS = 300;
+
+/**
+ * Runs in the browser: waits until the animations and transitions that end have ended (endless ones, spinners, are left
+ * alone) and the DOM has not changed for `quietMs`, at most `timeoutMs` in all.
+ */
+export async function settleProbe({ timeoutMs, quietMs }) {
+    const deadline = Date.now() + timeoutMs;
+    const timeout = (ms) => new Promise((done) => { setTimeout(done, Math.max(0, ms)); });
+    const ending = () => document.getAnimations().filter((animation) => animation.playState === 'running' && animation.effect?.getComputedTiming().endTime !== Infinity);
+    let last = Date.now();
+    const observer = new MutationObserver(() => { last = Date.now(); });
+    observer.observe(document.documentElement, { subtree: true, childList: true, attributes: true, characterData: true });
+    try {
+        while (Date.now() < deadline) {
+            const running = ending();
+            if (running.length > 0) {
+                await Promise.race([Promise.all(running.map((animation) => animation.finished.catch(() => {}))), timeout(deadline - Date.now())]);
+                continue;
+            }
+            const still = Date.now() - last;
+            if (still >= quietMs) return;
+            await timeout(Math.min(quietMs - still, deadline - Date.now()));
+        }
+    } finally {
+        observer.disconnect();
+    }
+}
+
+/** Waits until the page has settled (settleProbe); a page that does not answer is measured as it is. */
+export const settle = async (page) => {
+    try {
+        await (typeof page.mainFrame === 'function' ? page.mainFrame() : page).evaluate(settleProbe, { timeoutMs: SETTLE_TIMEOUT_MS, quietMs: SETTLE_QUIET_MS });
+    } catch {
+        // measured as it is
+    }
 };
 
 /**
@@ -540,9 +607,10 @@ export const compareDetailed = (target, actual, { tolerance = LAYOUT_TOLERANCE_P
     const present = actual.elements ?? [];
     const designed = new Map(elements.map((element) => [element.key, element]));
     const shown = new Map(present.map((element) => [element.key, element]));
+    const loose = new Set(target.loose ?? []);
     const styleItems = Object.entries(target.styles).flatMap(([control, style]) => {
         const now = actual.styles[control];
-        if (now === undefined) return [];
+        if (now === undefined || loose.has(control)) return [];
         return Object.entries(style).filter(([name, value]) => now[name] !== undefined && now[name] !== value)
             .map(([name, value]) => ({ text: `${control}: ${name} ${value} → ${now[name]}`, design: designed.get(control), app: shown.get(control) }));
     });
@@ -591,12 +659,58 @@ export const compareStructure = (target, actual, options) => {
  * nothing outside caw/design is read and nothing goes out.
  * @returns the page; the caller closes its context
  */
-export const renderDesign = async (browser, html, viewport = DEFAULT_VIEWPORT) => {
+export const renderDesign = async (browser, html, viewport = DEFAULT_VIEWPORT, { cawDir, file } = {}) => {
     const context = await browser.newContext({ viewport, javaScriptEnabled: false, offline: true, serviceWorkers: 'block' });
-    await context.route(/^(?!data:|about:)/, (route) => route.abort());
+    if (cawDir === undefined || file === undefined) {
+        await context.route(/^(?!data:|about:)/, (route) => route.abort());
+        const page = await context.newPage();
+        await page.setContent(html, { waitUntil: 'load', timeout: RENDER_TIMEOUT_MS });
+        return page;
+    }
+    // With its file: the page at an address of its own, so that what it links relatively (a snapshot's stylesheets, fonts and
+    // images, design/assets/…) is served from caw/design. Nothing else is read, nothing goes out.
+    const address = `${DESIGN_ORIGIN}/${file}`;
+    await context.route(/.*/, async (route) => {
+        const url = route.request().url();
+        if (url === address) return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: html });
+        const served = designAsset(cawDir, url);
+        return served === null ? route.abort() : route.fulfill({ status: 200, contentType: served.type, body: readFileSync(served.path) });
+    });
     const page = await context.newPage();
-    await page.setContent(html, { waitUntil: 'load', timeout: RENDER_TIMEOUT_MS });
+    await page.goto(address, { waitUntil: 'load', timeout: RENDER_TIMEOUT_MS });
     return page;
+};
+
+// The address a design page is rendered at; .invalid never resolves, every request to it is answered from caw/design.
+const DESIGN_ORIGIN = 'http://design.caw.invalid';
+export const ASSET_TYPES = {
+    '.css': 'text/css', '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.otf': 'font/otf', '.eot': 'application/vnd.ms-fontobject',
+    '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp',
+    '.avif': 'image/avif', '.ico': 'image/x-icon', '.bmp': 'image/bmp',
+};
+
+/** A file a rendered design asks for: under caw/design, a regular file and no link, of a kind in ASSET_TYPES; else null. */
+const designAsset = (cawDir, url) => {
+    let path;
+    try {
+        const parsed = new URL(url);
+        if (parsed.origin !== DESIGN_ORIGIN) return null;
+        path = decodeURIComponent(parsed.pathname).slice(1);
+    } catch {
+        return null;
+    }
+    const segments = path.split('/');
+    if (segments.length < 2 || segments[0] !== DESIGN_DIR || !segments.slice(1).every((segment) => SEGMENT.test(segment))) return null;
+    const type = ASSET_TYPES[extname(path).toLowerCase()];
+    if (type === undefined) return null;
+    const root = join(cawDir, DESIGN_DIR);
+    const full = resolve(cawDir, path);
+    try {
+        if (!inside(root, full) || !inside(realpathSync(root), realpathSync(full)) || lstatSync(full).isSymbolicLink() || !lstatSync(full).isFile()) return null;
+    } catch {
+        return null;
+    }
+    return { path: full, type };
 };
 
 /** A judged design in one line, as evidence and note. */
@@ -627,9 +741,11 @@ export const createDesignJudge = ({ cawDir, launch, read, secrets = () => [] }) 
             if (path === null) return { file, verdict: 'missing', note: t('session.design.noFile', { file }) };
             browser ??= await launch();
             const html = await read(path);
-            const rendered = await renderDesign(browser, html, viewport ?? DEFAULT_VIEWPORT);
+            const rendered = await renderDesign(browser, html, viewport ?? DEFAULT_VIEWPORT, { cawDir, file });
             try {
                 const target = await structureOf(rendered, { texts });
+                // A click's ripple or a moving label is not the screen: measured once it settled (ExtJS Material, settleProbe).
+                await settle(page);
                 const actual = await structureOf(page, { secrets: secrets(), texts });
                 const { met, ...found } = compareStructure(target, actual);
                 return { file, verdict: met ? 'met' : 'not-met', ...found };

@@ -135,7 +135,7 @@ const main = async ([command, ...args]) => {
     }
     const host = () => import('../src/host/commands.mjs');
     // --overlay belongs to the overlay extension: without the block it is a usage error with the hint, before anything runs.
-    if (['run', 'record', 'open'].includes(command) && args.some((arg) => arg === '--overlay' || arg.startsWith('--overlay=')) && !overlayActive(root)) throw overlayInactive('cli.overlayFlagInactive');
+    if (['run', 'record', 'open', 'design'].includes(command) && args.some((arg) => arg === '--overlay' || arg.startsWith('--overlay=')) && !overlayActive(root)) throw overlayInactive('cli.overlayFlagInactive');
     switch (command) {
         case 'init': {
             // --explore-only: look at the app and write only caw/.explore.json, no config.
@@ -169,6 +169,7 @@ const main = async ([command, ...args]) => {
             if (!overlayActive(root)) throw overlayInactive('cli.overlayCommandInactive');
             return (await import('../src/ext/overlay/overlay-check.mjs')).overlayCommand(root, args);
         case 'role': return (await import('../src/host/role-command.mjs')).roleCommand(root, args);
+        case 'design': return (await host()).design(root, args);
         case 'skill': return (await import('../src/host/skill.mjs')).skillCommand(root, args);
         case 'run': return (await host()).run(root, args);
         case 'record': return (await host()).record(root, args);

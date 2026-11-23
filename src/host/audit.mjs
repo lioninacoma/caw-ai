@@ -175,7 +175,9 @@ const stepChanges = (finding, { before, after, sameExpect }, failLists, designs)
         if (after.design === undefined) out.push(finding('design-removed', 'weakening', { ...at, before: before.design, vars: { file: before.design } }));
         else if (after.design !== before.design) out.push(finding('design-changed', 'weakening', { ...at, before: before.design, after: after.design, vars: { was: before.design, now: after.design } }));
         else if (designs.before?.has(before.design) && designs.after !== undefined && designs.before.get(before.design) !== designs.after.get(before.design)) {
-            out.push(finding('design-file-changed', 'weakening', { ...at, vars: { file: before.design } }));
+            // Structure areas added to the file: inside them looks, gaps and sizes are no longer judged.
+            const areasAdded = (designs.areasAfter?.get(before.design) ?? 0) - (designs.areasBefore?.get(before.design) ?? 0);
+            out.push(finding('design-file-changed', 'weakening', { ...at, vars: { file: before.design, structure: Math.max(0, areasAdded) } }));
         }
     }
     const triesBefore = before.retry?.times ?? 0;
@@ -360,13 +362,16 @@ export const auditChanges = (before, after) => {
                     vars: { was: pair.before.expect },
                 })));
             }
-            findings.push(...stepChanges((kind, severity, fields) => finding(kind, severity, { test, ...fields }), pair, failLists, { before: before.designs, after: after.designs }));
+            findings.push(...stepChanges((kind, severity, fields) => finding(kind, severity, { test, ...fields }), pair, failLists, { before: before.designs, after: after.designs, areasBefore: before.designAreas, areasAfter: after.designAreas }));
         }
     }
     for (const test of after.tests.keys()) if (!before.tests.has(test)) findings.push(finding('test-added', 'listed', { test }));
     findings.push(...configChanges(finding, before.config, after.config));
     return findings.sort((a, b) => SEVERITIES.indexOf(a.severity) - SEVERITIES.indexOf(b.severity));
 };
+
+/** How many elements of a design are marked data-caw-match="structure". */
+const structureAreas = (html) => (String(html).match(/\bdata-caw-match\s*=\s*["']?structure\b/gi) ?? []).length;
 
 /** The design files the steps of these tests link, as the steps name them (relative to the caw folder). */
 const linkedDesigns = (tests) => [...tests.values()].flatMap(({ steps }) => steps.map(({ design }) => design)).filter(isDesignName);
@@ -391,6 +396,10 @@ export const auditProject = (root, ref) => {
     });
     const inTree = workingBlobIds(root, present.map(([, path]) => path));
     after.designs = new Map(present.map(([name, path]) => [name, inTree.get(path)]));
+    // How many structure areas (data-caw-match="structure") each linked design has on either side.
+    const atBaseText = readAtCommit(root, base, names.filter((name) => atBase.has(`${PROJECT_DIR}/${name}`)).map((name) => `${PROJECT_DIR}/${name}`));
+    before.designAreas = new Map([...atBaseText].map(([file, text]) => [file.slice(PROJECT_DIR.length + 1), structureAreas(text)]));
+    after.designAreas = new Map(present.map(([name, path]) => [name, structureAreas(readFileSync(path, 'utf8'))]));
     return { base, before, after };
 };
 

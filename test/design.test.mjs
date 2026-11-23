@@ -392,6 +392,75 @@ test('rendered: the design page runs no scripts and loads nothing', async (t) =>
     }
 });
 
+/**
+ * A screen with a heading outside and a form card inside a structure area (data-caw-match="structure" in the design). The
+ * options build the app's deviations: its own look inside the area, a missing or renamed element, swapped buttons, a style
+ * outside the area.
+ */
+const structureScreen = ({ marked = true, card = 'background:#eeeeee;padding:20px;border-radius:4px', button = 'background:#e5533a;color:#fff;padding:6px 14px',
+    label = 'font-size:14px;color:#222', gap = '8px', heading = 'Note', buttons = ['Save', 'Cancel'], title = 'color:#111111;font-size:28px' } = {}) => `<!doctype html><html><head><style>
+body{margin:0;font-family:Arial,sans-serif}h1{${title};margin:16px}.card{${card};display:flex;flex-direction:column;gap:${gap};margin:16px}
+.card label{${label}}.card button{${button};border:0}.row{display:flex;gap:${gap}}
+</style></head><body><h1>Orders</h1><main${marked ? ' data-caw-match="structure"' : ''}><div class="card"><h2>${heading}</h2>
+<label>Title <input></label><div class="row">${buttons.map((name) => `<button>${name}</button>`).join('')}</div></div></main></body></html>`;
+
+test('rendered: inside data-caw-match="structure" only presence, order, texts and relations count; outside everything stays exact', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    const viewport = { width: 800, height: 600 };
+    const rendered = await renderDesign(browser, structureScreen(), viewport);
+    const target = await structureOf(rendered);
+    await rendered.context().close();
+    assert.ok(target.elements.some(({ loose }) => loose === true), 'the area is marked loose');
+    assert.equal(target.elements.find(({ key }) => key === 'heading "Orders"').loose, undefined, 'outside it nothing is loose');
+    const context = await browser.newContext({ viewport });
+    try {
+        const page = await context.newPage();
+        const judge = async (options) => {
+            await page.setContent(structureScreen({ marked: false, ...options }));
+            return compareDetailed(target, await structureOf(page));
+        };
+        // The framework's own look inside the area: colours, paddings, radius, font sizes, gaps and sizes.
+        const looked = await judge({ card: 'background:#fafafa;padding:32px;border-radius:12px;box-shadow:0 1px 3px #0003', button: 'background:#2196f3;color:#fff;padding:10px 24px;font-size:15px', label: 'font-size:12px;color:#757575', gap: '20px' });
+        assert.deepEqual(looked.deviations, []);
+        assert.equal(looked.met, true);
+        // Presence, texts and order still count.
+        const missing = await judge({ buttons: ['Save'] });
+        assert.equal(missing.met, false);
+        assert.ok(missing.missing.includes('button "Cancel"'), missing.missing.join('; '));
+        const renamed = await judge({ heading: 'Notes' });
+        assert.deepEqual(renamed.textDiffs, ['Text: heading "Note" → "Notes"']);
+        const swapped = await judge({ buttons: ['Cancel', 'Save'] });
+        assert.equal(swapped.met, false);
+        assert.ok(swapped.layoutDiffs.some((line) => line.includes('button "Cancel"')), swapped.layoutDiffs.join('; '));
+        assert.deepEqual(swapped.styleDiffs, []);
+        // Outside the area a style is compared as before.
+        const outside = await judge({ title: 'color:#cc0000;font-size:28px' });
+        assert.deepEqual(outside.styleDiffs, ['heading "Orders": color #111111 → #cc0000']);
+        assert.equal(outside.met, false);
+    } finally {
+        await context.close();
+    }
+});
+
+test('without data-caw-match the same look differences are style and layout deviations', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    const viewport = { width: 800, height: 600 };
+    const rendered = await renderDesign(browser, structureScreen({ marked: false }), viewport);
+    const target = await structureOf(rendered);
+    await rendered.context().close();
+    const context = await browser.newContext({ viewport });
+    try {
+        const page = await context.newPage();
+        await page.setContent(structureScreen({ marked: false, card: 'background:#fafafa;padding:32px;border-radius:12px', button: 'background:#2196f3;color:#fff;padding:10px 24px', gap: '20px' }));
+        const found = compareDetailed(target, await structureOf(page));
+        assert.ok(found.styleDiffs.some((line) => line.startsWith('button "Save": background-color')), found.styleDiffs.join('; '));
+        assert.ok(found.layoutDiffs.length > 0);
+        assert.equal(found.met, false);
+    } finally {
+        await context.close();
+    }
+});
+
 test('rendered: a font embedded as a data: URL loads although the design renders offline (guide topic design)', async (t) => {
     if (needsChrome()) return t.skip('no Chrome');
     const font = readFileSync(new URL('../assets/fonts/geist-mono.woff2', import.meta.url)).toString('base64');

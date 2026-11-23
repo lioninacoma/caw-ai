@@ -19,7 +19,18 @@ with kind `design` (with `design.fail: []` in the config it only warns). Control
 fail. The replay goes on; the step is not retried and learns no effects in that run. `result.json` holds per judged step
 `design: { file, verdict, missing, extra, styleDiffs, layoutDiffs, textDiffs }`; the lines read like
 `gap button "Save" → block "Note": 19px → 43px`, `block "Note": below button "Save" → above button "Save"`,
-`heading "Note": font-family Georgia → Arial`, `text: heading "Note" → "Notes"`.
+`heading "Note": font-family Georgia → Arial`, `text: heading "Note" → "Notes"`. The app is measured once its screen settled
+(animations that end have ended, the DOM unchanged for a moment, at most 3 s): a click's ripple or a label still moving is no
+deviation. A design may link files beside it under `caw/design` relatively (a snapshot's stylesheets, fonts and images in
+`design/assets/…`); they are served from there, nothing else loads.
+
+**Structure areas.** An element of the design marked `data-caw-match="structure"` is compared, with everything inside it, only
+by structure: presence (controls, view lines, texts), static texts, order and relation to its neighbours (below, above, right
+of, left of, inside). Its looks (fonts, colors, backgrounds, paddings, radii, borders and shadows of blocks), gaps, indents
+and sizes are not compared, nor the gap from the element before it into the area and out of it. Outside it everything stays
+exact. Use it only when the person agreed that this part may look as the app's framework draws it (a design system the draft
+could not use); a draft from the app (below) needs none. The deviation lines read as before; in a linked design, adding such
+an area changes the file and `caw audit` reports it as a weakening that names the added areas.
 
 **A learned look.** `look: true` on a step (also only the person's: never set or remove it yourself; caw may suggest steps to
 the person after `record`) learns that step's look and then fails with kind `visual` when it changes. A look learns when
@@ -35,11 +46,12 @@ is computed anew after a reload or a restored state. Its "{{label:run.button.bui
 the card of a design not met does (`design.unmet`, option `ask`); on yes you get the task with the deviations as a message.
 
 **Fetch and write a design.**
-1. Get the design yourself: one artboard of a Claude Design artifact as a static page ("Take a draft from a Design artifact"
-   below), or a Figma export as HTML. caw never fetches anything.
+1. Get the design: by default a draft from the app ("Draft from the app" below: a snapshot of the screen with the new part
+   added), or one artboard of a Claude Design artifact as a static page ("Take a draft from a Design artifact"), or a Figma
+   export as HTML. caw never fetches anything from outside the app.
 2. Write it with `caw_design` `{action: "put", file: "design/<name>.html", content}`. Never write into `caw/` with your own Edit or Write tools.
    A design a step already links is what that step is judged against: replace it only when the person asked for it, with
-   `personAsked: true`; without it `put` refuses and names the steps.
+   `personAsked: true`; without it `put` (and `snapshot` onto that file) refuses and names the steps.
 3. Link it to a step only when the person asked for exactly that: `caw_design` `{action: "link", test, step, file,
    personAsked: true}`. `{action: "list"}` shows the design files and which steps link them.
 
@@ -54,6 +66,39 @@ and `caw_status` (`result.pendingDesign`: `step`, `file`, `verdict`, `missing`, 
 `extra`), the terminal and the chat ("Target design of S4 at its entry: …"). It fails nothing and changes no exit code; once
 the step is recorded, it is judged after its check like any other. The entry is the screen before the step's own actions: a
 design of their result (an opened dialog, a saved message) can only be met there as far as it shows the same screen.
+
+## Draft from the app
+
+The default starting point for a draft of a new part of an existing screen. The app's look comes from its CSS framework or
+design system (ExtJS themes, Material, Bootstrap, the team's own); a draft with CSS of its own can only be met when the
+developers write that CSS too, which breaks the project's design guide. A draft from the app uses the app's stylesheets and
+markup, so the new part is built with the framework's own classes and components.
+
+1. **Snapshot:** `caw_design` `{action: "snapshot", test, step, file?, env?}` (the person: `caw design snapshot <test>@<S4>
+   [--env <env>] [--name <name>]`). caw plays the test headless to the entry of the step, like `open <test>@<S4>` without a
+   window, chat or learning, and writes the screen as `design/<name>.html` (default `<test>-<S4>`): the DOM without scripts,
+   field values frozen into attributes (never a password or a hidden field's value; the role's secrets redacted), the app's
+   stylesheets as files under `design/assets/<name>/` (inline `<style>` stays in the page, linked stylesheets and `@import`
+   become `sheet-<n>.css`, fonts and images they and the page reference are stored too when they come from the app's origin
+   or were loaded by the page), animations at their end. It only reads the app (GET requests through the run's guards, also
+   on production and without `writable`). The answer names files that could not be stored (`notes`: a stylesheet of another
+   origin without CORS, frames, shadow DOM, scrolled content shown from the top). The snapshot judged against the same state
+   is met with no deviation and renders offline exactly like the app (measured on errand and on ExtJS 6.5 Modern with the
+   Material theme: 0 deviations, 0 differing pixels).
+2. **Draft:** give the snapshot to whoever drafts (you, or the person's design session) with the rule: change only what is
+   new, inside the snapshot's markup, with the classes and markup the app already uses for the same kind of element (copy an
+   existing field, button or card and change its texts); no `<style>` of its own, no `style` attributes of its own, no
+   fonts or colors of its own. Copy an element **in the state it will have**: frameworks write state into the markup (ExtJS:
+   an empty field has `x-empty x-label-inside`, its label `translateY(…)` and `font-size` as inline style, its clear trigger
+   `x-hidden-display`). Data stays as the snapshot shows it (the data rule applies in design and app alike); nothing needs
+   `data-caw-data` that the app does not mark.
+3. **Put** the draft under its own name (`design/<feature>.html`, keep the snapshot as it is) and link it as usual. Measured:
+   a new row on errand drafted from the snapshot and built with the app's classes only: met, 0 deviations (the same row in
+   the artifact's own CSS: 61); a new field and button on ExtJS drafted from the snapshot's markup: met, 0 deviations (in
+   own CSS approximating the theme: 65).
+
+A snapshot is the screen with the data of that state, from the environment it ran on: on production that is real data. Write
+it into a project the person shares only with their consent, and prefer a test environment.
 
 ## Take a draft from a Design artifact
 
@@ -77,14 +122,26 @@ an artboard; write it as a static page:
    whitespace. The page made this way is judged exactly like the artboard rendered by its runtime (measured: no deviation).
 4. `put` it, as above. A `{{hole}}`, `<x-dc>` or `<sc-if>` left over is refused with the reason.
 
+**With the app's stylesheet.** A Design artifact draws with its own CSS. To draft in the app's look there, take a snapshot of
+the screen first ("Draft from the app") and tell the design session to use the snapshot's markup and class names (give it the
+snapshot's `<body>`), drawing only the new part. Converting the artboard, keep its structure and class names and replace its
+own CSS by the app's: `put` with `stylesFrom: "design/<snapshot>.html"` removes every `<style>` and `<link rel=stylesheet>` of
+the page and links the snapshot's stylesheets in their order (paths made relative to the page); the answer says how many it
+replaced and how many elements still carry a `style` attribute (the artboard's own CSS unless it came from the snapshot's
+markup: remove it or name it to the person). Measured on errand (a new row, judged against the app built with its classes
+only): the artboard with the app's class names and its own CSS 44 deviations, the same with `stylesFrom` 0; an artboard with
+its own markup and inline styles stays far off also with the app's CSS (53), since its classes are not the app's.
+
 **Not in the app's style.** Before you build, put the draft's fonts, colors, sizes and frame next to the app's CSS. A draft that
 only approximates the app (its own fonts, its own paddings, a fixed-size artboard with its own background) is met only once
 the app takes over all of it: measured on a note draft in its own fonts against an app that implements the note exactly,
 43 style and 20 layout deviations (`heading "Note": font-family Fraunces → Iowan Old Style`, `select "Move to": padding 8px
 10px → 9px 12px`, `indent block "D" → link "← All todos": 22px → -317px`), none of them the note. Then tell the person what
-differs and let them choose, for example: (a) the draft is redone in the app's style and only the new part is built
+differs and let them choose, for example: (a) the draft is redone from the app ("Draft from the app": a snapshot with the new
+part added in the app's markup, or the artboard with the app's class names and `stylesFrom`) and only the new part is built
 (recommended when they want the new part, not a new look), (b) the app is built to the draft, its look changes on this
-screen, (c) they change the draft themselves.
+screen, (c) they change the draft themselves, (d) the part the framework draws is marked `data-caw-match="structure"`: only
+its structure is judged (above). There is no tolerance for looks: a style differs or it does not.
 
 **Drafting in the app's style.** When you draft a screen (in a Design artifact or directly as the page), or tell the person what
 to ask for in theirs:
@@ -112,9 +169,9 @@ export), that request is their consent to link the design to the step that ends 
 build that screen in the application's code. Ask them only for what a gate requires: a `human` decision (topic `session`),
 restarting their dev server, test users.
 
-1. **The design:** fetch it and write it with `caw_design` `put` (above); an artboard of a Design artifact as a static page
-   ("Take a draft from a Design artifact"). Not in the app's style: tell the person before you build (same section). One
-   test per design.
+1. **The design:** fetch it and write it with `caw_design` `put` (above); a draft from the app ("Draft from the app") or an
+   artboard of a Design artifact as a static page ("Take a draft from a Design artifact"). Not in the app's style: tell the
+   person before you build (same section). One test per design.
 2. **The reach:** plan the steps that lead to the screen's entry and already work in the app (topic `tests`; one test,
    written into `caw/tests/<test>.yaml` as the plan so far, without `design:` and `needs:`). Check it with `caw_validate`,
    then record it without a window: `caw_start` `{command: "record", test, headless: true}`; you are the agent and follow the
@@ -144,7 +201,9 @@ its step (`personAsked: true`) and build the screen in the application's code. I
 `caw_status` (and `caw_list` under `drafts`) names `origin: "design"`, `phase` (`draft`, `red`, `green`, `adopted`) and `next`.
 Follow `next`.
 
-1. **Design:** the artboard as a static page with `caw_design` `put` ("Take a draft from a Design artifact").
+1. **Design:** a draft from the app ("Draft from the app": snapshot of the screen the feature changes, the new part added in
+   the app's markup) or the artboard as a static page ("Take a draft from a Design artifact", with `stylesFrom`), with
+   `caw_design` `put`.
 2. **Draft:** write `caw/drafts/<id>.yaml` yourself like a test plan (topic `tests`), with `origin: design` at the top and the
    steps that lead to the screen and already work. `caw_validate`, then `caw_start` `{command: "record", test, headless:
    true}`. Then add the step the design is for at the end (it stays pending; a step that can be walked already may be in the

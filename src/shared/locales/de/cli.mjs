@@ -99,6 +99,13 @@ Befehle:`,
                                          und Entwurf; caw schlägt sie nie nach
       [--headless]                       Ohne Fenster
       [--agent local|docker] [--attach [<key>]]`,
+    'cli.help.design': `  design snapshot <test>@<S4>            Den Bildschirm am Einstieg in S4 (headless wie open, ohne Chat, lernt nichts) als
+      [--env <name>] [--name <name>]     Entwurfsseite caw/design/<name>.html (Standard <test>-S4) mit den eigenen
+                                         Stylesheets, Schriften und Bildern der App unter caw/design/assets/<name>/.
+                                         Ausgangspunkt für einen Entwurf im Stil der App; liest die App nur
+      [--json]                           Das Ergebnis als eine JSON-Zeile
+      [--start] [--step-timeout <dauer>]  wie bei run
+      [--overlay[=<teile>]]              wie bei run`,
     'cli.help.list': `  list [<test>]                          Tests mit Umgebungen, Stand der Aufnahme (aufgenommen, veraltet, nicht
                                          aufgenommen) und ob sie schreiben; mit <test> je Schritt eine Zeile`,
     'cli.help.validate': '  validate                               Config und Tests offline prüfen, ohne Browser und ohne {agent} (CI, Pre-Commit)',
@@ -167,6 +174,7 @@ Browser:
     // The synopsis per command, shown below a usage error.
     'cli.synopsis.init': 'caw init [--url <adresse>] [--env <name>] [--language <kürzel>] [--explore-only] [--login | --no-login] [--yes] [--from <datei>] [--offline] [--insecure-tls] [--allow-http] [--no-mcp]',
     'cli.synopsis.export': 'caw export <test> [--env <name>] [--out <ordner>]',
+    'cli.synopsis.design': 'caw design snapshot <test>@<S4> [--env <name>] [--name <name>] [--json]',
     'cli.synopsis.reproduce': 'caw reproduce "<fehlerbericht>" | --file <datei> | -  [--env <name>] [--role <rolle>] [--from <test>[@<S4>]] [--ref <id>] [--headless] [--agent local|docker] [--attach [<key>]]',
     'cli.reproduceOneSource': 'Den Fehlerbericht entweder als Argument, mit --file oder mit - von stdin, nicht mehrfach.',
     'cli.reproduceBugMissing': 'Welchen Fehler? {caw} reproduce "Nach dem Speichern zeigt die Liste den Eintrag nicht" (oder --file <datei>, oder - für stdin).',
@@ -191,6 +199,17 @@ Browser:
     'cli.synopsis.record': 'caw record <test> [--env <name>] [--role <rolle>] [--headless]  oder  caw record <test>@<S4> [--env <name>] [--agent local|docker | --attach [<key>]]',
     'cli.synopsis.open': 'caw open [--env <name>] [--role <rolle>]  oder  caw open <test>[@<S4>] [--design] [--env <name>] [--agent local|docker | --attach [<key>]]',
     'cli.synopsis.overlay': 'caw overlay status|check [--env <name>] [--part <teil>] [--apply] [--start] [--json]',
+    'cli.designAction': 'design kennt snapshot: caw design snapshot <test>@<S4> [--env <name>] [--name <name>]. Nicht: „{action}“.',
+    'cli.designSnapshotStep': 'design snapshot braucht einen Schritt: caw design snapshot {test}@S2 nimmt den Bildschirm am Einstieg in S2.',
+    'cli.designSnapshotName': '„{name}“ ist kein Name für eine Entwurfsseite: einfache Teile (Buchstaben, Ziffern, - _ .), z. B. --name bestellformular, nicht unter assets/.',
+    'cli.designSnapshotWritten': 'Snapshot geschrieben: {file}, {count} Dateien in {assets}. Entwurf davon ausgehend: Markup und Klassen behalten, nur Neues ergänzen.',
+    'cli.designSnapshotNotReached': 'Kein Snapshot: Der Lauf hat den Einstieg in {step} von {test} nicht erreicht. Bericht: {report}',
+    'cli.designSnapshotNote.sheet': 'Ein Stylesheet einer anderen Herkunft war nicht lesbar (kein CORS) und fehlt: {detail}',
+    'cli.designSnapshotNote.file': 'Eine Datei, auf die die Seite verweist, wurde nicht gespeichert; offline fehlt sie: {detail}',
+    'cli.designSnapshotNote.limit': 'Grenze des Snapshots erreicht, nicht gespeichert: {detail}',
+    'cli.designSnapshotNote.frame': 'Ein Frame bleibt leer (sein Inhalt gehört nicht zum Snapshot): {detail}',
+    'cli.designSnapshotNote.shadow': 'Shadow DOM gehört nicht zum Snapshot: {detail}',
+    'cli.designSnapshotNote.scroll': 'Gescrollter Inhalt ({detail}) steht im Snapshot wieder oben.',
     'cli.usageLine': 'Aufruf: {synopsis}',
     'cli.errorCode': '(code: {code}, exit {exit})',
     'cli.reportOutside': '--report {kind}={file} muss eine Datei im Projekt nennen.',
@@ -676,7 +695,7 @@ Browser:
     'cli.audit.kind.action-removed': 'Aktion {number} von {step} ({action}) wurde entfernt: der Schritt führt sie nicht mehr aus.',
     'cli.audit.kind.design-removed': '{step} wird nicht mehr an seinem Zieldesign {file} gemessen.',
     'cli.audit.kind.design-changed': '{step} wird an einem anderen Zieldesign gemessen: {was} → {now}.',
-    'cli.audit.kind.design-file-changed': 'Das Zieldesign {file} von {step} wurde geändert oder entfernt: der Schritt wird ab jetzt an etwas anderem gemessen.',
+    'cli.audit.kind.design-file-changed': ({ file, step, structure = 0 }) => `Das Zieldesign ${file} von ${step} wurde geändert oder entfernt: der Schritt wird ab jetzt an etwas anderem gemessen.${structure > 0 ? ` Es hat ${structure} ${structure === 1 ? 'Bereich' : 'Bereiche'} mehr mit data-caw-match="structure": darin werden Aussehen, Abstände und Größen nicht mehr beurteilt.` : ''}`,
     'cli.audit.kind.look-forgotten': 'Der gelernte Look von {step} wurde verworfen, look: true bleibt: bis er neu gelernt ist, scheitert ein anders aussehender Schritt nicht.',
     'cli.summaryWritten': 'Zusammenfassung: {file}',
     'cli.jsonWritten': 'JSON-Bericht: {file}',
