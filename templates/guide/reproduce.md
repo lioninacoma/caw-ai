@@ -26,7 +26,8 @@ With a window the workbench guides the person through the same phases in one pro
 "{{label:run.button.fixByAgent}}", "{{label:run.button.rerun}}", "{{label:run.button.promote}}"). While that process still runs (`caw_status` says `running`), the person decides there: wait for it to end
 before you start the next command.
 
-Drafts are not in `run --all`; `caw_list` and `caw_validate` list them under `drafts`. Never move or edit a draft yourself.
+Drafts are not in `run --all`; `caw_list` and `caw_validate` list them under `drafts` (`caw_list` with `phase` and `next`). Never
+move or edit a draft from a reproduction yourself; a design draft (`origin: design`) is yours to write once (topic `design`).
 
 **Tickets from another tool.** caw talks to no ticket system. When another MCP server in this session serves tickets and the
 person asks you to reproduce some, take one ticket at a time: its text as `bug`, its id as `ref` (up to 64 letters, digits and

@@ -56,6 +56,10 @@ recommend what to do. The browser is still as the run left it.
   (`cause`). The test is right: advise the fix of the application (`side: app` with `edits` and `prompt`), or `side:
   outside` when the cause lies beyond the project, never a change to the test. The person applies each edit on its card and
   tests again.
+- **Building a target design (`task.fix` with `design`):** the run is a design draft, red because the screen of its step does
+  not meet its target design yet. `fix` names the step, its expected result, the design file (`design`) and the deviations
+  (`deviations`: `missing: …`, `text: …`, `style: …`, `layout: …`). Advise the change of the application that builds exactly
+  those (`side: app` with `edits` and `prompt`), never a change to the test or the design.
 - **Submit:** Write the advice and call `advise --file <file>` (in the session: `advise` with the content in `file`). At most 10 entries, the
   most important recommendation first, without e-mail addresses and credentials:
 

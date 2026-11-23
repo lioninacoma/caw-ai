@@ -117,6 +117,13 @@ red: { step: S3, run: 2026-11-21T09-12-03-417Z-bug-search-finds-nothing, head: "
 carry `red`; in `caw/tests` `validate` rejects it. Recording the draft again drops it. `run <id> --promote` moves a green draft
 to `caw/tests` and `caw/recordings` without `red` ([commands](commands.md#promoting-a-draft)).
 
+**A design draft** is written for a target design ([guide](guide.md#build-a-draft-test-first)) and carries `origin: design` (only
+in `caw/drafts`, and no other value). Its red step is the last step with `design:`; before one is linked there is nothing to be
+red at. It is recorded like a test: its checks pass. Its `red` says that a run judged that step's design not met with every step
+before it passed, after the step's check or, while the step is pending, at its entry. A new plan keeps that `red` as long as the
+red step keeps its design and expected result. `--promote` needs the design met and moves the test without `origin` and `red`;
+the run gets `design-report.md`.
+
 ## Target design
 
 A step can name the screen it should end on: `design: design/order-form.html`. Only people write `design` and `needs` into the test file (or have their Claude Code session link a design with `caw_design` when they ask); the agent's plan may not carry them, and when caw rewrites a step (fix, re-record) it keeps them.

@@ -9,7 +9,8 @@ caw keeps end-to-end regression tests for this project's own web application. A 
 it once with an agent (you) in the real application and from then on replays it with Playwright, without AI, locally and in CI. A
 second benefit: any state a test reaches can be restored to develop from ("take me to where the cart is filled"). A
 third: a reported bug can be reproduced on its own, signed in, with a report and a draft test as the result, which is
-recorded red, turns green with the fix and then joins the tests with a fix report (topic `reproduce`).
+recorded red, turns green with the fix and then joins the tests with a fix report (topic `reproduce`). A fourth: a new screen
+drawn as a target design is built test-first the same way, red until the design is met, then green (topic `design`).
 
 caw is not a load test, not a crawler and not a test generator for apps the team does not own.
 
@@ -41,7 +42,7 @@ caw is not a load test, not a crawler and not a test generator for apps the team
 | `caw_role` | Test users per role: list, add (names the variables), login (saved session), remove |
 | `caw_doctor`, `caw_validate`, `caw_list` | Checks and overview, no tokens |
 | `caw_reproductions` | Past reproductions with verdict and `ref`; `refs` names those without a run (topic `reproduce`) |
-| `caw_design` | Target designs under `caw/design`: `put` (a static .html page; a Design artifact's artboard converted first), `list`, `link` a step only on the person's request; a test for a design: topic `design` |
+| `caw_design` | Target designs under `caw/design`: `put` (a static .html page; a Design artifact's artboard converted first), `list`, `link` a step only on the person's request; a test for a design, a draft built with TDD: topic `design` |
 | `caw_start` | Start `run`, `record`, `open` or `reproduce` with you as the agent |
 | `caw_status` | Wait for a run; says which topics apply when it waits for you, and which decision it waits for (`waiting.decision`) |
 | `caw_decide` | Answer the waiting decision: a `free` option yourself, a `human` one only with the person's consent (topic `session`) |

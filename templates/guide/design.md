@@ -135,3 +135,30 @@ restarting their dev server, test users.
    run passed with nothing pending and the step's `design` in `result.json` (`steps`) has `verdict: "met"` with `missing`,
    `textDiffs`, `styleDiffs` and `layoutDiffs` all empty; name the run and its report as evidence. Not met: back to 4 (the
    recording stays, unless the steps changed).
+
+## Build a draft with TDD
+
+When the person approved a draft of a feature (a Design artifact, drafted in the app's style) and asks you to build it with TDD
+("build it with TDD", "setze es mit TDD um"), that request is their consent to write a design draft for it, link the design to
+its step (`personAsked: true`) and build the screen in the application's code. It goes like a bug fix: after every run
+`caw_status` (and `caw_list` under `drafts`) names `origin: "design"`, `phase` (`draft`, `red`, `green`, `adopted`) and `next`.
+Follow `next`.
+
+1. **Design:** the artboard as a static page with `caw_design` `put` ("Take a draft from a Design artifact").
+2. **Draft:** write `caw/drafts/<id>.yaml` yourself like a test plan (topic `tests`), with `origin: design` at the top and the
+   steps that lead to the screen and already work. `caw_validate`, then `caw_start` `{command: "record", test, headless:
+   true}`. Then add the step the design is for at the end (it stays pending; a step that can be walked already may be in the
+   draft before recording) and link it: `caw_design` `{action: "link", test, step, file, personAsked: true}`. Otherwise never
+   edit the draft: its recordings and `red` are caw's.
+3. **Red:** `caw_start` `{command: "run", test, headless: true}`. The run judges the design at the pending step's entry (after
+   its check once it is recorded); not met with every step before passed, caw saves `red` into the draft. Met already: the draft
+   shows nothing missing; tell the person.
+4. **Build:** `next` is `{do: "build-design", red: {step, design, deviations}, then}`: change the app's code until the
+   deviations are gone (data never counts). Ask the person to restart their dev server when it must serve the change
+   (`caw_start` with `start: true` when the config has a `start` command). Then `then`, `caw_status` with `wait`; repeat.
+5. **Green:** a run judged the design met. While its step is pending, `next` records the draft headless (the recording is
+   adopted under the usual rules; a `human` decision waits for the person's consent through `caw_decide`), then
+   `{command: "run", test, promote: true}`.
+6. **Adopt:** promoting is the person's decision (`fix.green`, gate `human`): ask them, or they click
+   "{{label:run.button.promote}}" in the window. Then phase `adopted`: show them `next.designReport`, the design report (red at
+   which step with how many deviations, green in which run, the changed files, the other tests).

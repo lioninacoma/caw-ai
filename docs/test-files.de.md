@@ -118,6 +118,14 @@ git). Nur Entwürfe dürfen `red` tragen; in `caw/tests` lehnt `validate` es ab.
 `run <id> --promote` übernimmt einen grünen Entwurf ohne `red` nach `caw/tests` und `caw/recordings`
 ([Befehle](commands.de.md#einen-entwurf-übernehmen)).
 
+**Ein Zielbild-Entwurf** ist für ein Zielbild geschrieben ([Leitfaden](guide.de.md#einen-entwurf-testgetrieben-umsetzen)) und trägt
+`origin: design` (nur in `caw/drafts`, und keinen anderen Wert). Sein roter Schritt ist der letzte Schritt mit `design:`; solange
+keiner verknüpft ist, gibt es nichts, woran er rot sein könnte. Er wird wie ein Test aufgenommen: Seine Prüfungen bestehen. Sein
+`red` sagt, dass ein Lauf das Zielbild dieses Schritts als nicht erfüllt beurteilt hat, während alle Schritte davor bestanden,
+nach der Prüfung des Schritts oder, solange der Schritt offen ist, an seinem Einstieg. Ein neuer Plan behält dieses `red`, solange
+der rote Schritt sein Zielbild und sein erwartetes Ergebnis behält. `--promote` braucht das erfüllte Zielbild und übernimmt den
+Test ohne `origin` und `red`; der Lauf bekommt `design-report.md`.
+
 ## Zielbild
 
 Ein Schritt kann den Bildschirm nennen, auf dem er enden soll: `design: design/order-form.html`. `design` und `needs` schreiben nur Menschen in die Testdatei (oder lassen ihre Claude-Code-Session einen Entwurf mit `caw_design` verknüpfen, wenn sie darum bitten); der Plan des Agenten darf sie nicht enthalten, und wenn caw einen Schritt neu schreibt (beheben, neu aufnehmen), bleiben sie erhalten.

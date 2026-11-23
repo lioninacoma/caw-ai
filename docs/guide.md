@@ -85,6 +85,18 @@ While the step is still pending, a run that ends healthy before it judges its de
 
 **A draft from a Design artifact.** Let Claude draft the screen as a Claude Design artifact, approve it, then tell your session "write a test for this design" with the artifact's link. The session reads the artifact with its own Artifact tool (caw never contacts claude.ai), turns the chosen artboard into a static page (holes filled with the values of the chosen props, branches resolved, the canvas runtime's scripts left out; `caw_design` refuses an artboard that is not converted) and writes it with `caw_design`. A draft is met only as far as it is drawn in the app's style: with its own fonts, paddings and a fixed-size board it differs from the app on the whole screen, not only in the new part. So ask for the draft in the app's style (the app's CSS variables, fonts, sizes and page container; your session can read them from the code) at the width the test is recorded at. Before it builds, the session tells you when a draft is not in the app's style and lets you choose. Designs render offline: a web font the draft loads does not load, but its name still counts; fonts the app loads itself can be embedded in the design as `data:` URLs.
 
+### Build a draft test-first
+
+The same way as a bug fix, for a new screen: ask Claude for a draft of the feature (a Claude Design artifact in the app's style, above), approve it, then tell your session "build it with TDD". It takes the artboard over as a static page (`caw_design` `put`) and writes a **design draft**: `caw/drafts/<id>.yaml` with `origin: design`, the steps up to the screen and, at the end, the step the design is for, linked to the design on your request ([test files](test-files.md#drafts)). Then:
+
+1. **Draft:** the steps up to the screen are recorded headless.
+2. **Red:** a run proves that the test catches what is missing: the design's step is judged not met while every step before it passed, at its entry while it is pending (the new feature cannot be walked yet) or after its passed check once it is recorded. caw saves that as `red: { step, run, head }`, like the red proof of a bug.
+3. **Build:** the app is changed (by the session with your approval, or by you) and run again; the deviations say what is still missing. Restart your dev server when it must serve the change (`caw_start` with `start` does it for a server caw starts).
+4. **Green:** a run after the red one judges the design met. A step still pending is recorded now (`record --headless`), its recording adopted under the usual rules.
+5. **Adopt:** `caw run <id> --promote` (or **Adopt**) needs the design met and every other test on the environment green, moves the test to `caw/tests` and writes `design-report.md` into the green run's folder: red at which step with how many deviations (run, commit), green in which run, the files changed since and how many other tests passed.
+
+With a window the chat leads through it with the phases Draft › Red › Build › Green › Adopted over its cards: after the red proof **Now build the target design** lists the deviations and offers **Let Claude Code build it** (its changes come as cards you apply one by one), **I build it myself** and **Later**; **Target design met: S3** offers **Adopt**. Your session reads the same from `caw_status` and `caw_list` (`origin: design`, `phase`: `draft`, `red`, `green`, `adopted`, and `next`).
+
 ## Plain-language tests: record once, replay without AI
 
 A test is a plan in plain language. You or the agent walk it once in the browser; caw stores what was done and replays it from then on without AI, locally and in CI.
