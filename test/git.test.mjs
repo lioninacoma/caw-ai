@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { auditCommand } from '../src/host/audit.mjs';
-import { auditFiles, changedFiles, dirtyFiles, mergeBase, readAtCommit } from '../src/host/git.mjs';
+import { auditFiles, changedFiles, changedLines, dirtyFiles, mergeBase, readAtCommit } from '../src/host/git.mjs';
 import { CawError, exitOf } from '../src/shared/errors.mjs';
 
 const CLI = fileURLToPath(new URL('../bin/caw.mjs', import.meta.url));
@@ -94,6 +94,9 @@ test('git: changed files since a commit for the fix report: committed, uncommitt
     writeFileSync(join(top, 'server.js'), 'neben dem Projektordner');
     git('add', 'server.js');
     assert.deepEqual(changedFiles(root, start), ['../server.js', 'src/app.js', 'src/search.js']);
+    const lines = changedLines(root, start, changedFiles(root, start));
+    assert.deepEqual([...lines.keys()], ['src/app.js'], 'counted: the project\'s tracked files');
+    assert.deepEqual([lines.get('src/app.js').added > 0, changedLines(root, start, []).size], [true, 0]);
     assert.throws(() => changedFiles(root, '--output=x'), (error) => error instanceof CawError && error.code === 'git-ref');
 });
 

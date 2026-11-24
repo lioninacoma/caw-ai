@@ -5,8 +5,12 @@
 // the prefs) or a step fails; then a narrow list on the left with the top-level steps, a click unfolds a step's actions.
 // On a production or read-only environment the address bar carries its badge (shield or lock, as in the settings page).
 //
+// In the guided flow (a bug from reproducing to adopting, or a design draft) a bar below the header names its five steps over
+// the whole width, in every window and from its start; the header then says what it is about (the bug as reported, the design
+// draft's name) instead of the test and its mode. The application alone (F8) and the comparison page cover it.
+//
 // No toolbars: the header holds the steps toggle, the product, the breadcrumb with the test (once) and a badge with the run's
-// mode (none without one), the run facts and one ⋯ menu (also Ctrl+K) that lists every function with its key. F4 shows or
+// mode (none without one, and none while the panel says what runs), the run facts and one ⋯ menu (also Ctrl+K) that lists every function with its key. F4 shows or
 // hides the steps, F6 folds the panel. F8 shows only the application with one line back, F10 stops all animation, Ctrl+,
 // opens the settings page, a view of the workbench (not a dialog) that changes only cosmetic prefs and shows the rest
 // read-only. The chat forwards these keys, and posts them for its slash commands (CHAT_KEYS).
@@ -162,10 +166,11 @@ const compareView = () => {
 
 /**
  * The workbench page. `appUrl` loads the iframe; the host sets everything else via `window.workbench`.
+ * @param flow    the guided flow this window belongs to: { kind: 'fix' | 'design', title, at } (null without one)
  * @param prefs   personal settings: animations 'on' | 'off', steps and chat 'open' | 'closed' (the steps hidden unless 'open'),
  *                mode 'system' | 'light' | 'dark'
  */
-export const workbenchHtml = ({ appUrl, title, prefs = {} }) => {
+export const workbenchHtml = ({ appUrl, title, flow = null, prefs = {} }) => {
     const still = prefs.animations === 'off';
     const classes = [still ? 'still' : '', prefs.steps === 'open' ? '' : 'fold-steps', prefs.chat === 'closed' ? 'fold-chat' : ''].filter(Boolean).join(' ');
     const refreshTitle = t('workbench.refreshTitle');
@@ -197,6 +202,19 @@ body{background:var(--bg)}
 .crumb .sl{color:var(--line2);font-size:18px;font-weight:300}
 .crumb b{color:var(--text);font-weight:500;overflow:hidden;text-overflow:ellipsis}
 #title{flex:0 1 auto;min-width:0;display:block;line-height:20px;overflow:hidden;text-overflow:ellipsis;font-weight:500}#title:empty{display:none}
+/* In the guided flow the bar says what runs; otherwise badge or panel: while the panel says what runs, no badge repeats it. */
+.saying:not(.settings-on) #title,.flow-on:not(.settings-on) #title{display:none}
+@media (min-width:1000px){.saying.fold-chat:not(.flow-on) #title:not(:empty){display:block}}
+.flow-on .crumb .sl,.flow-on #project{display:none}.flow-on .crumb b{font-weight:600}
+/* The guided flow: its five steps across the window, done ticked, the current one marked. */
+.flow{flex:none;display:flex;align-items:center;gap:12px;margin:0;padding:12px 20px;list-style:none;background:var(--nav);border-bottom:1px solid var(--nav-line);font:400 13px/1.3 var(--font)}
+.flow li{display:flex;align-items:center;gap:8px;min-width:0;color:var(--muted)}.flow li:not(:last-child){flex:1 1 auto}
+.flow li:not(:last-child)::after{content:"";flex:1;min-width:8px;height:2px;margin-left:4px;border-radius:1px;background:var(--line)}
+.flow .no{flex:none;display:grid;place-items:center;box-sizing:border-box;width:22px;height:22px;border-radius:50%;border:1px solid var(--line2);font:400 12px/1 var(--font)}.flow .no .i{width:13px;height:13px;stroke-width:2.6}
+.flow .nm{white-space:nowrap}.flow .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.flow .done{color:var(--text)}.flow .done .no{background:var(--pass);border-color:transparent;color:var(--panel)}.flow .done:not(:last-child)::after{background:var(--pass)}
+.flow [aria-current]{color:var(--accent-text);font-weight:600}.flow [aria-current] .no{background:var(--accent);border-color:transparent;color:var(--on-accent);font-weight:600}
+@media (max-width:799px){.flow{gap:8px;padding:10px 16px}.flow li:not([aria-current]) .nm{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}}
 .top-r{margin-left:auto;display:flex;align-items:center;gap:10px;min-width:0}
 .facts{display:flex;gap:14px;margin:0;padding:0;list-style:none;font:400 11.5px/1 var(--font-mono);color:var(--nav-muted);white-space:nowrap;min-width:0;overflow:hidden}
 .facts li{overflow:hidden;text-overflow:ellipsis}
@@ -305,6 +323,8 @@ grid-template-areas:"steps browser chat"}
 #vp{font:400 11.5px/1 var(--font-mono);color:var(--faint)}
 #appBox{flex:1;min-height:0;display:flex;position:relative;overflow:hidden}
 #app{flex:1;min-height:0;width:100%;border:0;display:block;background:#fff}
+/* The guided flow: the agent operates the application. */
+.acting #appBox::after{content:"";position:absolute;inset:0;border:2px solid var(--accent);pointer-events:none}
 /* A pinned viewport: the frame has exactly the recorded size, scaled down (never up) to fit, centred. */
 #appBox.pinned{background:var(--sunk)}#appBox.pinned #app{flex:none;position:absolute;top:0;transform-origin:0 0}
 /* Capturing a step's screen: the frame at its recorded size, unscaled and on top, also over the comparison page. */
@@ -405,7 +425,7 @@ td.m{width:64px;color:var(--muted)}td.m.w{color:var(--warn)}td.p{width:auto;colo
 #soloUrl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font:400 12px/1 var(--font-mono);color:var(--muted)}
 .soloBar .lnk{font-size:12px}
 .solo .soloBar{display:flex}
-.solo .top,.solo .pa-steps,.solo .pa-chat,.solo .appbar,.solo .drawer,.solo .afoot{display:none}
+.solo .top,.solo .flow,.solo .pa-steps,.solo .pa-chat,.solo .appbar,.solo .drawer,.solo .afoot{display:none}
 .solo .panes{grid-template-columns:minmax(0,1fr);grid-template-areas:"browser"}
 .solo .pa-browser{border:0}
 /* App only with the chat (Ctrl+J): the same chat frame floats over the app, 380 x 520 at the bottom right; nothing is copied. */
@@ -486,6 +506,8 @@ td.m{width:64px;color:var(--muted)}td.m.w{color:var(--warn)}td.p{width:auto;colo
 @media (max-width:999px){
 .fold{display:none}.pane-tb{cursor:default}
 .pa{height:auto;min-height:100vh}
+/* The page scrolls here: the bar stays in sight when a card takes the focus. */
+.flow{position:sticky;top:0;z-index:20}
 .panes{grid-template-columns:minmax(0,1fr);grid-template-rows:none;grid-template-areas:"steps" "browser" "chat"}
 .pa-steps{max-height:40vh}.pa-browser{height:70vh}.pa-chat{height:auto;min-height:60vh}
 .win+.win{border-left:0}.pa-browser,.pa-chat{border-top:1px solid var(--line)}
@@ -495,6 +517,7 @@ td.m{width:64px;color:var(--muted)}td.m.w{color:var(--warn)}td.p{width:auto;colo
 <header class="top"><button type="button" class="stoggle" id="stepsToggle" aria-expanded="false" aria-controls="stepsCard" data-press="F4" title="${t('workbench.page.showSteps')} (F4)">${icon('chev-r')}<span>${t('workbench.steps')}</span><span id="tally"></span></button><div class="brand" title="${esc(LONG_NAME)}">${logo({ size: 28, label: 'caw' })}<b class="word" aria-hidden="true">caw</b></div>
 <nav class="crumb" aria-label="${t('workbench.crumb')}"><span class="sl" id="projectSep" hidden>/</span><span id="project" hidden></span><span class="sl">/</span><b id="crumbTest">${esc(test || 'caw')}</b><span id="title" class="bdg line" data-test="${esc(test)}"></span></nav>
 <div class="top-r"><ul class="facts" id="facts" aria-label="${t('workbench.runFacts')}"></ul><span id="notice" role="status" hidden></span><button type="button" class="ib" id="more" aria-haspopup="menu" aria-expanded="false" aria-controls="menu" aria-label="${t('workbench.more')}" title="${t('workbench.more')} (${ctrl} K)">${icon('more')}</button></div></header>
+<ol id="flow" class="flow" hidden></ol>
 <div id="menu" class="pop" role="menu" aria-label="${t('workbench.menu')}" hidden>${menu}</div>
 <main class="panes">
 <section class="pa-steps win" id="stepsCard" aria-label="${t('workbench.steps')}"><p id="leftNote" hidden></p><div id="track"><ol id="steps" aria-label="${t('workbench.steps')}"></ol></div></section>
@@ -513,6 +536,7 @@ ${settingsView(ctrl)}
 <div class="sfoot"><p id="sfoot"></p><button type="button" class="lnk lnk-m" id="scancel">${t('workbench.page.stateCancel')}</button><button type="button" class="btn btn-p" id="sgo" disabled>${t('workbench.page.stateGo')}<kbd>↵</kbd></button></div></div></div>
 <script>
 const T=${json(texts('workbench.page.'))};
+const FLOW=${json(flow)};
 const AGENT_FACT=${json(t('run.fact.agent'))};
 const MODES=${json(MODES)};
 const fill=(key,vars)=>Object.entries(vars).reduce((text,[name,value])=>text.split('{'+name+'}').join(String(value)),T[key]??key);
@@ -972,7 +996,7 @@ const reveal=(i)=>{const deviation=cmp?.deviations[i];if(!deviation)return;synci
     shot.scroll.scrollTo({top:Math.max(0,(box.y+box.height/2)*s-shot.scroll.clientHeight/2),left:Math.max(0,left)});}
   requestAnimationFrame(()=>requestAnimationFrame(()=>{syncing=false;}));};
 const renderCmp=()=>{if(cmp===null)return;
-  $('cmpTest').textContent=$('title').dataset.test||$('crumbTest').textContent;
+  $('cmpTest').textContent=(!document.body.classList.contains('flow-on')&&$('title').dataset.test)||$('crumbTest').textContent;
   $('cmpStep').textContent=(cmp.step.id+' '+cmp.step.name).trim();
   $('cmpMeta').textContent=fill('workbench.page.cmp.meta',{file:cmp.file,width:cmp.viewport.width,height:cmp.viewport.height,run:cmp.run});
   const badge=$('cmpBadge');badge.className='bdg '+(cmp.met?'pass':'fail');badge.innerHTML=cmp.met?ICON.ok:ICON.fail;badge.append(T['workbench.page.cmp.'+(cmp.met?'met':'notMet')]);
@@ -989,6 +1013,12 @@ const compareOf=(given)=>({step:{id:String(given.step?.id??''),name:String(given
   deviations:(Array.isArray(given.deviations)?given.deviations:[]).map((d)=>({kind:['missing','text','style','layout'].includes(d?.kind)?d.kind:'missing',text:String(d?.text??''),design:boxOf(d?.design),app:boxOf(d?.app)})),
   extra:(Array.isArray(given.extra)?given.extra:[]).map(String),
   steps:(Array.isArray(given.steps)?given.steps:[]).map((s)=>({id:String(s?.id??''),name:String(s?.name??''),status:['met','deviations','pending','unknown'].includes(s?.status)?s.status:'unknown',count:Number(s?.count)||0}))});
+// Where the guided flow stands, and whether the agent operates the application then: reproducing or recording.
+let flowAt=null;
+const acting=()=>{document.body.classList.toggle('acting',(flowAt==='start'&&chatState==='advising')||(flowAt==='test'&&chatState==='running'));};
+const FLOW_STEPS=['start','test','fix','again','adopt'];
+// The states whose panel has a heading (chat.mjs): it says what runs.
+const SAYING=['running','pausing','paused','handing','verifying','testing','preparing','advising'];
 // The badge shows "Settings" while the settings page is open; the run's title waits here.
 let titleNodes=[];
 window.workbench={
@@ -1002,6 +1032,15 @@ window.workbench={
   designAside:(on)=>{cmpAside=on===true;applyCmp();},
   // While the host captures a step: the frame unscaled and on top, also over the comparison page; resolves once it is laid out.
   unscaled:(on)=>{document.body.classList.toggle('capture',on===true);return new Promise((resolve)=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(true))));},
+  // The guided flow this window belongs to: { kind, title, at }, at the step that runs (done: all of them), null for none.
+  flow:(given)=>{const on=given!==null&&typeof given==='object';flowAt=on?given.at:null;acting();document.body.classList.toggle('flow-on',on);const bar=$('flow');bar.hidden=!on;if(!on){bar.replaceChildren();return;}
+    const kind=given.kind==='design'?'design':'fix',at=given.at==='done'?FLOW_STEPS.length:FLOW_STEPS.indexOf(given.at);
+    bar.setAttribute('aria-label',T['workbench.page.flow.'+kind]);
+    bar.replaceChildren(...FLOW_STEPS.map((step,i)=>{const li=document.createElement('li');const no=document.createElement('span');no.className='no';no.setAttribute('aria-hidden','true');const nm=document.createElement('span');nm.className='nm';
+      nm.textContent=li.title=T['workbench.page.flow.'+kind+'.'+step]??T['workbench.page.flow.'+step];li.append(no,nm);
+      if(i<at){li.className='done';no.innerHTML=ICON.ok;const sr=document.createElement('span');sr.className='sr';sr.textContent=', '+T['workbench.page.flow.done'];li.append(sr);}else no.textContent=String(i+1);
+      if(i===at)li.setAttribute('aria-current','step');return li;}));
+    const title=String(given.title);$('crumbTest').textContent=title;$('crumbTest').title=title;document.title='caw · '+title;},
   // The first entry is the title: [label, sentence, badge]. The badge shows the mode only ("Claude records"), the breadcrumb
   // names the test; the sentence is the tooltip of both. Without a mode there is no badge: the sentence would name the test a
   // second time. The rest are the facts, shown by their values in mono.
@@ -1046,8 +1085,8 @@ window.workbench={
   mood:(value)=>{if(value==='aborted')aborted=true;else if(['wait','fail','done','ask'].includes(value))aborted=false;
     if(value==='ask'){if(!asking&&document.body.classList.contains('fold-chat'))fold('chat',false,false);asking=true;}else if(['wait','fail','done','aborted'].includes(value))asking=false;
     if(value==='fail')showSteps();summarize();},
-  // The chat's state, e.g. showing: the application bar then shows that recording is on.
-  chatState:(value)=>{chatState=typeof value==='string'?value:null;summarize();},
+  // The chat's state: while its panel names what runs, the header's badge would say it twice.
+  chatState:(value)=>{chatState=typeof value==='string'?value:null;document.body.classList.toggle('saying',chatState==='starting'?document.body.classList.contains('saying'):SAYING.includes(chatState));acting();summarize();},
   // Application only, set by the host: automatically after the hand-over, again after a reload.
   solo:(on)=>{if(on===true)openSettings(false);showSolo(on===true);},
   // The chat over the app, set by the host: after a reload, or because the chat needs a decision while App only is on.
@@ -1096,16 +1135,18 @@ setInterval(forward,500);
 forward();mirror();
 foldMarks('steps',document.body.classList.contains('fold-steps'));foldMarks('chat',document.body.classList.contains('fold-chat'));
 $('setStill').setAttribute('aria-checked',String(!still()));modeMarks();
+if(FLOW!==null)window.workbench.flow(FLOW);
 summarize();${sourceTag}</script></body></html>`;
 };
 
 /**
  * Opens the workbench in the first tab and loads the application in it. Before: logged in, local code applied.
  * @param hosts  hosts whose documents may be embedded: those of the application
+ * @param flow   the guided flow this window belongs to, shown from the start: { kind, title, at } (workbenchHtml)
  * @param refuse ({ method, url, headers, postData }) => true for a top-window POST that must not be sent (see interceptDocuments)
  * @returns { page, view, show } `view` is the application in the iframe with the interface of a page
  */
-export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rewrite, refuse, onUnrewritten }) => {
+export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', flow = null, rewrite, refuse, onUnrewritten }) => {
     const page = context.pages()[0];
     // Only the workbench itself may save and refresh, not the application in the iframe and not the chat. writePref validates the values.
     // The frame check is a mitigation, not an isolation: the application shares the workbench's origin (it must, see forward()),
@@ -1183,7 +1224,9 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
             return true;
         });
     }
-    bench.html = (url) => workbenchHtml({ appUrl: url, title, prefs: readPrefs() });
+    // Where the guided flow stands now: also in a reloaded workbench.
+    let flowNow = flow;
+    bench.html = (url) => workbenchHtml({ appUrl: url, title, flow: flowNow, prefs: readPrefs() });
     bench.refresh = null;
     bench.rebuild = null;
     await page.goto(appUrl, { waitUntil: 'domcontentloaded' });
@@ -1273,6 +1316,14 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
         chatFrame: () => bench.chat,
         /** How many documents the frame has had; the chat frame keeps its first one (chat.mjs). */
         chatNavigations: (chat) => bench.navigations.get(chat) ?? 0,
+        /** The guided flow of this window, or null. */
+        flowNow: () => flowNow,
+        /** The guided flow goes on to a step: start, test, fix, again, adopt or done. Nothing outside it. */
+        flowAt: (at) => {
+            if (flowNow === null || flowNow.at === at) return Promise.resolve();
+            flowNow = { ...flowNow, at };
+            return call('flow', flowNow);
+        },
         facts: (items) => {
             shown.facts = items;
             return call('facts', items);

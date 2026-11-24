@@ -15,7 +15,7 @@ import { resolveCredentials } from '../shared/credentials.mjs';
 import { agentHosts, effectiveEnvironment, startPath, usesTotp } from '../shared/environments.mjs';
 import { browserLaunch, buildDevlinkConfig, todoFields, claudeLimits, isLoopback, navigationHosts, sessionPath } from '../shared/config.mjs';
 import { CawError, EXIT } from '../shared/errors.mjs';
-import { foldAction } from './activity.mjs';
+import { actionOf, actionText, foldAction } from './activity.mjs';
 import { DEFAULT_KEEP_RUNS, REPRODUCE_RUN, markRunAlive, pruneRuns, runsWithResult } from './runs.mjs';
 import { AGENT_NAME, inLanguage, language, languageSource, t, teamLanguage } from '../shared/i18n.mjs';
 import { cawCommand } from '../shared/invocation.mjs';
@@ -241,7 +241,7 @@ export const certificateError = (error, checked) => {
  * Opens Chrome signed in and with local code. Environment errors are thrown as CawError.
  * @param interactive with a chat, i.e. with a human in front of it
  */
-export const openRunSession = async ({ root, config, spec, checked, runDir, headless = false, interactive = false, agent = false, recorded = recordedBrowser(spec.steps ?? []), strict = true, servedTexts = false, info = (text) => ui.info(text) }) => {
+export const openRunSession = async ({ root, config, spec, checked, runDir, headless = false, interactive = false, agent = false, recorded = recordedBrowser(spec.steps ?? []), strict = true, servedTexts = false, flow, info = (text) => ui.info(text) }) => {
     // What explore did not find and nobody filled in yet: sign-in would fail, so stop before Chrome and Claude.
     const todo = todoFields(config);
     if (todo.length > 0) throw new CawError('config-invalid', t('run.error.todo', { keys: todo.join(', ') }));
@@ -284,6 +284,7 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
             headless,
             embed: !headless && embedsApp(interactive),
             title: `caw · ${spec.id}`,
+            ...(flow === undefined ? {} : { flow }),
             role: spec.role,
             overlay,
             // strict false: a mixed or unused overlay is reported via diagnose instead of ending the session (overlay check).
@@ -500,7 +501,7 @@ export const sessionHint = (mode, runId, { creating = false } = {}) => {
     return `${task} ${asked}`;
 };
 
-export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true, reproduce, withDesign = false, suggestLooks = false, terminal, snapshot, autoDecide = [], seams = {} }) => {
+export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true, reproduce, withDesign = false, suggestLooks = false, terminal, snapshot, autoDecide = [], flow, seams = {} }) => {
     // Tests only: the browser session, the chat, the playback and the design comparison without Chrome (test/run-seam.test.mjs).
     const { openRunSession: openSession = openRunSession, openChat: openWindowChat = openChat, playReplay: replayWith = playReplay, designComparison: compareWith = designComparison } = seams;
     // Mutable: repairing in the same browser turns the test run into a run that fixes exactly this step.
@@ -530,6 +531,22 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         if (checkRedStep(givenSpec) === undefined || replay !== undefined) return undefined;
         if (repairing !== undefined && range === undefined) return repairing.id === checkRedStep(givenSpec) ? repairing.id : undefined;
         return spec.steps.at(-1)?.id;
+    };
+    /** Where this window of the guided flow stands: reproducing, testing a proven draft again, or anything on its test. */
+    const flowAt = () => {
+        if (reproduce !== undefined) return 'start';
+        return conversation?.testing === true && givenSpec.red !== undefined ? 'again' : 'test';
+    };
+    /** A replayed action for the chat; in the guided flow in plain words, a check by what it expects. */
+    const progressText = ({ owner, number, label, step }) => {
+        if (flow === undefined || step === undefined) return `${owner} · ${number} ${label}`;
+        if (step.action === 'check') {
+            const expect = givenSpec.steps.find(({ id }) => id === step.id)?.expect;
+            return t('run.guide.checking', { expect: String(expect ?? step.id).replace(/\.$/, '') });
+        }
+        const { group } = actionOf(label);
+        const item = label.includes(' ') ? label.slice(label.indexOf(' ') + 1).replace(/ \(optional\)$/, '') : '';
+        return group.startsWith('tool:') ? label : actionText(group, [item]);
     };
     // A reproduction is named as such, also when it starts from a test's step (--from).
     const runName = reproduce === undefined ? spec.id : REPRODUCE_RUN;
@@ -690,7 +707,7 @@ ${text}`) ?? 0;
     const stopSignals = onAbortSignals(abortSignal);
     try {
         // Without a window (record --headless) nobody is in front of it, but the agent works all the same: the host lock applies.
-        session = await openSession({ root, config, spec, checked, runDir, headless, interactive: conversation !== undefined && !headless, agent: reproduce !== undefined || (headless && conversation !== undefined), recorded: recordedBrowser(givenSpec.steps), servedTexts: hinting });
+        session = await openSession({ root, config, spec, checked, runDir, headless, interactive: conversation !== undefined && !headless, agent: reproduce !== undefined || (headless && conversation !== undefined), recorded: recordedBrowser(givenSpec.steps), servedTexts: hinting, ...(flow === undefined ? {} : { flow: { ...flow, at: flowAt() } }) });
         // Distinct fact names: otherwise "target" could mean a step's element and "version" the recording.
         // --attach: the person's own session answers. The header says whether it is there, the chat when that changes. Linked
         // when the session box is first used: at the start, or only after the handover (open, develop).
@@ -713,7 +730,8 @@ ${text}`) ?? 0;
             });
         };
         linkSession(sandbox);
-        shownFacts = benchFacts(config, spec, checked, titleOf(spec, ...headerMode), badgeOf(...headerMode));
+        // In the guided flow its bar says what runs and the header what it is about: no badge, no test name.
+        shownFacts = flow === undefined ? benchFacts(config, spec, checked, titleOf(spec, ...headerMode), badgeOf(...headerMode)) : benchFacts(config, spec, checked, flow.title);
         await session.workbench?.facts(withLink(shownFacts));
         await session.workbench?.settings?.(benchSettings({ root, config, spec, checked, agent: sandbox?.label ?? sandbox?.docker?.label, mode: runCommand, run: runId }));
         await session.workbench?.transport?.(transportOf(replay));
@@ -2096,10 +2114,10 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             reads: config.reads ?? [],
             // The terminal adds the total itself, the chat gets the finished label.
             log: (entry) => {
-                const { position, number, owner, label } = entry;
+                const { position, owner, label } = entry;
                 if (owner !== undefined) timeStep(owner);
                 ui.step({ number: position, total: replay.steps.length, label, elapsed: (Date.now() - started) / 1000 });
-                chat?.progress(`${owner} · ${number} ${label}`);
+                chat?.progress(progressText(entry));
                 showAction(entry);
             },
         });
@@ -2235,9 +2253,9 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
                     stepTimeoutMs,
                     filesDir: join(root, PROJECT_DIR),
                     runTag,
-                    log: ({ position, number, owner, label }) => {
-                        ui.step({ number: position, total: before.steps.length, label, elapsed: (Date.now() - started) / 1000 });
-                        chat.progress(`${owner} · ${number} ${label}`);
+                    log: (entry) => {
+                        ui.step({ number: entry.position, total: before.steps.length, label: entry.label, elapsed: (Date.now() - started) / 1000 });
+                        chat.progress(progressText(entry));
                     },
                 }),
                 session.closed.then(() => 'browser-closed'),
@@ -2281,9 +2299,9 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
                     stepTimeoutMs,
                     filesDir: join(root, PROJECT_DIR),
                     runTag,
-                    log: ({ position, number, owner, label }) => {
-                        ui.step({ number: position, total: prefix.steps.length, label, elapsed: (Date.now() - started) / 1000 });
-                        chat?.progress(`${owner} · ${number} ${label}`);
+                    log: (entry) => {
+                        ui.step({ number: entry.position, total: prefix.steps.length, label: entry.label, elapsed: (Date.now() - started) / 1000 });
+                        chat?.progress(progressText(entry));
                     },
                 }),
                 session.closed.then(() => 'browser-closed'),

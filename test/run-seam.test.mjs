@@ -106,6 +106,35 @@ const harness = ({ fail, answers = [], headless = false, session = fakeSession, 
     return { root, execute, decisions, notices, runs, adopted, adopt, result: (index = -1) => JSON.parse(readFileSync(join(root, runs.at(index).report.replace(/report\.md$/, 'result.json')), 'utf8')) };
 };
 
+test('Seam: in the guided flow the window starts at its step, the facts name what it is about and replayed steps read as plain words', async () => {
+    const seen = [];
+    const at = async (spec, testing) => {
+        const progress = [];
+        const facts = [];
+        const bench = { facts: async (entries) => { facts.push(entries); }, step: async () => {}, steps: async () => {}, point: async () => {}, mood: async () => {} };
+        const h = harness({
+            extra: { flow: { kind: 'fix', title: '„Bug“' } },
+            seams: {
+                openRunSession: async ({ flow }) => { seen.push(flow.at); return { ...fakeSession(), workbench: bench }; },
+                openChat: async () => createChat({ show: (who, text) => { if (who === 'activity') progress.push(text); } }),
+                playReplay: async (options) => {
+                    options.log({ position: 1, number: '1/2', owner: 'S1', label: 'fill textbox "Titel"', step: { action: 'fill' } });
+                    options.log({ position: 2, number: '2/2', owner: 'S1', label: 'check S1', step: { action: 'check', id: 'S1' } });
+                    return playback()(options);
+                },
+            },
+        });
+        await h.execute({ spec, testing, replay: replayOf(spec), conclude: async () => undefined });
+        return { progress, facts };
+    };
+    const proven = await at(testOf({ draft: true, red: { step: 'S2', run: 'r' } }), true);
+    await at(testOf({ draft: true }), true);
+    await at(testOf({ draft: true, red: { step: 'S2', run: 'r' } }), false);
+    assert.deepEqual(seen, ['again', 'test', 'test'], 'a proven draft is tested again, anything else belongs to its test');
+    assert.deepEqual(proven.progress.slice(0, 2), ['textbox "Titel" ausgefüllt', 'Prüfung: S1 da']);
+    assert.deepEqual(proven.facts[0][0], ['', '„Bug“'], 'no mode, no test name');
+});
+
 test('Seam: a passed check run of a new recording waits for adopting, then writes the test', async () => {
     const h = harness({ answers: ['adopt'] });
     const code = await fixFlow({ draft: testOf(), whole: true, execute: h.execute, adopt: h.adopt, log: () => {}, advising: false });

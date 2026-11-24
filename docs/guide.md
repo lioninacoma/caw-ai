@@ -105,7 +105,7 @@ The same way as a bug fix, for a new screen: ask Claude for a draft of the featu
 4. **Green:** a run after the red one judges the design met after the step's check. A design shows the screen after its step: before the step is recorded it is never green.
 5. **Adopt:** `caw run <id> --promote` (or **Adopt**) needs the design met and every other test on the environment green, moves the test to `caw/tests` and writes `design-report.md` into the green run's folder: red at which step with how many deviations (run, commit), green in which run, the files changed since and how many other tests passed.
 
-With a window the chat leads through it with the phases Draft › In a test › Build › Met › Adopted over its cards: after the red proof (saved by caw, like the draft's own plan) **Target design captured in a test: S3 does not meet it yet** lists what is missing or deviates and offers **Let Claude Code build it** and **I build it myself** and **Later** beside it; the agent's code changes are applied at once and listed in the chat, then the draft is tested again without a click (unless a server you must restart yourself has to serve the change first); **S3 has the controls of its target design: record it now** says to record the draft next; **Target design met: S3** offers **Adopt**. Your session reads the same from `caw_status` and `caw_list` (`origin: design`, `phase`: `draft`, `red`, `green`, `adopted`, and `next`).
+With a window the chat leads through it; the bar below the header shows the steps Draft › Create test › Build › Test again › Adopt: after the red proof (saved by caw, like the draft's own plan) **Target design captured in a test: S3 does not meet it yet** lists what is missing or deviates and offers **Let Claude Code build it** and **I build it myself** and **Later** beside it; the agent's code changes are applied at once and listed in the chat, then the draft is tested again without a click (unless a server you must restart yourself has to serve the change first); **S3 has the controls of its target design: record it now** says to record the draft next; **Target design met** lists the changed files and offers **Adopt**. Your session reads the same from `caw_status` and `caw_list` (`origin: design`, `phase`: `draft`, `red`, `green`, `adopted`, and `next`).
 
 ## Plain-language tests: record once, replay without AI
 
@@ -424,14 +424,17 @@ The draft turns the bug into a test that proves the fix: red before, green after
    4 not recorded or never red.
 
 **Guided in the workbench.** With a window the chat leads through these steps in one process, each in a new window, and the
-chat so far goes along; two clicks take a reproduced bug to an adopted test: how to fix it, and adopting. "Later" on any card
-ends the run there, and the terminal still names the next command. A bar over each card shows the phases Reproduced › In a
-test › Fix › Fixed › Adopted: done ones ticked, the current one highlighted.
+chat so far goes along; two clicks take a reproduced bug to an adopted test: **Create test and fix**, and **Adopt**. "Later" on
+any card ends the run there, and the terminal still names the next command. A bar below the header shows the steps
+Reproduce › Create test › Fix › Test again › Adopt in every window, also while the agent or caw works: done ones ticked, the
+current one highlighted. The header names the bug as you reported it; the panel shows the current activity with its time.
 
-- `caw reproduce` reproduced: caw captures the bug in a test at once, as `caw record <id>` would, without a card: the agent
+- `caw reproduce` reproduced: a card lists what was observed, expected and, when known, the cause, and asks (decision
+  `reproduced.test`). **Create test and fix** records the draft as `caw record <id>` would: the agent
   follows the draft's plan, caw approves that plan (it is the draft's own) and saves the red proof of the check run (`red.proof`
-  by `auto` in the decision log). Neither changes what a test checks; a plan the agent changed still waits for you.
-- Captured: the card **Bug captured in a test: S3 fails while the bug is there** lists the red step, its expected result, its
+  by `auto` in the decision log). Neither changes what a test checks; a plan the agent changed still waits for you. Then the
+  agent fixes the bug at once, as if you had chosen that on the next card. **Only create test** stops at that card; **Later** ends the run with the draft.
+- The test created: the card **Bug captured in a test: S3 fails while the bug is there** lists the red step, its expected result, its
   check and, when known, the cause the reproduction suspected (from the reproduction's run folder, which `keepRuns` keeps while the draft exists; the agent recording it also finds it at the start of the draft's `notes`, which the recorded plan may rewrite). It offers
   **Let the agent fix it** as the main action, **I fix it myself** and **Later** beside it. The agent, of every kind (local, Docker, your attached
   session), fixes the app: caw applies its code changes at once and lists each in the chat (you asked for them; they change no
@@ -440,7 +443,7 @@ test › Fix › Fixed › Adopted: done ones ticked, the current one highlighte
   code; a change to the test still comes as a card for you. If the cause lies outside the project (another repository, a
   service, the environment), its card says where, there is nothing to apply, and **I fix it there** waits like **I fix it
   myself** until you **Test again**.
-- Still failing: fix again, test again or end the run. Passing: **S3 passes: the bug is fixed**, and **Adopt** promotes the
+- Still failing: fix again, test again or end the run. Passing: **Bug fixed** lists the changed files, and **Adopt** promotes the
   draft as `--promote` does, while the window waits; the chat names the fix report. If another test fails, the card says so
   and the draft stays.
 - `caw record <id>` and `caw run <id>` with a window join at their step. Headless, `--no-chat` and CI run as before.
@@ -448,7 +451,8 @@ test › Fix › Fixed › Adopted: done ones ticked, the current one highlighte
 From your session the same steps are `caw_start` with `command: "record"`, `"run"` and `"run"` with `promote: true`. Your
 session need not keep track: `caw_status` (for the reproduction and every run of the draft) and each row of
 `caw_reproductions` carry `phase` (`reproduced`, `red`, `green`, `promoted`) and `next`, the step after it: record, fix the app
-(with the red step, its check and the suspected cause), run, promote, or done with the fix report. `green` comes only from a run
+(with the red step, its check and the suspected cause), run, promote, or done with the fix report; `next.decision` names the
+window's card at that phase. `green` comes only from a run
 after the red proof that checked the red step and passed it; `caw open <id>@<red step>` stops before that check and leaves the
 phase `red`.
 
@@ -711,7 +715,7 @@ So in your session you write "record a test for the order" or "take me to S4 of 
 
 ##### Decisions from your session
 
-Every card the window waits for is a decision with a stable id (`plan.approve`, `recording.adopt`, `red.proof`, `step.failed`, `effect.accept`, `target.use`, `look.adopt`, `fix.guide`, `fix.green`, `advice.item`, `tokens`, `state.restore` …), a `context` without caw's wording (test, step, reason, diagnosis, red step, files) and options with stable ids. Each option has a gate: `free` when it changes no standard (close, later, discard, test again, record red, ask the agent), `human` when it does (approve a changed or writing plan, adopt a recording that changes what the test checks, accept an effect or a look, use a target, ignore errors, promote, apply app code, fix a step the app is blamed for).
+Every card the window waits for is a decision with a stable id (`plan.approve`, `recording.adopt`, `reproduced.test`, `red.proof`, `step.failed`, `effect.accept`, `target.use`, `look.adopt`, `fix.guide`, `fix.green`, `advice.item`, `tokens`, `state.restore` …), a `context` without caw's wording (test, step, reason, diagnosis, red step, files) and options with stable ids. Each option has a gate: `free` when it changes no standard (close, later, discard, test again, record red, ask the agent), `human` when it does (approve a changed or writing plan, adopt a recording that changes what the test checks, accept an effect or a look, use a target, ignore errors, promote, apply app code, fix a step the app is blamed for).
 
 `caw_status` shows the waiting decision as `waiting.decision`; `caw_decide` answers it. Your session may answer a `free` option, when it fits what you asked for. For a `human` option caw asks you through Claude Code with a form only you can confirm (MCP elicitation); the model cannot answer it. A client without forms is refused and told to let you answer in the window. The first answer wins, the window's or the session's, and the window shows "answered by the session". `result.json` and `report.md` list each decision with who took it (`window`, `session`, `elicitation`, `terminal`, `auto`), and `caw audit` lists those that changed something outside the window. Only `caw_decide` can answer. The run names its public key in `decision.json` in the run folder; an answer in `decision-answer.json` counts only with a proof (an HMAC) made from a secret that only the run and your session's caw MCP server share: each computes it from its own private key, which never leaves its process and is in no file. A run started from your session (`caw_start`) gets the server's key through its stdin and takes answers only from that server; a run you start in a terminal takes them from the sessions listening in the project (`caw_attach`; `caw_decide` registers its session too). An answer file without a valid proof, such as one your session's own file tools wrote, is ignored: the terminal and `report.md` say "invalid answer ignored". What remains: a session with full shell rights on your user account can still do a lot, such as starting a run itself with its own key, editing test and recording files directly or reading another process's memory. That is no longer a slip through a file but a deliberate act, and `caw audit` in the pull request is the backstop.
 
@@ -770,7 +774,7 @@ What you see and press while a run has a window, and what it prints in the termi
 
 With chat, everything runs on one page, like Cypress:
 
-- **Top:** **Steps** at the left with the tally (✓ 2/2 all passed, ✗ 2/4 one failed, ● 2/3 one running) shows or hides the steps (F4), then the caw logo, `/ project / test` and a badge with what the run does ("Claude Code records", "Check run", "Develop"); the full sentence ("Claude Code records morning-errand") is the tooltip. The test is named once: without a mode there is no badge. On the right the facts in mono (the environment and the role only when the project has several, a production environment always, your local build only under an overlay) and the ⋯ menu. The header has no status of its own: the panel on the right is the one place that says what happens.
+- **Top:** **Steps** at the left with the tally (✓ 2/2 all passed, ✗ 2/4 one failed, ● 2/3 one running) shows or hides the steps (F4), then the caw logo, `/ project / test` and a badge with what the run does ("Claude Code records", "Check run", "Develop"); the full sentence ("Claude Code records morning-errand") is the tooltip. The test is named once: without a mode there is no badge, nor while the panel says what runs. In the guided bug fix and the guided target design there is neither test nor badge: the header names the bug as reported (the design draft's name), and a bar below it the five steps, done ones ticked, the current one highlighted; narrower than 800 px only the current one is named. On the right the facts in mono (the environment and the role only when the project has several, a production environment always, your local build only under an overlay) and the ⋯ menu. The header has no status of its own: the panel on the right is the one place that says what happens.
 - **Left, when shown:** a narrow list of the top-level steps with their mark, id and name; a click on a step unfolds its actions and its check, a failed step is unfolded. The steps are hidden until you show them; a failed step shows them unless you chose yourself (F4 or **Steps**, remembered in `prefs.json`). After the handover a step that can be opened offers "Open up to S3" when you point at it (as F1 does).
 - **Center:** the application in an iframe with its address above it; on a production or read-only environment the address carries a badge. Below it the counts, e.g. "12 requests · 1 console": a click on them (or F2, F3) opens requests (name, outcome, duration) and console (errors and warnings) in a drawer. On a console error the drawer opens by itself; Esc (or "Esc closes" in the drawer) closes it.
 - **Right:** the panel, see [The chat](#the-chat).
@@ -846,7 +850,7 @@ The chat sits in an isolated iframe with its own origin (`sandbox` without `allo
 
 ### The chat
 
-On the right of the workbench, even in a test run without the agent. The panel shows only what counts now: the card that waits for you, or while caw or the agent works a quiet block with what runs, a short fact and the last few lines (the agent's actions, caw's notices), with **Cancel**. The guided bug fix and the target design show their phases once at the top. The input below is labelled "Question to Claude Code", or "Hint to Claude Code" while it works.
+On the right of the workbench, even in a test run without the agent. The panel shows only what counts now: the card that waits for you, or while caw or the agent works a quiet block with what runs, a short fact and the last few lines (the agent's actions, caw's notices), with **Cancel**. In the guided bug fix and the guided target design the block is only the current activity with its time and one button, and beside it only warnings; the bar below the header says the rest. The input below is labelled "Question to Claude Code", or "Hint to Claude Code" while it works.
 
 Everything else is in **History**, a button at the bottom with the counts ("3 done · 18 entries") that opens over the panel (Esc closes it): an answered card is one line with your answer and who gave it ("✓ Approve plan · by caw · Plan · 2 steps"), a click on the line shows the card; the agent's log (text as messages, commands as expandable actions), caw's notices, baselines and changed files follow in order. The history carries over across the windows of demonstration, the agent and check run: a new window does not replay the earlier ones into the panel, the history lists them under "Window 1", "Window 2". The window is the only source of instructions; the application page can't reach the chat. The whole transcript, every button you clicked included, is saved as `chat.log` in the run folder.
 

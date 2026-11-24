@@ -71,6 +71,7 @@ export const DECISIONS = {
     'advice.rerun': { rerun: FREE, close: FREE },
     'run.result': { close: FREE },
     // The guided bug fix (bugfix.mjs): reproduced, red, fix, green; a design draft takes the same decisions.
+    'reproduced.test': { 'test-and-fix': FREE, 'test-only': FREE, later: FREE },
     'red.proof': { adopt: FREE, discard: FREE },
     'red.still': { close: FREE },
     'fix.guide': { 'fix-by-agent': FREE, 'fix-myself': FREE, 'fix-there': FREE, retest: FREE, later: FREE, close: FREE },
@@ -86,7 +87,7 @@ export const DECISIONS = {
  * The decision that leads a draft on from each phase of the guided bug fix (bugfix.mjs fixPhase): the `next` a session reads in
  * caw_status names it as `decision`, so window and session follow one model.
  */
-export const PHASE_DECISIONS = { red: 'fix.guide', green: 'fix.green' };
+export const PHASE_DECISIONS = { reproduced: 'reproduced.test', red: 'fix.guide', green: 'fix.green' };
 
 const gateOf = (id, option, context) => {
     const gate = DECISIONS[id]?.[option];

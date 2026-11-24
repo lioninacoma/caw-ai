@@ -422,10 +422,9 @@ test('Answer proof: a run started by the MCP server reads its key once from stdi
 });
 
 test('The bug fix phases and the window\'s cards follow one model: next.decision is the card the window shows then', async () => {
-    // Reproduced, the window captures the bug in a test at once: no card, the session records the draft itself.
-    assert.equal(fixPhase({ id: 'b', draft: { steps: [] } }).next.decision, undefined);
-    assert.equal(PHASE_DECISIONS.reproduced, undefined);
-    assert.equal(DECISIONS['reproduced.record'], undefined);
+    // Reproduced, the window asks whether to create the test; all of it is the session's to answer too.
+    assert.equal(fixPhase({ id: 'b', draft: { steps: [] } }).next.decision, 'reproduced.test');
+    assert.deepEqual(DECISIONS['reproduced.test'], { 'test-and-fix': FREE, 'test-only': FREE, later: FREE });
 
     const step = { id: 'S1', name: 'Summe', do: '', expect: 'Total: 5.' };
     const red = { id: 'b', draft: true, red: { step: 'S1', run: 'r1' }, steps: [{ ...step, recording: { hash: stepHash(step), recordedOn: 'dev', actions: [], check: 'c' } }], expectations: [{ id: 'S1' }] };

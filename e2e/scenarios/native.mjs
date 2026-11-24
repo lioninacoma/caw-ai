@@ -9,7 +9,7 @@ import { setStepDesign, stepHash } from '../../src/host/test-file.mjs';
 import { sessionMcpHandler } from '../../src/host/session-mcp.mjs';
 import { liveListeners, unregisterListener } from '../../src/shared/attach.mjs';
 import {
-    appOf, benchBack, cardOf, clickChoice, decide, endAction, entries, finishOf, here, humans, lastDemonstration, loadTest, newestRunOf, open, parseTest, patchJson, planOf, print, record, reproduce, run,
+    benchOf, appOf, benchBack, cardOf, clickChoice, decide, endAction, entries, finishOf, here, humans, lastDemonstration, loadTest, newestRunOf, open, parseTest, patchJson, planOf, print, record, reproduce, run,
     history, inChat, runDirsOf, showMyself, slash, sleep, startServer, stateOf, tag, verify, writeTest,
 } from '../harness.mjs';
 
@@ -818,7 +818,7 @@ scenario('N11', 'Failures: renamed (similar name), covered (diagnosis with the m
 
 // ---- N12: caw reproduce, Claude alone (scripted), with a report and a draft test plan
 
-// Not guided: a reproduction in a window ends there (guided, it would capture the bug in a test at once, N15b).
+// Not guided: a reproduction in a window ends there (guided, its card asks whether to create the test, N15b and N15e).
 const reproduceOf = async (args, { agent, onChatOpen } = {}) => reproduce(native, [...args, '--env', 'test'], { interactive: false, containerCommand: ['bash', '-c', agent], ...(onChatOpen === undefined ? {} : { onChatOpen }) });
 
 scenario('N12', 'reproduce: Claude reproduces a bug alone (no plan, no decision), report and valid draft; not reproducible; read-only blocks writes', async () => {
@@ -827,7 +827,7 @@ scenario('N12', 'reproduce: Claude reproduces a bug alone (no plan, no decision)
     try {
         // (1) With a window: the status reads English although the app speaks German. Claude finds it without a plan; plan and
         // check are refused, the human only watches. Not guided (interactive: false), reproduced ends on its end card, which names
-        // capturing the bug in a test (guided, caw would record the draft right away, N15b).
+        // capturing the bug in a test (guided, its card asks first, N15b).
         const seen = humans(async (page) => {
             await page.locator('#next.on').waitFor({ timeout: 90000 });
             const end = await page.locator('#next').textContent();
@@ -1119,6 +1119,8 @@ const reproduceHeadless = async () => {
     return id;
 };
 const findCard = (chat, text) => inChat(chat, text, 120000);
+/** The current step of the guided flow's bar, above header and panes in every window. */
+const atStep = (chat, name) => benchOf(chat).locator('#flow [aria-current=step]', { hasText: name }).waitFor({ timeout: 10000 }).then(() => true, () => false);
 /** The check run of the recording: S2 fails as expected, caw saves the draft with its proof, the bug is captured in a test. */
 const adoptRed = async (chat) => {
     await findCard(chat, 'S2 scheitert wie erwartet: der Test fängt den Fehler');
@@ -1148,12 +1150,14 @@ const untilClosed = async (page) => {
 };
 /**
  * The run of the draft after the fix: green, then Übernehmen promotes it or Später keeps the draft. Promoted, the last card
- * stands in phase Übernommen ("<test> übernommen", the moved files) and waits for nothing: the window lingers briefly, then closes.
+ * ("<test> übernommen", the moved files) ticks every step of the bar and waits for nothing: the window lingers briefly, then closes.
  */
 const greenWindow = (choice) => async (chat) => {
-    await findCard(chat, 'S2 besteht: der Fehler ist behoben');
+    await findCard(chat, 'Fehler behoben');
+    verify('the bar stands at Übernehmen, the header names the bug, no badge', await atStep(chat, 'Übernehmen') && /^„Die Summe zeigt 0 statt 5\.“$/.test(await benchOf(chat).locator('#crumbTest').textContent()) && !await benchOf(chat).locator('#title').isVisible());
     await decide(chat, choice === 'promote' ? /^Übernehmen$/ : 'Später');
     if (choice === 'promote') await findCard(chat, new RegExp(`${FIX_ID} übernommen.*Verschoben: caw/tests/`, 's'));
+    if (choice === 'promote') verify('adopted: every step of the bar is done', await benchOf(chat).locator('#flow li.done').nth(4).waitFor({ timeout: 10000 }).then(() => true, () => false));
 };
 /** Promoted: the test in caw/tests and caw/recordings, the draft gone, the green run's fix report. */
 const verifyPromoted = (label, red) => {
@@ -1209,7 +1213,7 @@ scenario('N15', 'Reproduce → red draft → fix (server switch) → green → p
     }
 });
 
-scenario('N15b', 'Guided bug fix in one process: reproduce in a window → captured in a test without a click → Ich behebe selbst → server switch → Erneut testen → passes → Übernehmen promotes with a fix report', async () => {
+scenario('N15b', 'Guided bug fix in one process: reproduce in a window → Nur Test erstellen → Ich behebe selbst → server switch → Erneut testen → passes → Übernehmen promotes with a fix report', async () => {
     await fixSetup();
     try {
         // One process, one script for both agents: the reproduction and the recording.
@@ -1218,19 +1222,26 @@ ${foundScript('serve.mjs: /api/total antwortet 0')}
 else
 ${recorderScript}
 fi`;
-        // Reproduced, caw captures the bug in a test at once: the window names the next one and closes, nothing to click.
+        // Reproduced, the card lists the facts and asks: Nur Test erstellen records the draft in the next window.
         const reproduced = async (chat) => {
-            const { closed, offered } = await untilClosed(chat);
-            verify('(1) no card to click after reproducing: the window closes by itself', closed && !offered, `closed ${closed}, offered ${offered}`);
+            verify('(1) the bar is there from the start, while the agent works', await atStep(chat, 'Nachstellen'));
+            await findCard(chat, 'Fehler nachgestellt');
+            const card = await chat.locator('#card').textContent();
+            verify('(1) the card lists observed, expected and the cause', /BeobachtetTotal: 0/.test(card) && /ErwartetTotal: 5/.test(card) && /Ursacheserve\.mjs: \/api\/total antwortet 0/.test(card), card);
+            const buttons = await chat.locator('#choices button:visible').allTextContents();
+            verify('(1) three buttons, one main action', JSON.stringify(buttons) === JSON.stringify(['Test erstellen und beheben', 'Nur Test erstellen', 'Später']) && await chat.locator('#choices button.btn-p').count() === 1, JSON.stringify(buttons));
+            verify('(1) the bar goes on to Test erstellen', await atStep(chat, 'Test erstellen'));
+            await decide(chat, 'Nur Test erstellen');
+            const { closed } = await untilClosed(chat);
+            verify('(1) the window closes for the recording', closed);
         };
         let redProof = null;
         const fixMyself = async (chat) => {
             await adoptRed(chat);
-            // The fix card's rows (dt then dd, without a space in textContent) and the phase bar above it.
+            // The fix card's rows (dt then dd, without a space in textContent) and the bar of the guided flow.
             const fix = await chat.locator('.message.result', { hasText: 'Fehler im Test festgehalten' }).last().textContent();
             verify('(2) the fix card names the red step, its expectation, its check and the suspected cause', /SchrittS2 Summe/.test(fix) && /ErwartungDie Summe zeigt Total: 5/.test(fix) && /Prüfungdocument\.getElementById\('sum'\)\.textContent==='Total: 5'/.test(fix) && /Ursacheserve\.mjs: \/api\/total antwortet 0/.test(fix), fix);
-            const phase = await chat.locator('ol.phases [aria-current=step]').last().textContent();
-            verify('(2) the phase bar over the captured card marks Im Test', phase === 'Im Test', phase);
+            verify('(2) the test is created: the bar marks Beheben', await atStep(chat, 'Beheben'));
             redProof = loadTest(fixRoot, FIX_ID).red;
             await decide(chat, 'Ich behebe selbst');
             await findCard(chat, 'Behebe den Fehler, dann teste erneut');
@@ -1239,7 +1250,7 @@ fi`;
             await decide(chat, 'Erneut testen');
         };
         // Windows: the reproduction, the recording (plan approved by caw), the check run (captured, fix), the run after the fix:
-        // the person's clicks are "Ich behebe selbst", "Erneut testen" and "Übernehmen".
+        // the person's clicks are "Nur Test erstellen", "Ich behebe selbst", "Erneut testen" and "Übernehmen".
         const h = humans(reproduced, watchOnly, fixMyself, greenWindow('promote'));
         const code = await reproduce(fixRoot, ['Die Summe zeigt 0 statt 5.', '--env', 'test'], { interactive: true, containerCommand: ['bash', '-c', agent], onChatOpen: h.onChatOpen });
         verify('(1–3) one process, four windows, exit 0', await h.done() === 4 && code === 0, String(code));
@@ -1329,6 +1340,61 @@ $A advise --file /tmp/a.json; echo "ADVISE Exit=$?"`;
         verifyPromoted('(3)', redProof ?? {});
     } finally {
         await switchBug(false).catch(() => {});
+    }
+});
+
+scenario('N15e', 'Guided bug fix in two clicks: Test erstellen und beheben records, proves, fixes and tests again without a card in between; Später after reproducing keeps the draft and names the command', async () => {
+    await fixSetup();
+    mkdirSync(join(fixRoot, 'src'), { recursive: true });
+    writeFileSync(join(fixRoot, 'src/total.mjs'), 'export const total = (items) => {\n    return 0;\n};\n');
+    const advice = `exec 2>&1
+A='caw agent'
+cat > /tmp/a.json <<'JSON'
+{"items":[{"about":"S2","side":"app","title":"Summe aus den Preisen","evidence":"src/total.mjs:2","reason":"total gibt immer 0 zurück.","edits":[{"file":"src/total.mjs","find":"return 0;","replace":"return items.reduce((sum, item) => sum + item.price, 0);","why":"Die Summe der Preise"}],"prompt":"Rechne die Summe in src/total.mjs aus den Preisen."}]}
+JSON
+$A advise --file /tmp/a.json; echo "ADVISE Exit=$?"`;
+    const agent = `if caw agent task | grep -Eq '"mode": ?"reproduce"'; then
+${foundScript()}
+else
+${recorderScript}
+fi`;
+    const bug = ['Die Summe zeigt 0 statt 5.', '--env', 'test'];
+    const answer = (label) => async (chat) => {
+        await findCard(chat, 'Fehler nachgestellt');
+        await decide(chat, label);
+        if (label === 'Später') await findCard(chat, /Später weiter mit .*caw record bug-die-summe-zeigt-0-statt-5/);
+    };
+    try {
+        // (1) Später: one window, the draft stays unrecorded.
+        const later = humans(answer('Später'));
+        const left = await reproduce(fixRoot, bug, { interactive: true, containerCommand: ['bash', '-c', agent], onChatOpen: later.onChatOpen });
+        verify('(1) Später: exit 0, one window, the draft not recorded', left === 0 && await later.done() === 1 && loadTest(fixRoot, FIX_ID).red === undefined, String(left));
+        rmSync(join(fixRoot, 'caw/drafts'), { recursive: true, force: true });
+
+        // (2) Test erstellen und beheben: the recording, the proof and the fix follow without a card.
+        let offered = [];
+        const proveAndFix = async (chat) => {
+            // The proof is saved: the switch stands in for the edit taking effect, before caw tests again on its own.
+            await findCard(chat, 'S2 scheitert wie erwartet: der Test fängt den Fehler');
+            await switchBug(false);
+            const deadline = Date.now() + 240000;
+            while (Date.now() < deadline && await chat.locator('body').count().catch(() => 0) > 0) {
+                offered.push(...await chat.locator('#choices button:visible').allTextContents().catch(() => []));
+                await sleep(200);
+            }
+        };
+        const h = humans(answer('Test erstellen und beheben'), watchOnly, proveAndFix, greenWindow('promote'));
+        const code = await reproduce(fixRoot, bug, { interactive: true, containerCommand: ['bash', '-c', agent], adviseCommand: ['bash', '-c', advice], onChatOpen: h.onChatOpen });
+        verify('(2) one process, four windows, exit 0', await h.done() === 4 && code === 0, String(code));
+        offered = [...new Set(offered)].filter((label) => !/Testplan übernehmen|Entwurf verwerfen/.test(label));
+        verify('(2) no card between creating the test and testing again', offered.length === 0, JSON.stringify(offered));
+        verify('(2) the edit is in the file', /return items\.reduce/.test(readFileSync(join(fixRoot, 'src/total.mjs'), 'utf8')));
+        const decided = newestRunOf(fixRoot, 'reproduce').result?.decisions ?? [];
+        verify('(2) the choice is logged like the others', decided.some(({ id, option, by }) => id === 'reproduced.test' && option === 'test-and-fix' && by === 'window'), JSON.stringify(decided));
+        verify('(2) promoted, the draft gone', existsSync(join(fixRoot, 'caw/tests', `${FIX_ID}.yaml`)) && !existsSync(join(fixRoot, 'caw/drafts', `${FIX_ID}.yaml`)));
+    } finally {
+        await switchBug(false).catch(() => {});
+        rmSync(join(fixRoot, 'src'), { recursive: true, force: true });
     }
 });
 

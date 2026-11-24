@@ -129,8 +129,8 @@ export const fixPhase = ({ id, draft, runs = [], promoted = false, fixReport, de
     if (draft === undefined) return promoted ? { phase: 'promoted', next: { done: true, ...(fixReport === undefined ? {} : { fixReport }) } } : undefined;
     if (isDesignDraft(draft)) return designPhase({ id, draft, runs });
     const run = { tool: 'caw_start', command: 'run', test: id };
-    // With a window the draft is captured in a test right after reproducing; a session records it itself.
-    if (draft.red === undefined) return { phase: 'reproduced', next: { tool: 'caw_start', command: 'record', test: id } };
+    // With a window a card asks whether to create the test; without one the session records the draft itself.
+    if (draft.red === undefined) return { phase: 'reproduced', next: { tool: 'caw_start', command: 'record', test: id, decision: PHASE_DECISIONS.reproduced } };
     // Run ids start with their time: a later id is a later run. Only a run after the red proof shows the fix, and only if it
     // judged the red step and passed it: an open at the red step's entry passes without ever checking it.
     const newest = runs.find(({ runId }) => runId > draft.red.run);
@@ -182,6 +182,20 @@ export const reproductionOf = (root, id) => {
     const file = `${DRAFT_DIR}/${id}.yaml`;
     return runsWithResult(root, REPRODUCE_RUN).find(({ result }) => result.reproduce?.draft?.file === file)?.result.reproduce;
 };
+
+/**
+ * What every window of the guided flow of a draft shows (workbench.mjs): the kind of its bar (fix, design) and what it is about,
+ * the bug as reported (its reproduction's run folder; the draft's id once that is gone) or the design draft's name.
+ * @returns { kind, title }
+ */
+export const flowOf = (root, spec) => {
+    if (isDesignDraft(spec)) return { kind: 'design', title: spec.id };
+    const bug = reproductionOf(root, spec.id)?.bug;
+    return { kind: 'fix', title: typeof bug === 'string' && bug !== '' ? bugTitle(bug) : spec.id };
+};
+
+/** A bug report as the header names it. */
+export const bugTitle = (bug) => t('run.guide.bug', { bug });
 
 /** The newest report of that name (fix or design report) of the id, relative to the project with /, or undefined. */
 const reportOf = (root, runs, name) => {

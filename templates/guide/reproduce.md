@@ -7,7 +7,7 @@ reproduce it in a real, signed-in browser: `caw_start` with `command: "reproduce
 `env` (an environment with `agent`, never production), `role` (without `from`; not needed with one role), `from`
 (`"<test>"` or `"<test>@S3"`: start in that test's state, its steps up to the entry of S3 replayed without you), `headless`
 (no window). You are the agent then (attached to you, `--attach`), at no extra tokens: call `caw_status` until the run waits for you and
-read this topic's second part. Without a window nobody watches; with one the person sees what you do and decides only at the end whether the draft is recorded red next.
+read this topic's second part. Without a window nobody watches; with one the person sees what you do and decides on a card once you have reproduced the bug whether the draft is recorded next.
 When it is done, `caw_status` names the verdict and the report; when reproduced also `draft` (`caw/drafts/<id>.yaml`, plan
 and later its recording in one file), `phase` and `next`. Tell the person the verdict.
 
@@ -17,14 +17,15 @@ the person asks for it:
 
 | `phase` | `next` | What you do |
 |---|---|---|
-| `reproduced` | `{ tool: "caw_start", command: "record", test }` | **Red:** record the draft. Its last step is the red step: you check its expected result, and that check must evaluate and return `false` (topic `record`, "A draft from caw reproduce"). The check run without you must pass every step before it and fail the red step at its check; caw saves the draft with that proof (`red: { step, run, head }` in the file). If the red step passes, the draft does not catch the bug and is never promoted. |
+| `reproduced` | `{ tool: "caw_start", command: "record", test, decision: "reproduced.test" }` | **Red:** record the draft. Its last step is the red step: you check its expected result, and that check must evaluate and return `false` (topic `record`, "A draft from caw reproduce"). The check run without you must pass every step before it and fail the red step at its check; caw saves the draft with that proof (`red: { step, run, head }` in the file). If the red step passes, the draft does not catch the bug and is never promoted. |
 | `red` | `{ do: "fix-app", red: { step, expect, check, cause }, then: { tool: "caw_start", command: "run", test } }` | **Fix:** the bug is still there. `red` is the step, its expected result, the check it fails and the cause the reproduction suspected. Fix the application with the person in this session; every code change needs their approval, caw's own agent never changes code. When the cause lies outside this project (another repository, a service, the environment), say so and leave the fix to the person there. Then `then`: the same recording and check, without AI. The phase turns `green` only from a run after the red proof that checked the red step and passed it; opening at the red step's entry checks nothing there and leaves it `red`. |
 | `green` | `{ tool: "caw_start", command: "run", test, promote: true }` | **Promote:** the draft must have been saved red, must pass now and so must every other test on that environment (`run --all`); then it moves to `caw/tests` and the run folder gets `fix-report.md`. |
 | `promoted` | `{ done: true, fixReport }` | Show the person the fix report: red at which step and commit, green in which run, the files changed since, how many other tests passed. |
 
-With a window the workbench guides the person through the same phases in one process: reproduced, caw captures the bug in a
-test at once (the draft's own plan and its red proof change nothing it checks, caw takes them), then the person picks
-"{{label:run.button.fixByAgent}}" or "{{label:run.button.fixMyself}}"; the agent's app changes are applied and listed and the draft is
+With a window the workbench guides the person through the same phases in one process: reproduced, a card
+(decision `reproduced.test`, free) asks "{{label:run.button.testAndFix}}", "{{label:run.button.testOnly}}" or "{{label:run.button.later}}".
+Creating the test, caw takes the draft's own plan and its red proof (they change nothing it checks); with the first the agent
+then fixes the bug at once, with the second the person picks "{{label:run.button.fixByAgent}}" or "{{label:run.button.fixMyself}}". The agent's app changes are applied and listed and the draft is
 tested again without a click; once it passes, "{{label:run.button.promote}}". While that process still runs (`caw_status` says `running`), the person decides there: wait for it to end
 before you start the next command.
 

@@ -106,6 +106,22 @@ export const changedFiles = (root, since, dirty = []) => {
 };
 
 /**
+ * How many lines changed in files of the project since a commit, against the working tree.
+ * @param files paths relative to the project
+ * @returns Map path -> { added, removed }; a file git does not count (untracked, binary) is left out
+ */
+export const changedLines = (root, since, files) => {
+    const counts = new Map();
+    if (files.length === 0) return counts;
+    const out = git(root, ['diff', '--numstat', '-z', '--no-renames', '--relative', since, '--', ...files.map((file) => `:(literal)${file}`)]).toString('utf8');
+    for (const line of out.split('\0')) {
+        const match = /^(\d+)\t(\d+)\t(.+)$/.exec(line);
+        if (match !== null) counts.set(match[3], { added: Number(match[1]), removed: Number(match[2]) });
+    }
+    return counts;
+};
+
+/**
  * The content of files in the working tree as git blob ids (with git's filters, see workingBlobIds), null for a file that is not
  * there. @param files paths relative to the repository's top
  */

@@ -28,7 +28,7 @@ import { decide } from './decisions.mjs';
 import { promptTerminal } from './decision-prompt.mjs';
 import { textMatcher } from './patterns.mjs';
 import { projectPath } from './project-path.mjs';
-import { changedFiles, dirtyFiles, shortHead } from './git.mjs';
+import { changedFiles, changedLines, dirtyFiles, shortHead } from './git.mjs';
 import { brokenChain, checkTest, draftIds, draftPath, environmentProblems, isDesignDraft, loadDraft, loadTest, pendingSteps, recordingHints, setStepLooks, staleSteps, testExists, testPath, withDefaults, writeTest } from './test-file.mjs';
 import { DESIGN_REPORT, FIX_REPORT, designMet, designOf, deviationsOf, fixState } from './bugfix.mjs';
 import { withLearning } from './learning.mjs';
@@ -1113,16 +1113,19 @@ export const runOne = async (root, options, deps = {}, loaded = undefined) => {
     if (!quiet) ui.head();
     if (!quiet) ui.info(runMode({ withAgent, noChat, headless, inCi, withAdvice, environments: agentEnvironments(config), env: target, language: teamLanguage(config), learn: learns, opened: handover, file: `${spec.draft === true ? DRAFT_DIR : RECORDING_DIR}/${test}.yaml` }));
     const { runFlow } = await import('./flows.mjs');
-    const runs = claudeRuns(root, config, { spec, checked, target, timeoutMin: timeoutMin ?? CLAUDE_TIMEOUT_MIN, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, conversation, headless, withDesign: design, ...(snapshot === undefined ? {} : { snapshot, command: 'open' }) });
+    // A draft in the window: the chat guides through the fix (red: fix it, test again; green: promote). Headless, CI and
+    // promoting run it as before.
+    const guiding = canFix && guided && !handover && entry === undefined && through === undefined && spec.draft === true;
+    const { flowOf, reproductionOf } = await import('./bugfix.mjs');
+    const runs = claudeRuns(root, config, { spec, checked, target, ...(guiding ? { flow: flowOf(root, spec) } : {}), timeoutMin: timeoutMin ?? CLAUDE_TIMEOUT_MIN, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, conversation, headless, withDesign: design, ...(snapshot === undefined ? {} : { snapshot, command: 'open' }) });
     const { execute } = runs;
     // A design not met: "Open with design" opens the window at that step with the design beside the app, as open <test>@S<n>
     // --design does (the step passed its check, so it is played through), in this process with the chat so far.
     const openDesign = canFix && !handover ? async (step) => (await runOne(root, { ...options, target, entry: undefined, through: step, design: true, handover: true, learn: false, advise: false, headless: false, noChat: false, quiet: true, guided: false, conversation: runs.conversation }, deps)).code : undefined;
-    // A draft in the window: the chat guides through the fix (red: fix it, test again; green: promote). Headless, CI and
-    // promoting run it as before.
-    const guide = canFix && guided && !handover && entry === undefined && through === undefined && spec.draft === true ? {
+    const guide = guiding ? {
         env: target,
-        cause: (await import('./bugfix.mjs')).reproductionOf(root, spec.id)?.cause,
+        cause: reproductionOf(root, spec.id)?.cause,
+        changed: () => changedSinceRed(root, loadDraft(root, test).red, git),
         // The red proof as the file has it now: a run that proved it red first wrote it only after that run.
         promote: ({ runId }) => promoteGreen(root, { ...options, target }, deps, { config, test, target, red: loadDraft(root, test).red, report: posix.join(RUN_DIR, 'runs', runId, 'report.md') }),
     } : undefined;
@@ -1466,7 +1469,8 @@ const recordFrom = async (root, options, deps = {}) => {
         requireTestUser(root, config, spec.role, target);
         const { fixFlow } = await import('./flows.mjs');
         const sandbox = await openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent, attach });
-        const { execute, conversation } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, conversation: options.conversation });
+        const { flowOf } = await import('./bugfix.mjs');
+        const { execute, conversation } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, conversation: options.conversation, ...(spec.draft === true ? { flow: flowOf(root, spec) } : {}) });
         return fixFlow({
             draft: spec,
             env: target,
@@ -1501,12 +1505,14 @@ const fixGuide = async (root, options, deps, { spec, target, lifecycle, conversa
     return {
         env: target,
         cause: reproductionOf(root, spec.id)?.cause,
+        fixNow: options.fixNow === true,
         rerun: async () => (await runOne(root, again, deps)).code,
     };
 };
 
 /**
  * `caw record` with parsed options.
+ * @param options.fixNow the bug is fixed by the agent right after the test is created (the choice after reproducing)
  * @param options.conversation the chat so far, when the guided bug fix continues a reproduction in this process
  */
 const recordTest = async (root, options, deps = {}) => {
@@ -1545,7 +1551,8 @@ const recordTest = async (root, options, deps = {}) => {
         // A draft in the window is the guided fix: its own plan and its red proof change nothing the test checks, caw takes them
         // like a run without a window does; the person's clicks are fixing and adopting.
         const guidedDraft = spec.draft === true && !headless;
-        const { execute, conversation, undecided } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, previous, conversation: options.conversation, headless, ...(guidedDraft ? { autoDecide: ['plan.approve', 'red.proof'] } : {}), ...(terminal === undefined ? {} : { terminal }) });
+        const { flowOf } = await import('./bugfix.mjs');
+        const { execute, conversation, undecided } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, previous, conversation: options.conversation, headless, ...(guidedDraft ? { autoDecide: ['plan.approve', 'red.proof'], flow: flowOf(root, spec) } : {}), ...(terminal === undefined ? {} : { terminal }) });
         if (headless) ui.info(t('cli.recordHeadless', { test, env: target }));
         // Driven from the developer's Claude Code session: it follows an existing test plan without asking the human first.
         // A new test without a plan still starts with the human's demonstration; without a window the agent follows the plan.
@@ -1592,6 +1599,22 @@ const gitDefault = {
     head: (root) => shortHead(root),
     dirty: (root) => dirtyFiles(root),
     changedFiles: (root, since, dirty) => changedFiles(root, since, dirty),
+    changedLines: (root, since, files) => changedLines(root, since, files),
+};
+
+/** The files changed since a red proof with their lines added and removed ([{ file, added?, removed? }]), null without git. */
+const changedSinceRed = (root, red, git = gitDefault) => {
+    if (red?.head === undefined) return null;
+    try {
+        const files = git.changedFiles(root, red.head, red.dirty ?? []);
+        // Modified before the proof already: its lines since the commit are not the fix's alone.
+        const dirty = new Set((red.dirty ?? []).map(({ file }) => file));
+        const lines = git.changedLines?.(root, red.head, files.filter((file) => ![...dirty].some((path) => path === file || path.endsWith(`/${file}`)))) ?? new Map();
+        return files.map((file) => ({ file, ...lines.get(file) }));
+    } catch (error) {
+        if (!(error instanceof CawError)) throw error;
+        return null;
+    }
 };
 
 /** A draft as a test for caw/tests: without the draft mark, its origin and the red proof. */
@@ -1827,7 +1850,7 @@ export const reproduce = async (root, args, deps = {}) => {
     const options = parseReproduceArgs(args, { root, ...(deps.readStdin === undefined ? {} : { readStdin: deps.readStdin }) });
     const { containerCommand, adviseCommand, talkCommand, docker, onChatOpen } = deps;
     const config = loadConfig(root);
-    // With a window outside CI the chat guides on: reproduced, the draft is recorded red next, in this process.
+    // With a window outside CI the chat guides on: reproduced, a card asks whether to create the test next, in this process.
     const guided = !options.headless && (deps.interactive ?? (process.env.CI === undefined || process.env.CI === ''));
     let known = null;
     if (options.from !== undefined) {
@@ -1867,18 +1890,22 @@ export const reproduce = async (root, args, deps = {}) => {
         const { replayOf, replayToEntry } = await import('./replay.mjs');
         const prefix = known === null ? undefined : options.from.step === undefined ? replayOf(known) : replayToEntry(known, options.from.step, { reads: config.reads ?? [] });
         const sandbox = await openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent: options.agent, attach: options.attach });
-        const { execute, conversation } = claudeRuns(root, config, { spec, checked, target, timeoutMin: CLAUDE_TIMEOUT_MIN, stepTimeoutSec: 30, containerCommand, adviseCommand, talkCommand, onChatOpen });
-        let recordNext = false;
+        const { bugTitle } = await import('./bugfix.mjs');
+        const { creates, decideReproduced, fixesNow } = await import('./flows.mjs');
+        const { execute, conversation } = claudeRuns(root, config, { spec, checked, target, timeoutMin: CLAUDE_TIMEOUT_MIN, stepTimeoutSec: 30, containerCommand, adviseCommand, talkCommand, onChatOpen, ...(guided ? { flow: { kind: 'fix', title: bugTitle(options.bug) } } : {}) });
+        let choice = null;
         const result = await execute({
             sandbox,
             headless: options.headless,
-            // With a window the chat shows what the agent does; reproduced, the draft is captured in a test right away.
+            // With a window the chat shows what the agent does; reproduced, its card asks whether to create the test.
             ...(options.headless ? {} : { conversation }),
             ...(guided ? {
-                conclude: async ({ verdict }) => {
-                    if (verdict.reproduce?.draft === undefined) return undefined;
-                    recordNext = true;
-                    return { next: 'record' };
+                conclude: async ({ verdict, chat }) => {
+                    const draft = verdict.reproduce?.draft;
+                    if (draft === undefined) return undefined;
+                    choice = await decideReproduced(chat, { test: basename(draft.file, '.yaml'), outcome: verdict.reproduce });
+                    if (creates(choice)) return { next: 'record' };
+                    return choice === null ? undefined : { outcome: t('run.guide.later', { command: draft.record }) };
                 },
             } : {}),
             reproduce: {
@@ -1891,10 +1918,10 @@ export const reproduce = async (root, args, deps = {}) => {
         });
         const outcome = result.verdict?.reproduce;
         if (outcome?.draft !== undefined) ui.info(t('cli.reproduceDraft', outcome.draft));
-        if (!recordNext || outcome?.draft === undefined) return result.exitCode;
-        // Captured in a test next, as `caw record <draft>` would, with the chat so far.
+        if (!creates(choice) || outcome?.draft === undefined) return result.exitCode;
+        // The test is created next, as `caw record <draft>` would, with the chat so far; the choice stays in this process.
         const id = basename(outcome.draft.file, '.yaml');
-        return recordTest(root, { ...parseRunArgs('record', [id]), target, conversation, ...(options.agent === undefined ? {} : { agent: options.agent }), ...(options.attach === undefined ? {} : { attach: options.attach }) }, deps);
+        return recordTest(root, { ...parseRunArgs('record', [id]), target, conversation, fixNow: fixesNow(choice), ...(options.agent === undefined ? {} : { agent: options.agent }), ...(options.attach === undefined ? {} : { attach: options.attach }) }, deps);
     });
 };
 

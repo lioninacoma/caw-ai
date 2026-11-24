@@ -345,8 +345,8 @@ die Aktionen im Browser, Screenshots, harte Fehler, gesperrte oder auffällige R
 wenn nachgestellt, `caw/drafts/<id>.yaml`, ein Testentwurf im Format von caw aus den Schritten des Agenten, mit seinen Aktionen im
 Browser und ihren Locatoren in seinen `notes`. Nichts landet in `caw/tests`: Prüf den Entwurf, nimm ihn mit `caw record <id>` rot
 auf, behebe den Fehler, `caw run <id>` zeigt ihn grün, und `caw run <id> --promote` macht ihn zum Test
-([vom Fehler zum belegten Fix](guide.de.md#vom-fehler-zum-belegten-fix)). Mit Fenster außerhalb von CI hält caw den Fehler nach dem
-Nachstellen ohne Klick in einem Test fest und führt dann im selben Prozess durch den Fix; die Ausgabe im Terminal bleibt dieselbe.
+([vom Fehler zum belegten Fix](guide.de.md#vom-fehler-zum-belegten-fix)). Mit Fenster außerhalb von CI fragt nach dem Nachstellen eine Karte, ob
+caw den Test erstellt und den Fehler beheben lässt, nur den Test erstellt oder keins von beiden, und führt dann im selben Prozess durch den Fix; die Ausgabe im Terminal bleibt dieselbe.
 
 - **Wo:** nur auf Umgebungen mit `agent`, nie auf Produktion (`reproduce-not-allowed`). Ohne `--env` die einzige solche
   Umgebung, mit `--from` die des Tests.

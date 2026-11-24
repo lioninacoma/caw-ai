@@ -58,6 +58,9 @@ const FIX_MYSELF = button('fix-myself', 'run.button.fixMyself');
 const BESIDE = { beside: true };
 const FIX_THERE = button('fix-there', 'run.button.fixThere', { primary: true });
 const RETEST = button('retest', 'run.button.rerun', { primary: true });
+// Reproduced: the test is created and the bug fixed by the agent in one go, or only the test.
+const TEST_AND_FIX = button('test-and-fix', 'run.button.testAndFix', { primary: true });
+const TEST_ONLY = button('test-only', 'run.button.testOnly');
 const PROMOTE = button('promote', 'run.button.promote', { primary: true });
 // A design draft: the same decisions (fix.guide), worded for building the target design.
 const BUILD_BY_AGENT = button('fix-by-agent', 'run.button.buildByAgent', { primary: true });
@@ -71,7 +74,7 @@ const closed = (text) => (/[.!?]$/.test(text) ? text : `${text}.`);
 /** Added baselines in one sentence for the chat. */
 /**
  * A result card for the chat: what happened (title), details (text) and the consequence (muted); tone fail, warn, next, info, ask.
- * The fix card adds rows and the guided bug fix a phase (chat.mjs).
+ * The fix card adds rows and the guided flow a phase (chat.mjs).
  */
 const resultCard = (tone, title, text, muted) => ({ kind: 'result', tone, title, ...(text ? { text } : {}), ...(muted ? { muted } : {}) });
 /** Waits for a button under a result card: decision `id` with its language-neutral `context` (decisions.mjs). */
@@ -386,15 +389,38 @@ const redRows = (red) => {
     ];
 };
 /**
- * A card of the guided bug fix: the chat shows its phase (reproduced, red, fix, green, promoted) over it; of a design draft
- * (design) the phases of the target design (draft, red, build, green, adopted).
+ * A card of the guided flow: the bar of its window stands at `phase` (start, test, fix, again, adopt, done; workbench.mjs). With
+ * `bare` its title stays out of sight, because the bar says it already; the history, the terminal and screen readers have it.
  */
-const inPhase = (phase, card, design = false) => ({ ...card, phase, ...(design ? { phases: 'design' } : {}) });
+const inPhase = (phase, card) => ({ ...card, phase });
+const bare = (card) => ({ ...card, bare: true });
+
+/**
+ * Reproduced in a window: the card with what was observed, expected and the suspected cause asks whether to create the test and
+ * fix the bug, or only create the test.
+ * @param outcome the reproduction's verdict (result.json reproduce)
+ * @returns the option id, null when the window closes
+ */
+export const decideReproduced = (chat, { test, outcome }) => {
+    const facts = [['observed', outcome.observed], ['expected', outcome.expected], ['cause', outcome.cause]].filter(([, text]) => text !== undefined);
+    const rows = facts.map(([key, text]) => ({ label: t(`chat.page.${key}`), text }));
+    const card = inPhase('test', bare({ ...resultCard('next', t('run.reproduce.card.yes')), rows }));
+    return decide(chat, 'reproduced.test', { test, ...Object.fromEntries(facts) }, card, [TEST_AND_FIX, { ...TEST_ONLY, ...BESIDE }, { ...LATER, ...BESIDE }]);
+};
+/** Whether the answer to decideReproduced creates the test, and whether the agent fixes the bug right after. */
+export const creates = (choice) => choice === TEST_AND_FIX.id || choice === TEST_ONLY.id;
+export const fixesNow = (choice) => choice === TEST_AND_FIX.id;
+
+/** What the fix changed, as the green card lists it: the files since the red proof with their lines added and removed. */
+const changedRows = (changed) => (changed === null || changed === undefined || changed.length === 0 ? [] : [{
+    label: t('run.guide.changed'),
+    items: changed.map(({ file, added, removed }) => ({ code: file, ...(added === undefined ? {} : { text: `+${added} −${removed}` }) })),
+}]);
 
 // The texts of the guide card: a bug to fix, or a target design to build.
 const GUIDE = {
-    fix: { phase: 'fix', title: 'run.guide.fixTitle', captured: 'run.guide.capturedTitle', waitTitle: 'run.guide.waitTitle', waitText: 'run.guide.waitText', noAgentText: 'run.guide.noAgentText', appliedText: 'run.guide.appliedText', nothingText: 'run.guide.nothingText', byAgent: FIX_BY_AGENT, again: FIX_AGAIN, myself: FIX_MYSELF },
-    design: { phase: 'build', title: 'run.guide.buildTitle', captured: 'run.guide.designCapturedTitle', waitTitle: 'run.guide.buildWaitTitle', waitText: 'run.guide.buildWaitText', noAgentText: 'run.guide.buildNoAgentText', appliedText: 'run.guide.buildAppliedText', nothingText: 'run.guide.buildNothingText', byAgent: BUILD_BY_AGENT, again: BUILD_AGAIN, myself: BUILD_MYSELF },
+    fix: { captured: 'run.guide.capturedTitle', waitTitle: 'run.guide.waitTitle', noAgentText: 'run.guide.noAgentText', appliedText: 'run.guide.appliedText', nothingText: 'run.guide.nothingText', byAgent: FIX_BY_AGENT, again: FIX_AGAIN, myself: FIX_MYSELF },
+    design: { captured: 'run.guide.designCapturedTitle', waitTitle: 'run.guide.buildWaitTitle', waitText: 'run.guide.buildWaitText', noAgentText: 'run.guide.buildNoAgentText', appliedText: 'run.guide.buildAppliedText', nothingText: 'run.guide.buildNothingText', byAgent: BUILD_BY_AGENT, again: BUILD_AGAIN, myself: BUILD_MYSELF },
 };
 
 /** The command that goes on with a draft later, on the run's environment (guide.env) like every other hint. */
@@ -412,38 +438,40 @@ const laterCommand = (guide, test, extra = '', command = 'run') => commandOn(gui
  * @param again     still red after a fix: fix again, test again or end
  * @param title     the card's head; by default "Bug captured in a test: S3 fails while the bug is there"
  * @param adviseFix () => the advice result ({ spec, touched, notes, files, outside }) or null if no agent could start
+ * @param fixNow    the person chose it already (decideReproduced): the first card is skipped as if the agent's fix was chosen
  * @param store     (advice result) adopts what changed in the test (rare: the fix is the app's)
  * @param server    the environment's lifecycle server ({ restartable() }): an applied change to the app's server names who
  *                  restarts it, as after any applied app change
  * @param reloadable (on) the workbench's F5 while the card of an applied change waits: the person may look at it first
  * @returns false to end the run, else { restart }: test again in a new window, caw restarting the server it started first
  */
-const guideFix = async (chat, { red, test, later, again = false, title, adviseFix, store, design = false, server, reloadable }) => {
+const guideFix = async (chat, { red, test, later, again = false, title, fixNow = false, adviseFix, store, design = false, server, reloadable }) => {
     const texts = GUIDE[design ? 'design' : 'fix'];
     const ask = { ...resultCard('next', title ?? t(texts.captured, { id: red.step })), rows: redRows(red) };
     let card = ask;
-    // Just captured, the bar stands at "In a test"; still red after a fix, at fixing.
-    let phase = again ? texts.phase : 'red';
     let options = again ? [texts.again, texts.myself, { ...RETEST, primary: false }, CLOSE] : [texts.byAgent, { ...texts.myself, ...BESIDE }, LATER];
     // An applied change to the app: who restarts its server (null: not needed), and F5 works while its card waits.
     let restart = null;
     let applied = false;
     const waiting = () => {
-        card = resultCard('next', t(texts.waitTitle), t(texts.waitText, { id: red.step }), t('run.guide.laterHint', { command: later }));
+        // The bar says what to do: the red step and, for a design, what must not be forgotten first.
+        card = bare({ ...resultCard('next', t(texts.waitTitle), texts.waitText === undefined ? undefined : t(texts.waitText), t('run.guide.laterHint', { command: later })), rows: redRows(red) });
         options = [RETEST, LATER];
-        phase = texts.phase;
         applied = false;
     };
+    let chosen = fixNow ? FIX_BY_AGENT.id : undefined;
     for (;;) {
         const context = { test, red: redContext(red), ...(design ? { origin: 'design' } : {}), ...(again ? { again: true } : {}) };
         if (applied) await reloadable?.(true);
         let choice;
         try {
-            choice = await decideOn(chat, { id: 'fix.guide', context, options, card: inPhase(phase, card, design) });
+            choice = chosen ?? await decideOn(chat, { id: 'fix.guide', context, options, card: inPhase('fix', card) });
+            chosen = undefined;
         } finally {
             if (applied) await reloadable?.(false);
         }
         if (choice === FIX_BY_AGENT.id) {
+            chat.phase?.('fix');
             const advised = await adviseFix();
             if (advised === null) {
                 card = resultCard('warn', t('run.guide.noAgent'), t(texts.noAgentText));
@@ -454,7 +482,6 @@ const guideFix = async (chat, { red, test, later, again = false, title, adviseFi
             const app = appFilesOf(advised.files);
             const outside = advised.outside ?? [];
             applied = app.length > 0;
-            phase = texts.phase;
             if (app.length > 0) {
                 // A change to the server's code takes effect only after a restart, as after any applied app change.
                 restart = advised.restart === true ? server?.restartable?.() ?? 'none' : null;
@@ -600,7 +627,7 @@ const changeNote = (changes) => {
  *                     working tree (git.mjs dirtyFiles): a draft's red proof records it
  * @param markLooks    (test, step ids) => the file: writes `look: true` on the steps the human ticked when adopting a whole
  *                     recording; without it nothing is suggested
- * @param guide        a draft with a window (the guided bug fix): { env, cause, rerun }; once its red proof is saved the card offers the
+ * @param guide        a draft with a window (the guided bug fix): { env, cause, rerun, fixNow? }; once its red proof is saved the card offers the
  *                     fix, and testing again is `rerun()`, a run of the draft in a new window of this process (its exit code)
  * @param previous     the test file as it was before: adopting a recording of the same plan that changes nothing it checks is
  *                     harmless (decisions.mjs harmlessAdopt), which a run without a window may do on its own
@@ -712,7 +739,7 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
                         ? resultCard('info', t('run.flow.designRedTitle', { id }), t(designAtEntry(verdict, id) ? 'run.flow.designRedEntryText' : 'run.flow.designRedText', { id, file: shown.design, count: shown.deviations.length }), t('run.flow.designRedMuted', { command: commandOn(env, current.id) }))
                         : resultCard('info', t('run.flow.redTitle', { id }), t('run.flow.redText', { id }), t('run.flow.redMuted', { command: commandOn(env, current.id) }));
                     const context = { test: current.id, step: id, run: runId, ...(design ? { origin: 'design', deviations: shown.deviations.length } : {}) };
-                    choice = await decide(chat, 'red.proof', context, guide === undefined ? proof : inPhase('red', proof, design), [adoptButton(current.steps.length), DISCARD]);
+                    choice = await decide(chat, 'red.proof', context, guide === undefined ? proof : inPhase('test', proof), [adoptButton(current.steps.length), DISCARD]);
                     if (choice !== ADOPT.id) return { outcome: t('run.flow.discarded') };
                     current = withRed(current, runId, head);
                     saved = adopt(current, undefined, {});
@@ -727,7 +754,7 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
                             current = result.spec;
                             if (result.touched.length > 0 || result.notes) log(t('run.flow.adviceAdopted', { file: adopt(current, new Set(result.touched), { withNotes: result.notes }) }));
                         };
-                        retest = await guideFix(chat, { red: redFor(current, verdict, guide.cause), design, test: current.id, later: laterCommand(guide, current.id), adviseFix, store, server, reloadable: concluded.reloadable });
+                        retest = await guideFix(chat, { red: redFor(current, verdict, guide.cause), design, test: current.id, later: laterCommand(guide, current.id), fixNow: guide.fixNow === true, adviseFix, store, server, reloadable: concluded.reloadable });
                         return retest ? { next: 'run' } : { outcome: t('run.guide.later', { command: laterCommand(guide, current.id) }) };
                     }
                     return { outcome: t('run.flow.saved', { file: saved }) };
@@ -862,7 +889,7 @@ export const recordFlow = async ({ sandbox, execute, adopt, markLooks, log, head
  *                      outside CI, in CI with --learn)
  * @param onPlayed  gets the playback result before things continue
  * @param hint      (failed, { canFix }) after a failed step, if the run ends with it
- * @param guide     a draft with chat (the guided bug fix): { env, cause, promote }; red, the card offers the fix and testing again;
+ * @param guide     a draft with chat (the guided bug fix): { env, cause, changed, promote }; red, the card offers the fix and testing again;
  *                  green, adopting it runs `promote({ runId })` -> { ok, test, report, others } or { ok: false, reason }
  * @param openDesign (step) => exit code: opens the window at that step with its design beside the app (open <test>@S<n>
  *                  --design) in this process; a design not met offers it. The run's own exit code stays.
@@ -1129,26 +1156,25 @@ export const runFlow = async (options) => {
                 if (!failed && guide !== undefined && current.red !== undefined && design && designReady(current, verdict)) {
                     const id = current.red.step;
                     const record = laterCommand(guide, current.id, '', 'record');
-                    await decide(chat, 'design.record', { test: current.id, step: id, origin: 'design' }, inPhase('build', resultCard('next', t('run.guide.designReadyTitle', { id }), t('run.guide.designReadyText', { id }), t('run.guide.laterHint', { command: record })), true), [ONLY_CLOSE]);
+                    await decide(chat, 'design.record', { test: current.id, step: id, origin: 'design' }, inPhase('fix', resultCard('next', t('run.guide.designReadyTitle', { id }), t('run.guide.designReadyText', { id }), t('run.guide.laterHint', { command: record }))), [ONLY_CLOSE]);
                     return { outcome: t('run.guide.later', { command: record }) };
                 }
                 if (!failed && guide !== undefined && current.red !== undefined && (design ? designMet(current, verdict) : verdict.status === 'pass')) {
                     const id = current.red.step;
-                    const green = design
-                        ? resultCard('next', t('run.guide.designGreenTitle', { id }), t('run.guide.designGreenText', { test: current.id }))
-                        : resultCard('next', t('run.guide.greenTitle', { id }), t('run.guide.greenText', { test: current.id }));
-                    if (await decide(chat, 'fix.green', { test: current.id, step: id, ...(design ? { origin: 'design' } : {}) }, inPhase('green', green, design), [PROMOTE, LATER]) !== PROMOTE.id) {
+                    const changed = changedRows(guide.changed?.());
+                    const green = { ...resultCard('next', t(design ? 'run.guide.designGreenTitle' : 'run.guide.greenTitle')), ...(changed.length === 0 ? {} : { rows: changed }) };
+                    if (await decide(chat, 'fix.green', { test: current.id, step: id, ...(design ? { origin: 'design' } : {}) }, inPhase('adopt', green), [PROMOTE, LATER]) !== PROMOTE.id) {
                         return { outcome: t('run.guide.later', { command: laterCommand(guide, current.id, ' --promote') }) };
                     }
                     learnFrom(concluded);
                     chat.progress(t('run.guide.promoting'));
                     const promoted = await guide.promote({ runId: concluded.runId });
                     if (promoted.ok) {
-                        // The last phase, as the refusal shows it: the test moved, the report written.
-                        chat.result?.(inPhase(design ? 'adopted' : 'promoted', resultCard('info', t('run.guide.adoptedTitle', { test: current.id }), t(design ? 'run.guide.designAdopted' : 'run.guide.promoted', promoted)), design));
+                        // All done: the test moved, the report written.
+                        chat.result?.(inPhase('done', resultCard('info', t('run.guide.adoptedTitle', { test: current.id }), t(design ? 'run.guide.designAdopted' : 'run.guide.promoted', promoted))));
                         return undefined;
                     }
-                    await decide(chat, 'fix.refused', { test: current.id }, inPhase(design ? 'adopted' : 'promoted', resultCard('fail', t('run.guide.refusedTitle'), closed(withoutDot(promoted.reason)), t('run.guide.refusedMuted', { test: current.id })), design), [ONLY_CLOSE]);
+                    await decide(chat, 'fix.refused', { test: current.id }, inPhase('adopt', resultCard('fail', t('run.guide.refusedTitle'), closed(withoutDot(promoted.reason)), t('run.guide.refusedMuted', { test: current.id }))), [ONLY_CLOSE]);
                     return undefined;
                 }
                 if (!failed) {

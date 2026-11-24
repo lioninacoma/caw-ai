@@ -64,7 +64,7 @@ test('{caw}: commands in hints as the person calls caw, npx caw when npm started
 
 test('one term per thing: Zielbild for a target design in German (Entwurf is a draft in caw/drafts), App beside it, one phase name for adopting', async () => {
     const de = Object.assign({}, ...await Promise.all(['run', 'session', 'workbench', 'config'].map(async (name) => (await import(`../src/shared/locales/de/${name}.mjs`)).default)));
-    const { default: enChat } = await import('../src/shared/locales/en/chat.mjs');
+    const { default: enBench } = await import('../src/shared/locales/en/workbench.mjs');
     assert.equal(de['run.button.openDesign'], 'Mit Zielbild öffnen');
     assert.equal(de['workbench.page.cmp.app'], 'App', 'beside "Zielbild" on the comparison page, as its other texts say App');
     assert.match(de['run.button.buildAgain'], /\{agent\}/, 'like every other button that starts the agent');
@@ -72,5 +72,5 @@ test('one term per thing: Zielbild for a target design in German (Entwurf is a d
         assert.doesNotMatch(de[key], /Entwurf/, key);
         assert.match(de[key], /Zielbild/, key);
     }
-    assert.equal(enChat['chat.page.phase.promoted'], enChat['chat.page.phase.adopted'], 'the button says Adopt in both flows');
+    assert.equal(enBench['workbench.page.flow.adopt'], 'Adopt', 'the button says Adopt, the last step of both flows too');
 });

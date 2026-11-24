@@ -1428,7 +1428,7 @@ export const openBrowserSession = async (spec) => {
             // Embed only documents of the application itself, not further allowed hosts such as a sign-in service.
             // A live sign-in opens on the sign-in page, so the application never loads signed out.
             const firstUrl = liveSignIn ? `${resolved.url}${auth.path}` : startUrl;
-            bench = await openWorkbench(raw, { appUrl: firstUrl, hosts: appHosts, title: spec.title ?? 'caw', rewrite, refuse: refuseTopWrite, onUnrewritten });
+            bench = await openWorkbench(raw, { appUrl: firstUrl, hosts: appHosts, title: spec.title ?? 'caw', flow: spec.flow, rewrite, refuse: refuseTopWrite, onUnrewritten });
             pages.embed(bench.page, bench.view);
             // A recorded (or configured) viewport pins the app frame to that size, as headless replay uses it (OPEN-15).
             if (region?.viewport !== undefined) await bench.viewport(region.viewport);

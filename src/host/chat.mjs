@@ -4,7 +4,8 @@
 //
 // The page, in Graphite (style.mjs) and the personal mode, is the panel "Now": the card that waits with its buttons (one main
 // action, the others beside it or behind "More"), or while caw or the agent works a calm block with what runs and the last
-// lines. The phase bar of a guided fix stands once at the top. Everything else (answered cards as one line, actions, notices,
+// lines. In the guided flow the workbench's bar says what runs: the block is then only the current activity with its time, and
+// besides it only warnings show. Everything else (answered cards as one line, actions, notices,
 // earlier windows) is in the history behind the button at the bottom. The one main action of a state without a card (Done,
 // Finish demo, Hand over …) sits full width (Ctrl+Enter); while the agent works it is "Pause F9". The end card's command wraps
 // only between words and keeps its spaces. "/" at the start of the field opens the commands (element, checkpoint, pause,
@@ -36,9 +37,9 @@ const PICK_STATES = ['paused', 'asking', 'showing', 'describing', 'planning', 'd
 const TALK_KINDS = ['discussing', 'developing'];
 /**
  * A result card: what happened as its title, details and consequence below, and its tone (fail, warn, next, info, ask) as
- * icon and colour; optionally rows ([{ label, text, code }] as a key/value list) and the bug fix phase it belongs to (phase:
- * reproduced, red, fix, green or promoted, shown as a bar over the card), with phases: 'design' a design draft's (draft, red,
- * build, green or adopted). As one line for the log and the waiting line:
+ * icon and colour; optionally rows ([{ label, text, code }] or [{ label, items: [{ code, text }] }] as a key/value list), the
+ * step of the guided flow it belongs to (phase, shown by the workbench's bar) and bare: the title stays out of sight, because the
+ * bar says it. As one line for the log and the waiting line:
  * "<title>: <text> <muted>".
  */
 export const resultText = ({ title, text, muted }) => [`${title}${/[.?!:]$/.test(title) || (!text && !muted) ? '' : ':'}`, text, muted].filter(Boolean).join(' ');
@@ -586,7 +587,7 @@ const slashCommands = (ctrl) => [
  * workbench's settings arrives as a message from the parent.
  *
  * The page is the panel "Now": only the current thing, large. A card that waits (with its buttons), or while caw or the agent
- * works a calm block: what runs now and the last few lines. The phase bar of a guided fix stands once at the top. Everything
+ * works a calm block: what runs now and the last few lines (in the guided flow, body.flow, only the current one). Everything
  * else is in the history (Verlauf, a button at the bottom with the counts): an answered card as one line with the answer, the
  * actions, caw's notices, and the entries of earlier windows of the same run, which never come back into the panel itself.
  */
@@ -601,14 +602,8 @@ ${styleSheet()}
 html,body{height:100%}
 body{margin:0;display:flex;flex-direction:column;background:var(--panel);color:var(--text);font:400 13px/1.5 var(--font)}
 button{cursor:pointer}
-/* The phases of a guided bug fix or target design: once at the top, one segment per phase with its name. */
-#phases{flex:none;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:4px;margin:0;padding:16px 18px 0;list-style:none}
-#phases li{display:flex;flex-direction:column;gap:5px;min-width:0;font:500 10.5px/1.2 var(--font);color:var(--faint)}
-#phases li::before{content:"";height:4px;border-radius:2px;background:var(--line)}
-#phases li.done{color:var(--muted)}#phases li.done::before{background:var(--pass)}
-#phases li[aria-current]{color:var(--accent-text);font-weight:600}#phases li[aria-current]::before{background:var(--accent)}
-/* Only the current phase is named under its segment; the others are named for screen readers and as tooltip. */
-#phases span{white-space:nowrap}#phases li:last-child{align-items:flex-end}#phases li:not([aria-current]) span{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+/* Out of sight, still there for screen readers: what the guided flow's bar already says. */
+.sr,.flow #workLabel,.flow #status.quiet{position:absolute!important;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 /* Now: the card that waits, the conversation about it, or the block while something runs. */
 #now{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:14px;padding:18px;scrollbar-width:thin;scrollbar-color:var(--line2) var(--panel)}
 #now>*{flex-shrink:0}
@@ -639,6 +634,9 @@ body:has(#card:not(:empty)) #work,[data-state=closed] #work{display:none}
 :is([data-state=running],[data-state=advising],[data-state=testing],[data-state=verifying],[data-state=preparing],[data-state=handing]) #lines li:last-child .mk .i{display:none}
 :is([data-state=running],[data-state=advising],[data-state=testing],[data-state=verifying],[data-state=preparing],[data-state=handing]) #lines li:last-child .mk::before{content:"";display:block;width:8px;height:8px;margin-top:2px;border-radius:50%;border:2px solid var(--run);border-right-color:transparent;animation:caw-spin .9s linear infinite}
 [data-state=showing] #lines .mk .i{color:var(--fail)}
+/* The guided flow: only the current activity, with its time. */
+.flow #lines{padding:12px;border:1px solid var(--line);border-radius:var(--r3);font-size:13px}.flow #lines:empty,.flow #lines li:not(:last-child){display:none}
+.flow #work:not(:has(#lines:not(:empty),#status:not(.quiet):not(:empty))){position:absolute}
 /* Cards: plan, question, advice, failure, decision, the token notice and results. In the panel large and flat. */
 .message.card{gap:12px;font-size:13px;line-height:1.55;overflow:visible}
 #card>.card,#next{padding:0;border:0;border-radius:0;background:none}
@@ -667,6 +665,11 @@ body:has(#card:not(:empty)) #work,[data-state=closed] #work{display:none}
 .card details ul,.card>ul{margin:6px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
 .card>ul{margin:0;font-size:12.5px;color:var(--text)}.card li{display:flex;gap:6px}.card li .i{width:13px;height:13px;margin-top:2px}
 .card li.e .i{color:var(--fail)}.card li.w .i{color:var(--warn)}.card li.f .i,.card>ul li .i{color:var(--faint)}
+/* The guided flow's cards: the facts in a box. */
+.flow :is(#card,#nextRepro) .kv{gap:8px 14px;padding:12px;border-radius:var(--r3);background:var(--bg);font-size:13px;line-height:1.5}
+.flow :is(#card,#nextRepro) .kv dt{padding:0;font:400 13px/1.5 var(--font);letter-spacing:0;text-transform:none;color:var(--muted)}
+.flow #card>.card>strong{font-size:20px}.flow #card>:is(.r-next,.r-info)>strong .i{display:none}
+.kv .it code{margin-right:6px}
 /* Checkboxes in a card (choosePicks): one row per item, locked after the choice. */
 .picks{margin:0;padding:8px 10px 10px;border:1px solid var(--line);border-radius:var(--r1);display:flex;flex-direction:column;gap:6px;min-width:0}
 .picks legend{padding:0 4px;font:600 11px/1.4 var(--font);letter-spacing:.04em;text-transform:uppercase;color:var(--faint)}
@@ -687,11 +690,17 @@ body:not(:has(#card:not(:empty))):is([data-state=running],[data-state=pausing],[
 :is([data-state=running],[data-state=pausing]) #toggle{display:inline-flex}
 :is([data-state=paused],[data-state=asking],[data-state=showing],[data-state=describing]) #toggle{display:flex;width:100%}
 #toggle.busy .i{display:none}#toggle.busy::before{content:"";width:10px;height:10px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:caw-spin .9s linear infinite}
+/* The guided flow: one button under the other over the full width; while the agent records, pausing is the one at hand. */
+.flow:is([data-state=running],[data-state=pausing]) #toggle{display:flex;width:100%;height:auto;padding:13px 15px}
+body.flow:not(:has(#card:not(:empty))):is([data-state=running],[data-state=pausing]):not(.arming):not(.stopping) #cancel{display:none}
+.flow #cancel .btn{flex:1;height:auto;padding:13px 15px;font-size:13px}
+.flow[data-state=running] #ask{display:none}
 #choices{display:none;flex-direction:column;gap:8px}
 :is([data-state=choosing],[data-state=deciding],[data-state=reviewing],[data-state=discussing],[data-state=developing],[data-state=planning]) #choices{display:flex}
 .acts{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:8px}.acts>.btn,.acts>.more{flex:0 0 auto}.acts>.btn-p{flex:1 1 100%}
 #choices .btn,#next .btn{white-space:normal;height:auto;min-height:36px;padding:9px 15px;line-height:1.25;text-align:center}
 #choices .rest>.btn{flex:1 1 auto}#choices .rest>.btn-p{flex:1 1 100%;font-size:14px}
+.flow #choices .rest{flex-direction:column;align-items:stretch}.flow #choices .rest>*{flex:none}.flow #choices .rest>.btn,.flow .more>.btn{width:100%;padding:13px 15px}
 #choices button.sure{background:var(--fail);color:var(--on-accent);border-color:transparent}
 #choices button:disabled{cursor:progress;opacity:.55}#choices button.busy{opacity:1}
 #choices button.busy::before{content:"";width:10px;height:10px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:caw-spin .9s linear infinite}
@@ -766,7 +775,6 @@ details.activity li{overflow-wrap:anywhere}
 .activity li small.items{display:block;color:var(--faint);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 </style></head><body data-state="running">
-<ol id="phases" hidden></ol>
 <main id="now" aria-live="polite"><div id="card"></div><div id="thread"></div><div id="thinking" aria-hidden="true">${ICON.loader}<span>${t('chat.page.thinking')}</span></div>
 <section id="work" aria-labelledby="workLabel"><h2 id="workLabel"></h2><p id="status" role="status" aria-live="polite"></p><ol id="lines"></ol></section>
 <div id="choices"></div>
@@ -824,7 +832,7 @@ const unarm=()=>{sure=false;clearTimeout(unsure);document.body.classList.remove(
 abortNo.addEventListener('click',()=>{unarm();input.focus();});
 abort.addEventListener('click',()=>{
   if(stopping)return;
-  if(sure){stopping=true;clearTimeout(unsure);abortNo.hidden=true;document.body.classList.remove('arming');abort.disabled=true;document.body.classList.add('stopping');abort.classList.remove('sure');abort.textContent=T['chat.page.aborting'];statusBox.textContent=T['chat.page.abortingStatus'];send('abort');return;}
+  if(sure){stopping=true;clearTimeout(unsure);abortNo.hidden=true;document.body.classList.remove('arming');abort.disabled=true;document.body.classList.add('stopping');abort.classList.remove('sure');abort.textContent=T['chat.page.aborting'];statusBox.textContent=T['chat.page.abortingStatus'];statusBox.classList.remove('quiet');send('abort');return;}
   sure=true;abort.classList.add('sure');abort.textContent=T['chat.page.abortSure'];abortNo.hidden=false;document.body.classList.add('arming');unsure=setTimeout(unarm,4000);});
 
 // "More": a menu of the other options, keyboard operable (arrows, Home, End; Esc and Tab close it).
@@ -853,11 +861,9 @@ const clock=(at)=>{if(!at)return null;const d=new Date(at);return el('small','',
 const whoLine=(who,at,extra)=>{const line=el('span','who '+(who==='claude'?'c':'h'));const name=el('span','',who==='claude'?AGENT:T['chat.page.you']);name.dataset.who=who;line.append(ic(who==='claude'?'agent':'you'),name);if(extra)line.append(extra);const time=clock(at);if(time)line.append(time);return line;};
 const head=(glyph,title,meta)=>{const strong=el('strong');strong.append(ic(glyph),el('span','',title));if(meta)strong.append(el('span','meta',meta));return strong;};
 const card=(cls)=>el('div','message card '+cls);
-// The phases of the guided bug fix, or of a design draft (phases: 'design'): once at the top, where the person stands.
-const PHASES={fix:['reproduced','red','fix','green','promoted'],design:['draft','red','build','green','adopted']};
-const phaseName=(name,flow)=>T['chat.page.phase.'+(flow==='design'&&name==='green'?'met':name)];
-const setPhase=(phase,flow)=>{const names=flow==='design'?PHASES.design:PHASES.fix;const at=names.indexOf(phase);if(at<0)return;const bar=$('phases');bar.className='phases';bar.setAttribute('aria-label',T[flow==='design'?'chat.page.phasesDesign':'chat.page.phases']);
-  bar.replaceChildren(...names.map((name,i)=>{const li=el('li',i<at?'done':i>at?'later':'now');li.title=phaseName(name,flow);li.append(el('span','',phaseName(name,flow)));if(i===at)li.setAttribute('aria-current','step');return li;}));bar.hidden=false;};
+// The guided flow: the workbench's bar says what runs (set by the host before the entries come).
+const inFlow=()=>document.body.classList.contains('flow');
+window.setFlow=(on)=>{document.body.classList.toggle('flow',on===true);};
 const list=(title,items,cls)=>{if(!items||items.length===0)return null;const details=el('details');const summary=el('summary');summary.append(ic('chev'),title+' ('+items.length+')');const ul=el('ul');
   for(const text of items){const li=el('li',cls);li.append(ic(cls==='e'?'x':cls==='w'?'alert':'dot'),el('span','',text));ul.append(li);}details.append(summary,ul);return details;};
 const copyButton=(text,select)=>{const copy=el('button','lnk copy');copy.type='button';copy.append(ic('copy'),el('span','',T['chat.page.copyPrompt']));
@@ -918,10 +924,10 @@ const build=(who,text,about,copy)=>{
   if(who==='tokens'){const box=card('tokens');box.append(head('coins',text));if(about?.text)box.append(el('p','muted',about.text));return box;}
   // The agent's own question (ask-operator): the kicker says who asks.
   if(who==='question'){const box=card('question');box.append(el('span','kick',fill('chat.page.agentAsks',{agent:AGENT})),head('agent',text));return box;}
-  // What happened and waits for a button: the head says what, the tone gives icon and colour, the phase is the kicker.
+  // What happened and waits for a button: the head says what, the tone gives icon and colour.
   if(who==='result'){const glyph={fail:'x',warn:'alert',next:'play',info:'info',ask:'help'}[about.tone]??'info';const box=card('result r-'+(about.tone??'info'));
-    box.append(head(glyph,about.title));if(about.text)box.append(el('p','txt',about.text));
-    if(about.rows){const kv=el('dl','kv');for(const row of about.rows){const dd=el('dd');dd.append(row.code?el('code','',row.text):row.text);kv.append(el('dt','',row.label),dd);}box.append(kv);}if(about.muted)box.append(el('p','muted',about.muted));return box;}
+    const title=head(glyph,about.title);if(about.bare&&inFlow())title.classList.add('sr');box.append(title);if(about.text)box.append(el('p','txt',about.text));
+    if(about.rows){const kv=el('dl','kv');for(const row of about.rows){const dd=el('dd');if(row.items)for(const item of row.items){const line=el('div','it');line.append(el('code','',item.code),item.text??'');dd.append(line);}else dd.append(row.code?el('code','',row.text):row.text);kv.append(el('dt','',row.label),dd);}box.append(kv);}if(about.muted)box.append(el('p','muted',about.muted));return box;}
   const box=card('intro');box.append(head('info',T['chat.page.intro']),el('p','txt',text));return box;
 };
 // The one line a card leaves in the history.
@@ -947,11 +953,12 @@ const answer=(label,by)=>{const line=current?.line??[...hist.querySelectorAll('.
   if(current)clearNow();};
 // A line in the block while something runs: the newest one is what runs now, the ones before it are done.
 let starting=null;
-const elapsed=(row)=>{const s=Math.max(0,Math.floor((Date.now()-Number(row.dataset.t0))/1000));row.querySelector('small').textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');};
-setInterval(()=>{if(starting)elapsed(starting);},1000);
+const elapsed=(row)=>{const s=Math.max(0,Math.floor((Date.now()-Number(row.dataset.t0))/1000));row.querySelector('small').textContent=String(Math.floor(s/60))+':'+String(s%60).padStart(2,'0');};
+// In the guided flow the current line always counts.
+setInterval(()=>{if(starting)elapsed(starting);const last=lines.lastElementChild;if(inFlow()&&last?.dataset.t0&&last!==starting)elapsed(last);},1000);
 const started=()=>{if(!starting)return;elapsed(starting);starting=null;};
-const workLine=(text,merge,t0)=>{let li=merge?lines.lastElementChild:null;if(!li){li=el('li');const mk=el('span','mk');mk.append(ic('check'));li.append(mk,el('span'),el('small'));lines.append(li);}
-  li.children[1].textContent=text;if(t0){li.dataset.t0=String(t0);elapsed(li);starting=li;}while(lines.childElementCount>MAX_LINES)lines.firstElementChild.remove();};
+const workLine=(text,merge,t0)=>{let li=merge?lines.lastElementChild:null;if(!li){li=el('li');const mk=el('span','mk');mk.append(ic('check'));const time=el('small');time.setAttribute('aria-hidden','true');li.append(mk,el('span'),time);lines.append(li);}
+  li.children[1].textContent=text;if(inFlow()&&!t0&&!li.dataset.t0){li.dataset.t0=String(Date.now());elapsed(li);}if(t0){li.dataset.t0=String(t0);elapsed(li);starting=li;}while(lines.childElementCount>MAX_LINES)lines.firstElementChild.remove();};
 const toThread=(node)=>{thread.append(node);while(thread.childElementCount>MAX_THREAD)thread.firstElementChild.remove();now.scrollTop=now.scrollHeight;};
 const bubble=(who,text,about,at)=>{const item=el('div','message '+who);
   if(who==='checkpoint'){const cp=el('span','cp');cp.append(ic('flag'),T['chat.page.checkpoint']);item.append(whoLine('human',at,cp));}
@@ -971,7 +978,6 @@ const UNREAD=['claude','plan','failure','decision','advice','question','result',
 window.addMessage=(who,text,about,at,past)=>{
   if(who==='window'){windows+=1;endGroup();if(windows>1||past)toHist(el('li','h-sep',fill('chat.page.window',{n:windows})));return;}
   if(!past&&UNREAD.includes(who)&&Date.now()-(at||Date.now())<5000)parent.postMessage({caw:'unread'},'*');
-  if(about?.phase)setPhase(about.phase,about.phases);
   // An answer: the card becomes one line in the history, with the answer.
   if((who==='human'&&about?.answer===true)||(who==='notice'&&typeof about?.answer==='string')){endGroup();answer(who==='human'?text:about.answer,who==='human'?'':about.by);count();return;}
   // Its start (after Continue) begins "working"; the host ends it once the agent waits for the person (setWorking).
@@ -1019,7 +1025,7 @@ window.setNext=(info)=>{const box=$('next');box.classList.toggle('on',!!info);if
   // A reproduction's verdict is the title itself; a run's title says passed or failed, the text counts the steps.
   const title=kind?(kind[1]?T[kind[1]]:info.text):T['chat.page.nextStep'];$('nextTitle').textContent=title;$('nextText').textContent=title===info.text?'':info.text;
   const repro=$('nextRepro');repro.replaceChildren();const r=info.reproduce;
-  if(r){if(r.bug)repro.append(el('div','quote','“'+r.bug+'”'));const kv=el('dl','kv');for(const [key,value] of [['observed',r.observed],['expected',r.expected],['cause',r.cause]])if(value)kv.append(el('dt','',T['chat.page.'+key]),el('dd','',value));if(kv.childElementCount>0)repro.append(kv);
+  if(r){if(r.bug&&!inFlow())repro.append(el('div','quote','“'+r.bug+'”'));const kv=el('dl','kv');for(const [key,value] of [['observed',r.observed],['expected',r.expected],['cause',r.cause]])if(value)kv.append(el('dt','',T['chat.page.'+key]),el('dd','',value));if(kv.childElementCount>0)repro.append(kv);
     if(r.readOnly){const banner=el('div','banner ro');banner.append(ic('lock'),el('span','',T['chat.page.readOnly']));repro.append(banner);}}
   const cmd=$('nextCmd');cmd.replaceChildren();
   // Each word unbreakable, the spaces between them plain text: it wraps only there, and a copy keeps them.
@@ -1077,10 +1083,18 @@ input.addEventListener('keydown',(event)=>{
 const TOGGLE_ICON={running:'pause',pausing:'play',paused:'play',asking:'check',showing:'stop',describing:'chev'};
 // The input's label: a hint while something runs or the person shows, a question otherwise.
 const HINT_STATES=['running','pausing','paused','asking','showing','describing'];
+// The warnings the panel shows in the guided flow too; every other sentence the bar and the activity already say.
+const WARNS=['running','pausing','paused','asking','showing','describing','discussing'];
+// What the block shows until the first activity arrives: the agent starts, or a replay.
+const STARTS={running:'agent',advising:'agent',testing:'test',verifying:'test',preparing:'test'};
+let worked=null;
+const begin=(state)=>{const kind=STARTS[state];if(kind===undefined)return;const changed=worked!==null&&worked!==state&&(state!=='running'||worked==='preparing');worked=state;
+  if(!inFlow()||(lines.childElementCount>0&&!changed))return;started();lines.replaceChildren();workLine(fill('chat.page.starts.'+kind,{agent:AGENT}),false);};
 // The host knows: the agent works until it waits for the person (its chat call) or ends.
 window.setWorking=(on)=>{document.body.classList.toggle('awaiting',on===true);};
 window.setStatus=(state,text,label,button,options)=>{if(state==='closed')document.body.classList.remove('awaiting');document.body.dataset.state=state;toggleButton.disabled=false;toggleButton.classList.remove('busy');toggleButton.removeAttribute('aria-busy');
-  if(!stopping){statusBox.textContent=text;$('workLabel').textContent=label;}
+  if(!stopping){statusBox.textContent=text;statusBox.classList.toggle('quiet',!WARNS.includes(state));$('workLabel').textContent=label;}
+  begin(state);
   $('inputLabel').textContent=fill(HINT_STATES.includes(state)?'chat.page.hintLabel':'chat.page.askLabel',{agent:AGENT});
   // While the agent works in the application the input is locked: typing here would take the focus from the application (an open
   // list closes when its field loses the focus). Pausing unlocks it.
@@ -1088,7 +1102,7 @@ window.setStatus=(state,text,label,button,options)=>{if(state==='closed')documen
   // After the run nothing listens any more: the input only stays reachable to stop the close countdown.
   input.readOnly=state==='closed';input.placeholder=locked?T['chat.page.lockedPlaceholder']:state==='closed'?T['chat.page.endedPlaceholder']:state==='planning'?T['chat.page.planPlaceholder']:state==='showing'?T['chat.page.showPlaceholder']:state==='describing'?T['chat.page.describePlaceholder']:hint;fit();
   // The main action: a link with F9 while the agent works, else the full-width button with Ctrl+Enter.
-  const asLink=state==='running'||state==='pausing';toggleButton.className=asLink?'lnk':'btn btn-p';
+  const asLink=state==='running'||state==='pausing';toggleButton.className=!asLink?'btn btn-p':inFlow()?'btn btn-s':'lnk';
   toggleButton.querySelector('.tic').replaceChildren(ic(TOGGLE_ICON[state]??'play'));toggleButton.querySelector('.key').textContent=asLink?'F9':KEY;$('toggleText').textContent=button;
   closeMenus();
   const all=state==='planning'&&!(options?.length)?[{id:'approve',label:T['chat.page.approvePlan'],primary:true,big:true}]:options??[];
@@ -1238,6 +1252,8 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
             if (LOGGED.has(who)) appendFileSync(logPath, `${new Date(at).toISOString()} ${who}: ${text.replaceAll('\n', ' ')}\n`);
             // With its time: the page shows it next to the speaker, also after a reload.
             transcript.push([who, text, about ?? null, at]);
+            // A card of the guided flow moves the workbench's bar to its step.
+            if (typeof about?.phase === 'string') quiet(Promise.resolve(bench.flowAt?.(about.phase)));
             quiet(inChat((args) => window.addMessage(...args), [who, text, about ?? null, at]));
             if (who === 'starting') {
                 startingShown = true;
@@ -1324,6 +1340,8 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
     }));
     /** While developing: who additionally receives an element picked with the crosshair (the Claude Code session). null: nobody. */
     chat.onPicked = (handler) => { onPicked = handler ?? null; };
+    /** The guided flow goes on to a step without a card (the agent fixes). */
+    chat.phase = (at) => { quiet(Promise.resolve(bench.flowAt?.(at))); };
     /** The page under test touched the chat: close it, nothing more goes in or out, the run ends with chat-tampered. */
     const tamper = () => {
         if (tampered !== null) return;
@@ -1348,6 +1366,7 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
             return;
         }
         if (tampered !== null) return;
+        await inChat((on) => window.setFlow(on), (bench.flowNow?.() ?? null) !== null);
         await inChat(([entries, past]) => entries.forEach((entry, index) => window.addMessage(...entry, index < past)), [transcript, earlier]);
         if (next !== null) await inChat((info) => window.setNext(info), next);
     };
@@ -1386,6 +1405,7 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
     };
     await show();
     await render('running');
+    await bench.chatState?.('running');
     // Recording starts or ends while the agent works: the working block follows.
     bench.watchTransport?.(() => {
         if (current[0] === 'running' && chat.available()) quiet(render(...current));

@@ -10,6 +10,7 @@ import { gzipSync } from 'node:zlib';
 import { after, before, test } from 'node:test';
 
 
+import { decideReproduced } from '../src/host/flows.mjs';
 import { openChat } from '../src/host/chat.mjs';
 import { WORKBENCH_MARK_SCRIPT, interceptDocuments } from '../src/host/app-view.mjs';
 import { withoutIntegrity } from '../src/ext/overlay/local-build.mjs';
@@ -84,12 +85,12 @@ const until = async (check, ms = 8000) => {
 };
 
 /** @param first  (bench) => runs between workbench and chat, e.g. the application tampering with the chat frame first */
-const open = async (t, { first, desk, transcript } = {}) => {
-    const context = await browser.newContext();
+const open = async (t, { first, desk, transcript, flow, viewport } = {}) => {
+    const context = await browser.newContext(viewport === undefined ? {} : { viewport });
     t.after(() => context.close());
     await context.newPage();
     await context.pages()[0].addInitScript({ content: WORKBENCH_MARK_SCRIPT });
-    const bench = await openWorkbench(context, { appUrl: `${base}/start`, hosts: ['127.0.0.1'] });
+    const bench = await openWorkbench(context, { appUrl: `${base}/start`, hosts: ['127.0.0.1'], ...(flow === undefined ? {} : { flow, title: 'caw · reproduce' }) });
     await first?.(bench);
     let aborts = 0;
     let tampered = null;
@@ -1040,8 +1041,8 @@ test('workbench: a hovered step offers to open its state only when F1 offers thi
 });
 
 /** A chat with the page ready; `frame` is the chat document. */
-const chatReady = async (t) => {
-    const opened = await open(t);
+const chatReady = async (t, options) => {
+    const opened = await open(t, options);
     const frame = opened.bench.chatFrame();
     await frame.waitForFunction(() => typeof window.setStatus === 'function');
     return { ...opened, frame };
@@ -1323,7 +1324,7 @@ test('chat: while something runs the panel shows the last lines, notices too; th
     assert.equal(await frame.textContent('#lines li span:nth-child(2)'), 'Gespeichert: caw/tests/t.yaml');
     assert.equal(await frame.locator('#hist .h-line[data-who=notice] svg').count(), 1, 'a quiet icon line in the history');
     chat.starting('Starte Claude');
-    assert.ok(await until(async () => /^00:0\d$/.test(await frame.textContent('#lines li:last-child small'))), 'with the time since');
+    assert.ok(await until(async () => /^0:0\d$/.test(await frame.textContent('#lines li:last-child small'))), 'with the time since');
     chat.starting('Starte Claude');
     await pause(200);
     assert.equal(await frame.locator('#lines li', { hasText: 'Starte Claude' }).count(), 1, 'preparing and starting show as one line');
@@ -1465,7 +1466,7 @@ test('chat: an answered card leaves the panel as one line in the history with th
 test('chat: earlier windows of the same run are not replayed into the panel; the history has them under their window', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const at = Date.now() - 60000;
-    const transcript = [['window', '', null, at], ['activity', 'Task gelesen', null, at], ['result', 'Alte Karte', { kind: 'result', tone: 'fail', title: 'Alte Karte', phase: 'red' }, at], ['human', 'Weiter', { answer: true }, at], ['notice', 'Gleich öffnet sich ein neues Fenster.', null, at], ['claude', 'Ich war hier.', null, at]];
+    const transcript = [['window', '', null, at], ['activity', 'Task gelesen', null, at], ['result', 'Alte Karte', { kind: 'result', tone: 'fail', title: 'Alte Karte', phase: 'test' }, at], ['human', 'Weiter', { answer: true }, at], ['notice', 'Gleich öffnet sich ein neues Fenster.', null, at], ['claude', 'Ich war hier.', null, at]];
     const { bench, chat } = await open(t, { transcript });
     const frame = bench.chatFrame();
     await frame.waitForFunction(() => typeof window.setStatus === 'function');
@@ -1473,7 +1474,6 @@ test('chat: earlier windows of the same run are not replayed into the panel; the
     assert.equal(await frame.locator('#card > *, #thread > *, #lines > *').count(), 0, 'nothing of before in the panel');
     assert.deepEqual(await frame.$$eval('#hist .h-sep', (list) => list.map((li) => li.textContent)), ['Fenster 1', 'Fenster 2']);
     assert.match(await frame.textContent('#hist'), /Task gelesen.*Weiter.*Alte Karte.*Gleich öffnet sich ein neues Fenster\..*Ich war hier\./s);
-    assert.equal(await frame.getAttribute('#phases [aria-current=step]', 'title'), 'Im Test', 'the phase of the run stays');
     // This window's entries go into the panel.
     chat.notice('Jetzt');
     assert.ok(await until(async () => (await frame.locator('#lines li').count()) === 1));
@@ -1855,44 +1855,196 @@ test('chat: an exception while the answer from the window is processed (the desk
     return undefined;
 });
 
-test('chat: the guided bug fix has its phase bar once at the top of the panel, done ticked, the current one marked; the fix card lists the red step', async (t) => {
+// The bar of the guided flow as a person (and a screen reader) has it: each step with * for the current one and ✓ for a done one.
+const barOf = (page) => page.$$eval('#flow > li', (items) => items.map((li) => `${li.querySelector('.nm').textContent}${li.getAttribute('aria-current') === 'step' ? ' *' : ''}${li.classList.contains('done') ? ' ✓' : ''}`));
+const BUG = '„Moving a todo to Tomorrow shows Someday“';
+const fixAt = (at) => ({ kind: 'fix', title: BUG, at });
+
+test('workbench: the guided flow names its five steps across the window from its start, done ticked, the current one marked; a card moves it on, adopted ticks all', async (t) => {
     if (browser === null) return t.skip('no Chrome');
-    const { chat, frame, waiting } = await chatReady(t);
-    const rows = [{ label: 'Schritt', text: 'S2 Summe' }, { label: 'Erwartung', text: 'Die Summe zeigt Total: 5.' }, { label: 'Prüfung', text: "sum==='Total: 5'", code: true }];
-    const card = { kind: 'result', tone: 'next', title: 'Jetzt den Fehler beheben', rows, muted: 'Änderungen kommen als Karten.', phase: 'fix' };
-    const chosen = chat.choose('deciding', card.title, [{ id: 'later', label: 'Später', primary: true }], card);
-    assert.ok(await until(() => frame.isVisible('ol.phases')));
-    const bar = await frame.$$eval('ol.phases li', (items) => items.map((li) => ({ text: li.textContent, current: li.getAttribute('aria-current'), tick: li.classList.contains('done') })));
-    assert.deepEqual(bar, [
-        { text: 'Nachgestellt', current: null, tick: true },
-        { text: 'Im Test', current: null, tick: true },
-        { text: 'Beheben', current: 'step', tick: false },
-        { text: 'Behoben', current: null, tick: false },
-        { text: 'Übernommen', current: null, tick: false },
-    ]);
-    assert.equal(await frame.getAttribute('ol.phases', 'aria-label'), 'Fehlerbehebung');
-    assert.equal(await frame.evaluate(() => document.body.firstElementChild.id), 'phases', 'once, at the top of the panel');
-    assert.deepEqual(await frame.$$eval('.message.result dl.kv dt', (list) => list.map((dt) => dt.textContent)), ['Schritt', 'Erwartung', 'Prüfung']);
-    assert.equal(await frame.textContent('.message.result dl.kv dd code'), "sum==='Total: 5'", 'the check as code');
-    assert.equal(await frame.textContent('.message.result p.muted'), 'Änderungen kommen als Karten.');
-    assert.ok(await until(() => waiting.length > 0));
-    assert.deepEqual(waiting.at(-1), 'Wartet im Chrome-Fenster auf dich: Jetzt den Fehler beheben: Änderungen kommen als Karten.', 'the terminal line keeps title and consequence only');
-    chat.closed?.();
-    void chosen;
+    const { bench, chat } = await open(t, { flow: fixAt('start') });
+    const { page } = bench;
+    const steps = ['Nachstellen', 'Test erstellen', 'Beheben', 'Erneut testen', 'Übernehmen'];
+    const at = (n) => steps.map((name, i) => `${name}${i === n ? ' *' : ''}${i < n ? ' ✓' : ''}`);
+    assert.deepEqual(await barOf(page), at(0), 'before any card, while the agent works');
+    assert.equal(await page.getAttribute('#flow', 'aria-label'), 'Fehlerbehebung');
+    const box = await page.locator('#flow').boundingBox();
+    const top = await page.locator('header.top').boundingBox();
+    const width = await page.evaluate(() => innerWidth);
+    assert.deepEqual([Math.round(box.x), Math.round(box.width), Math.round(box.y)], [0, width, Math.round(top.y + top.height)], 'below the header, over the whole width');
+    assert.equal(await page.locator('#flow .nm').evaluateAll((list) => list.filter((node) => node.getBoundingClientRect().width > 20).length), 5, 'all five are named');
+    for (const [phase, n] of [['test', 1], ['fix', 2], ['again', 3], ['adopt', 4]]) {
+        chat.phase(phase);
+        assert.ok(await until(async () => JSON.stringify(await barOf(page)) === JSON.stringify(at(n))), `${phase} while working`);
+    }
+    for (const [phase, n] of [['test', 1], ['fix', 2], ['adopt', 4], ['done', 5]]) {
+        chat.result({ kind: 'result', tone: 'info', title: 'Karte', phase });
+        assert.ok(await until(async () => JSON.stringify(await barOf(page)) === JSON.stringify(at(n))), `${phase} with a card`);
+    }
+    assert.equal(await page.locator('#flow [aria-current]').count(), 0, 'all done');
+    assert.match(await page.textContent('#flow li:first-child'), /erledigt/, 'done, also for a screen reader');
+    // A reload of the workbench keeps where it stands.
+    await bench.view.frame.evaluate((url) => { top.location.href = url; }, `${base}/weiter`);
+    assert.ok(await until(async () => JSON.stringify(await barOf(page).catch(() => [])) === JSON.stringify(at(5))), 'after a reload');
+    assert.equal(await bench.chatFrame().locator('#phases, ol.phases').count(), 0, 'only once, not in the panel');
     return undefined;
 });
 
-test('chat: a design draft has the phases of the target design at the top: Entwurf › Im Test › Umsetzen › Erfüllt › Übernommen', async (t) => {
+test('workbench: a design draft has its own five steps and shows its name; without the guided flow there is no bar', async (t) => {
     if (browser === null) return t.skip('no Chrome');
-    const { chat, frame } = await chatReady(t);
-    const card = { kind: 'result', tone: 'next', title: 'Jetzt das Zielbild umsetzen', rows: [{ label: 'Stil', text: 'button "Save note": background-color #5f8f6b → #e5533a' }], phase: 'build', phases: 'design' };
-    const chosen = chat.choose('deciding', card.title, [{ id: 'later', label: 'Später', primary: true }], card);
-    assert.ok(await until(() => frame.isVisible('ol.phases')));
-    const bar = await frame.$$eval('ol.phases li', (items) => items.map((li) => `${li.textContent}${li.getAttribute('aria-current') === 'step' ? ' *' : ''}${li.classList.contains('done') ? ' ✓' : ''}`));
-    assert.deepEqual(bar, ['Entwurf ✓', 'Im Test ✓', 'Umsetzen *', 'Erfüllt', 'Übernommen']);
-    assert.equal(await frame.getAttribute('ol.phases', 'aria-label'), 'Zielbild');
-    chat.closed?.();
-    void chosen;
+    const { bench } = await open(t, { flow: { kind: 'design', title: 'note', at: 'fix' } });
+    assert.deepEqual(await barOf(bench.page), ['Entwurf ✓', 'Test erstellen ✓', 'Umsetzen *', 'Erneut testen', 'Übernehmen']);
+    assert.equal(await bench.page.getAttribute('#flow', 'aria-label'), 'Zielbild');
+    assert.equal(await bench.page.textContent('#crumbTest'), 'note');
+    const plain = await open(t);
+    plain.chat.phase('fix');
+    plain.chat.result({ kind: 'result', tone: 'info', title: 'Karte', phase: 'fix' });
+    await plain.bench.chatFrame().waitForSelector('#card .card');
+    assert.equal(await plain.bench.page.isVisible('#flow'), false);
+    return undefined;
+});
+
+test('workbench: in the guided flow the header says what it is about, no test, no mode; settings keep their title', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const long = `„${'Moving a todo to Tomorrow shows Someday. '.repeat(12)}“`;
+    const { bench } = await open(t, { flow: { kind: 'fix', title: long, at: 'start' } });
+    const { page } = bench;
+    await bench.facts([['', long], ['Umgebung', 'local']]);
+    assert.equal(await page.textContent('#crumbTest'), long);
+    assert.equal(await page.getAttribute('#crumbTest', 'title'), long, 'in full as the tooltip');
+    const cut = await page.$eval('#crumbTest', (node) => ({ ellipsis: getComputedStyle(node).textOverflow, cut: node.scrollWidth > node.clientWidth, height: node.getBoundingClientRect().height }));
+    assert.deepEqual([cut.ellipsis, cut.cut, cut.height < 30], ['ellipsis', true, true], 'one line, shortened');
+    assert.doesNotMatch(await page.innerText('header.top'), /reproduce|bug-/, 'neither the run nor the draft by its id');
+    assert.equal(await page.isVisible('#title'), false, 'no badge');
+    assert.equal(await page.isVisible('.crumb .sl'), false);
+    await page.keyboard.press('Control+,');
+    assert.ok(await until(() => page.isVisible('#title')));
+    assert.equal(await page.textContent('#title'), 'Einstellungen');
+    assert.equal(await page.isVisible('#flow'), true);
+    return undefined;
+});
+
+test('workbench: the bar of the guided flow leaves the app its area (pinned size, F4, F6) and goes with the application alone; narrow it names only the current step', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench } = await open(t, { flow: fixAt('test'), viewport: { width: 1280, height: 720 } });
+    const { page } = bench;
+    await bench.viewport({ width: 1280, height: 720 });
+    const fits = async () => {
+        await page.waitForFunction(() => { const box = document.getElementById('appBox').getBoundingClientRect(); const app = document.getElementById('app').getBoundingClientRect(); return app.width <= box.width + 1 && app.height <= box.height + 1 && box.bottom <= innerHeight + 1; });
+        const [bar, panes] = [await page.locator('#flow').boundingBox(), await page.locator('.panes').boundingBox()];
+        assert.equal(Math.round(bar.y + bar.height), Math.round(panes.y), 'the panes begin below the bar');
+        assert.equal(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight), true, 'nothing scrolls');
+    };
+    await fits();
+    await page.keyboard.press('F4');
+    await fits();
+    await page.keyboard.press('F6');
+    await fits();
+    // Both are remembered: as before for the next window.
+    await page.keyboard.press('F4');
+    await page.keyboard.press('F6');
+    await page.keyboard.press('F8');
+    assert.ok(await until(async () => !(await page.isVisible('#flow'))), 'the application only');
+    await page.keyboard.press('F8');
+    assert.ok(await until(() => page.isVisible('#flow')));
+    // The comparison page covers header and bar.
+    await page.evaluate(() => { document.body.classList.add('cmp-on'); document.getElementById('cmp').hidden = false; });
+    assert.equal(await page.evaluate(() => { const bar = document.getElementById('flow').getBoundingClientRect(); return document.getElementById('cmp').contains(document.elementFromPoint(bar.x + 30, bar.y + bar.height / 2)); }), true);
+    await page.evaluate(() => { document.body.classList.remove('cmp-on'); document.getElementById('cmp').hidden = true; });
+
+    await page.setViewportSize({ width: 560, height: 800 });
+    const narrow = await page.$$eval('#flow > li', (items) => items.map((li) => [li.querySelector('.nm').textContent, li.querySelector('.nm').getBoundingClientRect().width > 20]));
+    assert.deepEqual(narrow, [['Nachstellen', false], ['Test erstellen', true], ['Beheben', false], ['Erneut testen', false], ['Übernehmen', false]], 'the others stay for screen readers');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'no sideways scrolling');
+    return undefined;
+});
+
+test('chat: in the guided flow the panel shows the current activity with its time and one button; no heading, no status sentence, only warnings', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench, chat, frame } = await chatReady(t, { flow: fixAt('start') });
+    const seen = (selector) => frame.$eval(selector, (node) => { const box = node.getBoundingClientRect(); return box.width > 2 && box.height > 2; });
+    const rows = () => frame.$$eval('#lines li', (list) => list.filter((li) => li.getBoundingClientRect().height > 0).map((li) => li.children[1].textContent));
+    chat.advising(true);
+    assert.ok(await until(async () => JSON.stringify(await rows()) === '["Claude Code startet"]'), 'until the first activity');
+    chat.logLine('[+1.0s] > Read: {"file_path":"server.mjs"}');
+    chat.logLine('[+2.0s] > caw agent goto /todos');
+    assert.ok(await until(async () => JSON.stringify(await rows()) === '["/todos geöffnet"]'), 'only the current one');
+    assert.match(await frame.textContent('#lines li:last-child small'), /^0:0\d$/);
+    assert.ok(await until(async () => (await frame.textContent('#lines li:last-child small')) !== '0:00'), 'the time counts');
+    assert.deepEqual([await seen('#workLabel'), await seen('#status')], [false, false], 'the bar says it');
+    assert.equal(await frame.getAttribute('#status', 'role'), 'status', 'the live region stays');
+    assert.match(await frame.textContent('#status'), /ohne Schreibzugriff/, 'for screen readers');
+    assert.deepEqual([await frame.isVisible('#abort'), await frame.isVisible('#toggle')], [true, false]);
+    assert.ok(await until(() => bench.page.$eval('body', (body) => body.classList.contains('acting'))), 'the agent operates the app');
+    // Recording: the warning stays, Pause is the button.
+    chat.phase('test');
+    chat.advising(false);
+    assert.ok(await until(() => seen('#status')));
+    assert.equal(await frame.textContent('#status'), 'Vor Eingaben in der Anwendung pausieren.');
+    assert.equal(await seen('#workLabel'), false);
+    assert.match(await frame.textContent('#toggle'), /^Pause\s*F9$/);
+    assert.deepEqual([await frame.isVisible('#toggle'), await frame.isVisible('#abort'), await frame.isVisible('#ask')], [true, false, false]);
+    chat.enter('paused');
+    assert.ok(await until(() => frame.isVisible('#abort')));
+    assert.equal(await seen('#status'), true, 'entries are recorded: a warning');
+    chat.leave();
+    // Testing again: neither heading nor sentence, the activity of before is gone.
+    chat.phase('again');
+    chat.testing();
+    assert.ok(await until(async () => JSON.stringify(await rows()) === '["Test startet"]'));
+    assert.deepEqual([await seen('#workLabel'), await seen('#status')], [false, false]);
+    assert.ok(await until(() => bench.page.$eval('body', (body) => !body.classList.contains('acting'))));
+    return undefined;
+});
+
+test('chat: the card after reproducing: the facts and three buttons, the title only for screen readers and the history', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench, chat, frame, waiting } = await chatReady(t, { flow: fixAt('start') });
+    const answer = decideReproduced(chat, { test: 'bug-x', outcome: { observed: 'When: Someday', expected: 'When: Tomorrow', cause: 'server.mjs:215' } });
+    await frame.waitForSelector('#choices .btn');
+    assert.deepEqual(await frame.$$eval('#card .kv > *', (list) => list.map((node) => node.textContent)), ['Beobachtet', 'When: Someday', 'Erwartet', 'When: Tomorrow', 'Ursache', 'server.mjs:215']);
+    assert.deepEqual(await frame.$$eval('#choices .btn', (list) => list.map((b) => [b.textContent, b.classList.contains('btn-p')])), [['Test erstellen und beheben', true], ['Nur Test erstellen', false], ['Später', false]], 'all visible, one main action');
+    const boxes = await frame.$$eval('#choices .btn', (list) => list.map((b) => ({ y: b.getBoundingClientRect().y, width: b.getBoundingClientRect().width })));
+    assert.equal(new Set(boxes.map(({ width }) => width)).size, 1, 'the same width');
+    assert.ok(boxes[0].y < boxes[1].y && boxes[1].y < boxes[2].y, 'one under the other');
+    const title = await frame.$eval('#card .card > strong', (node) => [node.textContent, node.getBoundingClientRect().width]);
+    assert.deepEqual([title[0], title[1] <= 2], ['Fehler nachgestellt', true], 'the bar says it');
+    assert.match((await barOf(bench.page)).join(' '), /Nachstellen ✓ Test erstellen \*/);
+    assert.ok(await until(() => waiting.length > 0));
+    assert.match(waiting.at(-1), /Fehler nachgestellt/);
+    await frame.click('#choices .btn >> nth=1');
+    assert.equal(await answer, 'test-only');
+    assert.ok(await until(async () => /Nur Test erstellen/.test(await frame.textContent('#hist'))));
+    assert.match(await frame.textContent('#hist'), /Fehler nachgestellt/);
+    return undefined;
+});
+
+test('chat: a card of the guided flow lists facts, also the changed files with their lines, and a title the bar does not say', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { chat, frame, waiting } = await chatReady(t, { flow: fixAt('again') });
+    const rows = [{ label: 'Schritt', text: 'S2 Summe' }, { label: 'Prüfung', text: "sum==='Total: 5'", code: true }, { label: 'Geändert', items: [{ code: 'server.mjs', text: '+1 −1' }, { code: 'web/new.js' }] }];
+    const card = { kind: 'result', tone: 'next', title: 'Fehler behoben', rows, muted: 'Später: caw run bug-x', phase: 'adopt' };
+    void chat.choose('deciding', card.title, [{ id: 'promote', label: 'Übernehmen', primary: true }, { id: 'later', label: 'Später' }], card);
+    await frame.waitForSelector('#choices .btn');
+    assert.equal(await frame.isVisible('#card .card > strong'), true);
+    assert.deepEqual(await frame.$$eval('#card dl.kv dt', (list) => list.map((dt) => dt.textContent)), ['Schritt', 'Prüfung', 'Geändert']);
+    assert.deepEqual(await frame.$$eval('#card dl.kv dd .it', (list) => list.map((line) => line.textContent)), ['server.mjs+1 −1', 'web/new.js']);
+    assert.equal(await frame.textContent('#card dl.kv dd code'), "sum==='Total: 5'", 'the check as code');
+    assert.ok(await until(() => waiting.length > 0));
+    assert.equal(waiting.at(-1), 'Wartet im Chrome-Fenster auf dich: Fehler behoben: Später: caw run bug-x', 'the terminal line keeps title and consequence only');
+    return undefined;
+});
+
+test('workbench: outside the guided flow either the badge or the panel says what runs, never both', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench, chat, frame } = await chatReady(t);
+    await bench.facts([['', 'morning-errand wird ohne Claude Code abgespielt', 'Wiedergabe']]);
+    chat.testing();
+    assert.ok(await until(async () => (await frame.textContent('#workLabel')) === 'caw arbeitet'));
+    assert.ok(await until(async () => !(await bench.page.isVisible('#title'))), 'the panel says it');
+    void chat.choose('deciding', 'Fertig?', [{ id: 'close', label: 'Schließen', primary: true }], { kind: 'result', tone: 'info', title: 'Fertig?' });
+    assert.ok(await until(() => bench.page.isVisible('#title')), 'the card says what waits, the badge which run');
+    assert.equal(await frame.isVisible('#work'), false);
     return undefined;
 });
 
