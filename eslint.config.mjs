@@ -7,10 +7,12 @@ import globals from 'globals';
 export default [
     {
         // e2e/frameworks: only the matrix scripts and shared/ are linted, not the test apps and what runs produce.
-        ignores: ['node_modules/', 'e2e/frameworks/*/', '!e2e/frameworks/shared/', 'e2e/frameworks/shared/.cert/', 'e2e/frameworks/.caw-home/', 'e2e/project/', 'e2e/export/', 'examples/**/.caw/', '**/.caw/', 'e2e/.caw-home/'],
+        ignores: ['node_modules/', 'e2e/frameworks/*/', '!e2e/frameworks/shared/', 'e2e/frameworks/shared/.cert/', 'e2e/frameworks/.caw-home/', 'e2e/project/', 'e2e/export/', 'examples/**/.caw/', 'examples/**/node_modules/', '**/.caw/', 'e2e/.caw-home/'],
     },
     js.configs.recommended,
     n.configs['flat/recommended-module'],
+    // An example has its own package.json: what it imports is installed there, not here.
+    { files: ['examples/**/*.mjs'], rules: { 'n/no-missing-import': 'off', 'n/no-unpublished-import': 'off' } },
     {
         files: ['**/*.mjs', '**/*.js'],
         languageOptions: {
