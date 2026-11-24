@@ -53,8 +53,9 @@ const LATER = button('later', 'run.button.later');
 const FIX_BY_AGENT = button('fix-by-agent', 'run.button.fixByAgent', { primary: true });
 const FIX_AGAIN = button('fix-by-agent', 'run.button.fixAgain', { primary: true });
 const FIX_MYSELF = button('fix-myself', 'run.button.fixMyself');
-// The first card after the bug is captured in a test: fixing by the agent and by oneself side by side, both main actions.
-const BESIDE = { primary: true };
+// The first card after the bug is captured in a test: fixing by the agent is the main action, fixing it oneself stays visible
+// beside it, not behind More.
+const BESIDE = { beside: true };
 const FIX_THERE = button('fix-there', 'run.button.fixThere', { primary: true });
 const RETEST = button('retest', 'run.button.rerun', { primary: true });
 const PROMOTE = button('promote', 'run.button.promote', { primary: true });

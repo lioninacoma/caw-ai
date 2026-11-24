@@ -92,7 +92,7 @@ test('Recording a draft guided: the bug captured in a test, the card shows step,
     assert.equal(fix.card.muted, undefined, 'no sentence that only explains the buttons');
     assert.deepEqual(fix.options, ['fix-by-agent', 'fix-myself', 'later']);
     assert.deepEqual(fix.labels, ['Von Claude Code beheben lassen', 'Ich behebe selbst', 'Später']);
-    assert.deepEqual(fix.primary, ['fix-by-agent', 'fix-myself'], 'both fixes side by side, none behind More');
+    assert.deepEqual(fix.primary, ['fix-by-agent'], 'one main action');
     const waiting = h.questions[2];
     assert.equal(waiting.card.title, 'Behebe den Fehler, dann teste erneut');
     assert.equal(waiting.card.phase, 'fix');
@@ -302,7 +302,7 @@ test('Recording a design draft guided: its design not met after the passed check
     assert.deepEqual(asked[0].fix, { step: 'S2', name: 'Summe', expect: 'Die Notiz ist zu sehen.', design: 'design/note.html', deviations: ['missing: button "Save note"', 'text: heading "Note" → "Notes"', 'style: button "Save": background-color #5f8f6b → #e5533a'] });
     assert.equal(h.questions.length, 2, 'built by the agent: applied and tested again without a click');
     assert.ok(h.notices.includes('Übernommen: web/note.css. caw testet jetzt erneut.'), h.notices.join('\n'));
-    assert.deepEqual(build.primary, ['fix-by-agent', 'fix-myself']);
+    assert.deepEqual(build.primary, ['fix-by-agent']);
 });
 
 test('Recording a design draft headless: the red proof is saved on its own; a design met already says the draft shows nothing missing', async () => {

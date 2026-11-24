@@ -1178,7 +1178,7 @@ scenario('N15', 'Reproduce → red draft → fix (server switch) → green → p
         // (2) record the draft; after the red proof the card offers the fix, Später ends the run with the proof saved.
         const redCard = async (chat) => {
             await adoptRed(chat);
-            verify('(2) the fix card offers the agent and fixing myself side by side, and later', await chat.locator('#choices button.btn-p', { hasText: /beheben lassen/ }).count() === 1 && await chat.locator('#choices button.btn-p', { hasText: 'Ich behebe selbst' }).count() === 1 && await chat.locator('#choices button', { hasText: 'Später' }).count() === 1);
+            verify('(2) the fix card has one main action (the agent), fixing myself and later beside it', await chat.locator('#choices button.btn-p', { hasText: /beheben lassen/ }).count() === 1 && await chat.locator('#choices button.btn-p').count() === 1 && await chat.locator('#choices button.btn-s', { hasText: 'Ich behebe selbst' }).isVisible() && await chat.locator('#choices button', { hasText: 'Später' }).count() === 1);
             await decide(chat, 'Später');
         };
         // Windows: the recording (the draft's own plan, approved by caw), the check run with the captured card.

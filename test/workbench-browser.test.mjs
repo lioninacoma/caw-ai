@@ -1906,3 +1906,22 @@ test('chat: the terminal names the token notice it waits for', async (t) => {
     void chosen;
     return undefined;
 });
+
+test('chat: a choice marked beside stays a secondary button next to the one main action', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { chat, frame } = await chatReady(t);
+    const beside = { id: 'self', label: 'Ich behebe selbst', beside: true };
+    const agent = { id: 'agent', label: 'Beheben lassen', primary: true };
+    const first = chat.choose('deciding', 'Text', [agent, beside, { id: 'later', label: 'Später' }], { title: 'Festgehalten' });
+    assert.ok(await until(() => frame.isVisible('#choices button.btn-p')));
+    const shown = () => frame.$$eval('#choices button', (all) => all.filter((b) => b.checkVisibility()).map((b) => `${b.textContent}|${b.classList.contains('btn-p') ? 'p' : 's'}`));
+    assert.deepEqual(await shown(), ['Beheben lassen|p', 'Ich behebe selbst|s', 'Später|s']);
+    await frame.click('#choices button:text-is("Später")');
+    assert.equal(await first, 'later');
+    const second = chat.choose('deciding', 'Text', [agent, beside, { id: 'a', label: 'A' }, { id: 'b', label: 'B' }], { title: 'Festgehalten' });
+    assert.ok(await until(() => frame.isVisible('#choicesMore')));
+    assert.deepEqual((await shown()).slice(0, 2), ['Beheben lassen|p', 'Ich behebe selbst|s']);
+    await frame.click('#choices button:text-is("Ich behebe selbst")');
+    assert.equal(await second, 'self');
+    return undefined;
+});

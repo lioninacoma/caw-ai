@@ -843,9 +843,10 @@ const more=(id,items)=>{const wrap=el('div','more');const button=el('button','bt
     else if(event.key==='Escape'){event.preventDefault();event.stopPropagation();wrap.close();}else if(event.key==='Tab')wrap.close(false);});
   wrap.append(button,menu);return wrap;};
 addEventListener('pointerdown',(event)=>{for(const wrap of openMenus())if(!wrap.contains(event.target))wrap.close(false);},true);
-// One primary action, the rest next to it: one as a button, more than one behind "More".
+// One primary action, the rest next to it: one as a button, more than one behind "More"; a choice marked beside stays a button.
 const arrange=(box,id,primary,rest)=>{for(const b of primary){b.classList.remove('pop-i','btn-s');b.removeAttribute('role');b.classList.add('btn','btn-p');}
-  if(primary.length===1&&rest.length>1){box.replaceChildren(...primary,more(id,rest));return;}
+  const beside=rest.filter((b)=>b.classList.contains('beside')),others=rest.filter((b)=>!b.classList.contains('beside'));
+  if(primary.length===1&&others.length>1){for(const b of beside)b.classList.add('btn','btn-s');box.replaceChildren(...primary,...beside,more(id,others));return;}
   for(const b of rest){b.classList.remove('pop-i','btn-p');b.removeAttribute('role');b.removeAttribute('tabindex');b.classList.add('btn','btn-s');}box.replaceChildren(...primary,...rest);};
 
 const clock=(at)=>{if(!at)return null;const d=new Date(at);return el('small','',String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'));};
@@ -1091,7 +1092,7 @@ window.setStatus=(state,text,label,button,options)=>{if(state==='closed')documen
   toggleButton.querySelector('.tic').replaceChildren(ic(TOGGLE_ICON[state]??'play'));toggleButton.querySelector('.key').textContent=asLink?'F9':KEY;$('toggleText').textContent=button;
   closeMenus();
   const all=state==='planning'&&!(options?.length)?[{id:'approve',label:T['chat.page.approvePlan'],primary:true,big:true}]:options??[];
-  const buttons=all.map((option)=>{const choice=el('button','',option.label);choice.type='button';if(option.primary)choice.classList.add('primary');if(option.big){choice.classList.add('big');choice.id='approve';const key=el('kbd','',KEY);key.setAttribute('aria-hidden','true');choice.append(key);}
+  const buttons=all.map((option)=>{const choice=el('button','',option.label);choice.type='button';if(option.primary)choice.classList.add('primary');if(option.beside)choice.classList.add('beside');if(option.big){choice.classList.add('big');choice.id='approve';const key=el('kbd','',KEY);key.setAttribute('aria-hidden','true');choice.append(key);}
     choice.addEventListener('click',()=>{if(choice.disabled)return;if(option.confirm&&confirmFirst(choice,option))return;choice.disarm?.();closeMenus();lockChoices(choice);if(option.id==='approve'&&state==='planning')send('toggle');else send('choose',option.id,undefined,takePicks());});return choice;});
   // No button waits any more: the checkboxes of an earlier card stay as they were.
   if(all.length===0&&openPicks!==null){openPicks.disabled=true;openPicks=null;}
