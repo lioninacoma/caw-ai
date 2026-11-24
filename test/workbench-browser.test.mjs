@@ -456,7 +456,7 @@ test('workbench: demonstrating shows recording, refresh is locked until the host
     assert.equal(await bench.page.isDisabled('#reload'), true, 'locked again');
 
     chat.enter('showing');
-    assert.ok(await until(async () => /^Führe den Weg vor/.test(await frame.textContent('#status'))), 'the panel says what to do');
+    assert.ok(await until(async () => /^Nur Testdaten verwenden/.test(await frame.textContent('#status'))), 'the panel warns: test data only');
     assert.match(await frame.textContent('#toggle'), /Vorführung beenden/);
     // The checkpoint is a slash command and Alt+Enter, only while demonstrating.
     assert.match(await frame.textContent('#mark'), /^\/checkpointNur während du vorführstAlt ↵$/);
