@@ -101,12 +101,12 @@ export default {
 
     // Run
     'run.error.authMissing': 'Für die Rolle {role} gibt es auf {target} keine gespeicherte Sitzung. Melde dich einmal an: {caw} role login {role} --env {target}',
-    'run.tokens.question': 'Jetzt arbeitet {agent}, das kostet Token.',
+    'run.tokens.question': '{agent} startet jetzt und verbraucht Token.',
     'run.tokens.go': 'Weiter',
     'run.tokens.always': 'Nicht mehr fragen',
     'run.tokens.withoutClaude': 'Ohne {agent} weiter',
     'run.tokens.cancelRun': 'Lauf abbrechen',
-    'run.tokens.remembered': 'Gemerkt, der Hinweis kommt nicht mehr',
+    'run.tokens.remembered': 'Gespeichert, der Hinweis erscheint nicht mehr',
     'run.tokens.declined': 'Ohne {agent} weiter',
     'run.error.todo': ({ keys }) => (String(keys).includes(',') ? `${keys} stehen noch auf TODO. Trag sie in caw.config.json ein; {caw} doctor zeigt, was noch fehlt.` : `${keys} steht noch auf TODO. Trag es in caw.config.json ein; {caw} doctor zeigt, was noch fehlt.`),
     'run.error.unreachable': '{url} ist nicht erreichbar. Starte die App dort, oder gib der Umgebung einen start-Befehl in caw.config.json und starte mit --start; {caw} doctor prüft die Adresse.',

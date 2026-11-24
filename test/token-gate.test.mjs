@@ -25,7 +25,7 @@ test('Token notice: once per run, cancel blocks, "do not ask again" is remembere
     assert.equal(await gate(), true, 'second time without asking');
     // Shown as the token card: its question as the title.
     assert.equal(go.asked.filter(([who]) => who === 'tokens').length, 1);
-    assert.match(go.asked.find(([who]) => who === 'tokens')[1], /das kostet Token/);
+    assert.match(go.asked.find(([who]) => who === 'tokens')[1], /verbraucht Token/);
 
     const stop = answering('stop');
     const declined = createTokenGate({ chat: () => stop.chat, prefs: () => ({}), save: (value) => saved.push(value) });

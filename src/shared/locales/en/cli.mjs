@@ -45,7 +45,7 @@ Commands:`,
       [--overlay[=<parts>]]              as for run`,
     'cli.help.run': `  run <test> [--env <name>]              Replay the test without AI. On environments where {agent} may work{here}, the
                                          chat sits alongside: if a step fails, sort it out there with {agent}
-      [--explain]                        On errors or warnings {agent} explains unasked, costs tokens; only on
+      [--explain]                        On errors or warnings {agent} explains unasked, uses tokens; only on
                                          environments where {agent} may work
       [--no-chat]                        No chat and no {agent}, like in CI
       [--headless]                       No window and no chat
@@ -376,7 +376,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.modeChat': 'with chat{advice}',
     'cli.modeLearnsNo': 'no',
     'cli.modeLearnsYes': 'yes, missing baselines into {file}; effects and looks learn in .caw/learning and go into it once frozen',
-    'cli.modeAdvice': ' and advice from {agent} (--explain, costs tokens)',
+    'cli.modeAdvice': ' and advice from {agent} (--explain, uses tokens)',
     'cli.changed': 'Changed: {files}',
     'cli.changedWhat': '{file} ({what})',
     'cli.changedBaselines': 'baselines {ids}',

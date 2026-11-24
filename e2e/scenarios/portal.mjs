@@ -756,7 +756,7 @@ $A chat > /tmp/c2.json; echo "END=$(grep -c ended /tmp/c2.json)"`;
         await shoot(page, 'clarify');
         await page.locator('#input').fill('Why?');
         await page.keyboard.press('Enter');
-        await inChat(page, 'das kostet Token', 30000);
+        await inChat(page, 'verbraucht Token', 30000);
         gate = (await page.locator('#choices button:not(#choicesMore)').allTextContents()).join('|');
         await shoot(page, 'token-notice');
         await decide(page, 'Ohne Claude Code weiter');

@@ -101,12 +101,12 @@ export default {
 
     // Run
     'run.error.authMissing': 'No saved session for role {role} on {target}. Sign in once: {caw} role login {role} --env {target}',
-    'run.tokens.question': '{agent} works now, this uses tokens.',
+    'run.tokens.question': '{agent} starts now and uses tokens.',
     'run.tokens.go': 'Continue',
     'run.tokens.always': 'Don\'t ask again',
     'run.tokens.withoutClaude': 'Continue without {agent}',
     'run.tokens.cancelRun': 'Cancel run',
-    'run.tokens.remembered': 'Noted, this notice won\'t show again',
+    'run.tokens.remembered': 'Saved, this notice no longer appears',
     'run.tokens.declined': 'Continuing without {agent}',
     'run.error.todo': ({ keys }) => (String(keys).includes(',') ? `${keys} are still TODO. Enter them in caw.config.json; {caw} doctor shows what is still missing.` : `${keys} is still TODO. Enter it in caw.config.json; {caw} doctor shows what is still missing.`),
     'run.error.unreachable': '{url} is not reachable. Start the app there, or give the environment a start command in caw.config.json and run with --start; {caw} doctor checks the address.',

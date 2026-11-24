@@ -45,7 +45,7 @@ Befehle:`,
       [--overlay[=<teile>]]              wie bei run`,
     'cli.help.run': `  run <test> [--env <name>]              Test ohne KI abspielen. Auf Umgebungen, auf denen {agent} arbeiten darf{here},
                                          steht der Chat daneben: Scheitert ein Schritt, klärst du ihn dort mit {agent}
-      [--explain]                        Bei Fehlern oder Warnungen erklärt {agent} von sich aus, kostet Token; nur auf
+      [--explain]                        Bei Fehlern oder Warnungen erklärt {agent} von sich aus, verbraucht Token; nur auf
                                          Umgebungen, auf denen {agent} arbeiten darf
       [--no-chat]                        Ohne Chat und ohne {agent}, wie in CI
       [--headless]                       Ohne Fenster und ohne Chat
@@ -380,7 +380,7 @@ Browser:
     'cli.modeChat': 'mit Chat{advice}',
     'cli.modeLearnsNo': 'nein',
     'cli.modeLearnsYes': 'ja, fehlende Vergleichswerte in {file}; Effekte und Aussehen lernen in .caw/learning und kommen eingefroren hinein',
-    'cli.modeAdvice': ' und Empfehlungen von {agent} (--explain, kostet Token)',
+    'cli.modeAdvice': ' und Empfehlungen von {agent} (--explain, verbraucht Token)',
     'cli.changed': 'Geändert: {files}',
     'cli.changedWhat': '{file} ({what})',
     'cli.changedBaselines': 'Vergleichswerte {ids}',

@@ -97,7 +97,7 @@ test('runMode names the mode and the reason, no mode follows silently from the e
     const { runMode } = await import('../src/host/commands.mjs');
     const base = { withAgent: true, noChat: false, headless: false, inCi: false, withAdvice: false, environments: 'dev', env: 'dev', language: 'de' };
     assert.match(runMode(base), /^Modus auf dev \(Teamsprache de\): mit Chat; lernt: nein\.$/);
-    assert.match(runMode({ ...base, withAdvice: true }), /--explain, kostet Token/);
+    assert.match(runMode({ ...base, withAdvice: true }), /--explain, verbraucht Token/);
     assert.match(runMode({ ...base, inCi: true }), /Variable CI gesetzt ist; lernt: nein/);
     assert.match(runMode({ ...base, noChat: true }), /--no-chat/);
     assert.match(runMode({ ...base, headless: true, noChat: true }), /--headless/);
