@@ -24,7 +24,8 @@ const errand = () => ({
     },
     handleHotUpdate({ file, server }) {
         if (!file.endsWith('/server.mjs')) return undefined;
-        server.ws.send({ type: 'full-reload' });
+        // Without an open page Vite keeps the message for the next one, which would then reload while it opens.
+        if (server.ws.clients.size > 0) server.ws.send({ type: 'full-reload' });
         return [];
     },
 });
