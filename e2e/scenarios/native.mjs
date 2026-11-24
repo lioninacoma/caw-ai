@@ -1168,7 +1168,7 @@ const verifyPromoted = (label, red) => {
     verify(`${label} the test file carries no red`, !/^red:/m.test(readFileSync(join(fixRoot, 'caw/tests', `${FIX_ID}.yaml`), 'utf8')));
     verify(`${label} fix report: red at S2 with run and commit, green with its run, the changed files, one other test green`,
         new RegExp(`Rot bei S2: Lauf ${red.run}, Commit ${red.head}`).test(fixReport) && new RegExp(`Grün: Lauf .*-${FIX_ID}`).test(fixReport)
-        && /## Geänderte Dateien seit/.test(fixReport) && /1 andere\(r\) Test\(s\) auf test grün/.test(fixReport), fixReport);
+        && /## Geänderte Dateien seit/.test(fixReport) && /Regressionstests auf test: 1 bestanden/.test(fixReport), fixReport);
 };
 
 scenario('N15', 'Reproduce → red draft → fix (server switch) → green → promote on the command line: the workbench offers the fix after the red proof, Später ends there; still red, --promote refused, green, fix report', async () => {
@@ -1857,7 +1857,7 @@ ${finishOf(ids)}`;
         const report = existsSync(join(dir, 'design-report.md')) ? readFileSync(join(dir, 'design-report.md'), 'utf8') : '';
         verify('design report: red at S2 with the design not met and its deviations, green with its run, one other test green',
             new RegExp(`Zielbild-Bericht: ${TDD_ID}`).test(report) && new RegExp(`Rot bei S2: Zielbild design/n24-archive\\.html nicht erfüllt \\(\\d+ Abweichung\\(en\\)\\), Lauf ${proven.red.run}`).test(report)
-            && new RegExp(`Grün: Lauf .*-${TDD_ID}, Zielbild erfüllt`).test(report) && /1 andere\(r\) Test\(s\) auf test grün/.test(report), report);
+            && new RegExp(`Grün: Lauf .*-${TDD_ID}, Zielbild erfüllt`).test(report) && /Regressionstests auf test: 1 bestanden/.test(report), report);
         const { fixState } = await import('../../src/host/bugfix.mjs');
         const adopted = fixState(tddRoot, TDD_ID);
         verify('phase adopted with the design report', adopted?.phase === 'adopted' && /design-report\.md$/.test(adopted.next?.designReport ?? ''), JSON.stringify(adopted));
