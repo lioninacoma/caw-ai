@@ -1,3 +1,4 @@
 caw/.env
 .caw/
 caw/.auth/
+node_modules/

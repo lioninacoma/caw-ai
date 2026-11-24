@@ -306,7 +306,7 @@ test('Test run of a red draft guided: green offers adopting; it learns first, th
     assert.equal(h.questions[0].card.phase, 'adopt');
     assert.deepEqual(order, ['learn', 'promote r-green'], 'learned baselines go into the draft before it moves');
     assert.equal(h.adopted.length, 1, 'nothing is written after promoting');
-    assert.deepEqual(h.results, [{ kind: 'result', tone: 'info', title: 'bug-x übernommen', text: 'Verschoben: caw/tests/bug-x.yaml, caw/recordings/bug-x.yaml. 1 andere(r) Test(s) auf test grün. Fix-Bericht: .caw/runs/r-green/fix-report.md', phase: 'done' }], 'every step of the bar is done');
+    assert.deepEqual(h.results, [{ kind: 'result', tone: 'info', title: 'bug-x übernommen', text: 'Verschoben: caw/tests/bug-x.yaml, caw/recordings/bug-x.yaml. Regressionstests auf test: 1 bestanden. Fix-Bericht: .caw/runs/r-green/fix-report.md', phase: 'done' }], 'every step of the bar is done');
     assert.equal(h.said[0], undefined, 'the card says it, no second line');
 });
 
@@ -456,5 +456,5 @@ test('Test run of a red design draft: its controls there at the pending step\'s 
     assert.equal(h.questions[0].card.rows, undefined, 'no changed files known: no row');
     assert.equal(h.questions[0].card.phase, 'adopt');
     assert.deepEqual(h.questions[0].labels, ['Übernehmen', 'Später']);
-    assert.deepEqual(h.results, [{ kind: 'result', tone: 'info', title: 'note übernommen', text: 'Verschoben: caw/tests/note.yaml, caw/recordings/note.yaml. 2 andere(r) Test(s) auf test grün. Zielbild-Bericht: .caw/runs/r-green/design-report.md', phase: 'done' }]);
+    assert.deepEqual(h.results, [{ kind: 'result', tone: 'info', title: 'note übernommen', text: 'Verschoben: caw/tests/note.yaml, caw/recordings/note.yaml. Regressionstests auf test: 2 bestanden. Zielbild-Bericht: .caw/runs/r-green/design-report.md', phase: 'done' }]);
 });

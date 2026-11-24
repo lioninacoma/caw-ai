@@ -572,9 +572,9 @@ export default {
     'run.guide.nothingTitle': 'No change applied',
     'run.guide.nothingText': 'Fix the bug yourself and test again, or later.',
     'run.guide.greenTitle': 'Bug fixed',
-    'run.guide.promoting': 'The other tests on this environment are running',
+    'run.guide.promoting': 'Regression tests are running',
     'run.guide.adoptedTitle': '{test} adopted',
-    'run.guide.promoted': 'Moved: {files}. {others} other test(s) on {target} green. Fix report: {report}',
+    'run.guide.promoted': 'Moved: {files}. Regression tests on {target}: {others} passed. Fix report: {report}',
     'run.guide.refusedTitle': 'Not adopted',
     'run.guide.refusedMuted': 'The draft {test} stays in caw/drafts.',
     'run.guide.designCapturedTitle': 'Target design captured in a test: {id} does not meet it yet',
@@ -592,5 +592,5 @@ export default {
     'run.guide.designReadyTitle': '{id} has the controls of its target design: record it now',
     'run.guide.designReadyText': 'A target design shows the screen after its step: caw judges it once {id} is recorded. Record the draft; the run after it shows whether the design is met or what still deviates.',
     'run.guide.designGreenTitle': 'Target design met',
-    'run.guide.designAdopted': 'Moved: {files}. {others} other test(s) on {target} green. Design report: {report}',
+    'run.guide.designAdopted': 'Moved: {files}. Regression tests on {target}: {others} passed. Design report: {report}',
 };

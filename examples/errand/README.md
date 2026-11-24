@@ -1,13 +1,14 @@
 # Example: Errand
 
-A small todo app to try caw on, mobile first: sign-in, a list with progress ring, filters and search, a "New todo" dialog with selects and a detail page where you move a todo to another day. No dependencies, data lives in memory, the API answers with a little latency.
+A small todo app to try caw on, mobile first: sign-in, a list with progress ring, filters and search, a "New todo" dialog with selects and a detail page where you move a todo to another day. It runs on Vite's dev server: a change to `server.mjs` is served at once, the open page reloads. Data lives in memory, the API answers with a little latency.
 
 The test `first-errand` comes with its recording (`caw/recordings/first-errand.yaml`), so you can replay it right away, without Claude. It runs from a clone of the caw-ai repository; run `npm ci` in the repository root once:
 
 ```bash
 npm ci                                             # in the repository root, once
 cd examples/errand
-node server.mjs                                    # http://localhost:4174, account demo / demo
+npm ci
+npm run dev                                        # http://localhost:4174, account demo / demo
 ```
 
 Put the example's fictitious account into `caw/.env` (role `user`; caw never asks for it, you write it yourself):
@@ -40,8 +41,8 @@ Things to try next:
 - In that window, type `/element` in the chat, pick the "+" button and ask Claude why "Add todo" starts disabled.
 - Paste a bug into the chat: searching for "home" finds nothing although todos are tagged #home. Claude reproduces it and proposes the fix in `server.mjs`.
 - Let Claude reproduce that bug on its own, without a chat: `node ../../bin/caw.mjs reproduce "Searching for home finds nothing although todos are tagged #home." --env local`. The run folder gets a report with the verdict; a reproduced bug becomes a draft test plan in `caw/drafts`.
-- Rename the "Add todo" button in `server.mjs`, restart, and `run` again. The step fails; ask Claude in the chat why.
-- Develop against a target design: `caw/design/todo-detail.html` is the screen S4 ends on. Add `design: design/todo-detail.html` to S4 in `caw/tests/first-errand.yaml` and `run`: caw compares the page with the design after S4's check. Change the Save button's color in `server.mjs`, restart, and the step fails with kind `design`, naming the style that differs.
+- Rename the "Add todo" button in `server.mjs` and `run` again. The step fails; ask Claude in the chat why.
+- Develop against a target design: `caw/design/todo-detail.html` is the screen S4 ends on. Add `design: design/todo-detail.html` to S4 in `caw/tests/first-errand.yaml` and `run`: caw compares the page with the design after S4's check. Change the Save button's color in `server.mjs`, run again, and the step fails with kind `design`, naming the style that differs.
 - Record the whole test yourself with Claude in the chat: `node ../../bin/caw.mjs record first-errand --env local`. That replaces the shipped recording.
 - Try the setup flow in a copy of this folder: delete `caw.config.json`, then `node <repo>/bin/caw.mjs init --url http://localhost:4174`.
 

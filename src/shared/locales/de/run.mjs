@@ -572,9 +572,9 @@ export default {
     'run.guide.nothingTitle': 'Keine Änderung übernommen',
     'run.guide.nothingText': 'Behebe den Fehler selbst und teste erneut, oder später.',
     'run.guide.greenTitle': 'Fehler behoben',
-    'run.guide.promoting': 'Die anderen Tests dieser Umgebung laufen',
+    'run.guide.promoting': 'Regressionstests laufen',
     'run.guide.adoptedTitle': '{test} übernommen',
-    'run.guide.promoted': 'Verschoben: {files}. {others} andere(r) Test(s) auf {target} grün. Fix-Bericht: {report}',
+    'run.guide.promoted': 'Verschoben: {files}. Regressionstests auf {target}: {others} bestanden. Fix-Bericht: {report}',
     'run.guide.refusedTitle': 'Nicht übernommen',
     'run.guide.refusedMuted': 'Der Entwurf {test} bleibt in caw/drafts.',
     'run.guide.designCapturedTitle': 'Zielbild im Test festgehalten: {id} erfüllt es noch nicht',
@@ -592,5 +592,5 @@ export default {
     'run.guide.designReadyTitle': '{id} hat die Bedienelemente seines Zielbilds: jetzt aufnehmen',
     'run.guide.designReadyText': 'Ein Zielbild zeigt den Bildschirm nach seinem Schritt: caw beurteilt es, sobald {id} aufgenommen ist. Nimm den Entwurf auf; der Lauf danach zeigt, ob das Zielbild erfüllt ist oder was noch abweicht.',
     'run.guide.designGreenTitle': 'Zielbild erfüllt',
-    'run.guide.designAdopted': 'Verschoben: {files}. {others} andere(r) Test(s) auf {target} grün. Zielbild-Bericht: {report}',
+    'run.guide.designAdopted': 'Verschoben: {files}. Regressionstests auf {target}: {others} bestanden. Zielbild-Bericht: {report}',
 };

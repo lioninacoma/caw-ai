@@ -1,23 +1,25 @@
-// Example app for caw-ai: Errand, a small todo list. Mobile first, no dependencies.
+// Example app for caw-ai: Errand, a small todo list. Mobile first.
 // Sign-in, list with progress ring, filters and search, a "New todo" dialog with selects, a detail page with a change.
-// Start: node server.mjs (port 4174). Data lives in memory; every restart starts from the seed. Account: demo / demo.
+// Start: npm run dev (Vite, port 4174, vite.config.mjs): a change here is served at once, the data stays. `node server.mjs` runs it
+// without Vite. Data lives in memory; every restart starts from the seed. Account: demo / demo.
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 
 const PORT = Number(process.env.PORT ?? 4174);
 const USERS = { demo: 'demo' };
 const LATENCY_MS = 220;
-const sessions = new Map();
 
 const TAGS = ['work', 'home', 'vibes'];
 const WHEN = ['Today', 'Tomorrow', 'Someday'];
-let nextId = 1041;
-const todos = [
+// Kept when Vite loads this file anew after a change.
+const store = globalThis.errand ??= { sessions: new Map(), nextId: 1045, todos: [
     ['Pick a gradient', 'vibes', 'Today', true],
     ['Rename the app (again)', 'work', 'Someday', false],
     ['Book the dentist', 'home', 'Tomorrow', false],
     ['Water the monstera', 'home', 'Today', false],
-].map(([title, tag, when, done]) => ({ id: nextId++, title, tag, when, done }));
+].map(([title, tag, when, done], i) => ({ id: 1041 + i, title, tag, when, done })) };
+const { sessions, todos } = store;
 
 const esc = (text) => String(text).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const CSS = `
@@ -173,7 +175,7 @@ const body = (req) => new Promise((ok) => {
 });
 const later = (fn) => new Promise((done) => { setTimeout(() => done(fn()), LATENCY_MS); });
 
-createServer(async (req, res) => {
+export const handle = async (req, res) => {
     const url = new URL(req.url, 'http://x');
     const sid = /(?:^|; )sid=([\w-]+)/.exec(req.headers.cookie ?? '')?.[1];
     const user = sessions.get(sid);
@@ -199,7 +201,7 @@ createServer(async (req, res) => {
         if (req.method === 'POST' && path === '/todos') {
             const data = JSON.parse(await body(req) || '{}');
             if (!data.title?.trim() || !TAGS.includes(data.tag)) return json(400, { error: 'title and tag required' });
-            const todo = { id: nextId++, title: data.title.trim().slice(0, 120), tag: data.tag, when: WHEN.includes(data.when) ? data.when : 'Today', done: false };
+            const todo = { id: store.nextId++, title: data.title.trim().slice(0, 120), tag: data.tag, when: WHEN.includes(data.when) ? data.when : 'Today', done: false };
             todos.push(todo);
             return later(() => json(201, todo));
         }
@@ -220,4 +222,6 @@ createServer(async (req, res) => {
     }
     if (url.pathname === '/' || /^\/todos\/\d+$/.test(url.pathname)) return send(200, appPage(user));
     return send(404, page('Not found', '<main><h1>Not found</h1></main>'));
-}).listen(PORT, '127.0.0.1', () => console.log(`Errand on http://localhost:${PORT}`));
+};
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) createServer(handle).listen(PORT, '127.0.0.1', () => console.log(`Errand on http://localhost:${PORT}`));
