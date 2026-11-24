@@ -25,6 +25,9 @@ const fieldsOf = (json) => {
     return fields;
 };
 
+/** Whether a target is a snapshot reference, alone or followed by what is entered. */
+const isRef = (item) => new RegExp('^(f[0-9]+)?e[0-9]+( |$)').test(item);
+
 /** caw's own commands, the agent's way of using the page. */
 const CAW = {
     task: () => ['task'],
@@ -90,7 +93,8 @@ export const actionOf = (readable) => {
     const caw = /^(?:caw agent )?([a-z-]+)(?:\s+(.*))?$/s.exec(command);
     if (caw !== null && CAW[caw[1]] !== undefined && (bash === null || command.startsWith('caw agent '))) {
         const [group, item = ''] = CAW[caw[1]](short(caw[2] ?? ''));
-        return { group, item: short(item), raw };
+        // A snapshot reference (e12) names nothing to a person: "Clicked" instead of "Clicked e12".
+        return { group, item: isRef(item) ? '' : short(item), raw };
     }
     if (bash !== null) return { group: 'shell', item: short(command), raw };
     const tool = /^(\w+): (.*)$/s.exec(raw);
@@ -100,6 +104,19 @@ export const actionOf = (readable) => {
     }
     const name = /^(\w+)/.exec(raw)?.[1] ?? raw;
     return { group: `tool:${name}`, item: '', raw };
+};
+
+/**
+ * A command of an attached session as its log line would name it: the session has no log caw could read. Without what it enters.
+ * @returns the line, or null for a command that is no action of its own
+ */
+export const sessionLine = (command) => {
+    const name = command?.action === 'dragTo' ? 'drag' : command?.action;
+    if (typeof name !== 'string' || !Object.hasOwn(CAW, name)) return null;
+    const about = { goto: command.url, press: command.key, remember: command.name, check: command.id, dialog: command.decision, upload: Array.isArray(command.files) ? command.files.join(', ') : undefined }[name] ?? command.target;
+    // A value after the target is cut off by the commands that enter one; none is passed on here.
+    const item = typeof about !== 'string' ? '' : name === 'fill' ? `${about} ""` : about;
+    return `[+0s] > caw agent ${name} ${item.replaceAll(/\s+/g, ' ')}`.trim();
 };
 
 /** One action, or several of one group, as a sentence. */

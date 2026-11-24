@@ -87,6 +87,7 @@ export default {
     'run.attach.factLost': '● Not connected',
     'run.attach.waiting': 'Waiting for {agent}: type /caw-attach in {agent}, or start the Monitor in your session. The window connects by itself.',
     'run.attach.several': 'Several sessions listen ({keys}). Start again with --attach <key> to choose one.',
+    'run.attach.handed': 'Task handed to {agent}',
     'run.attach.connected': '{agent} connected (session {key}). It answers here in the chat.',
     'run.attach.lost': '{agent} is not connected any more. Type /caw-attach in {agent} to reconnect; the chat stays as it is.',
     'run.attach.back': '{agent} connected again (session {key}).',

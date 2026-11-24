@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { actionOf, actionText, foldAction } from '../src/host/activity.mjs';
+import { actionOf, actionText, foldAction, sessionLine } from '../src/host/activity.mjs';
 import { parseClaudeLog } from '../src/host/chat.mjs';
 
 test('activity: tool calls and caw commands become short sentences, a cut-off log line still names its file', () => {
@@ -39,4 +39,17 @@ test('activity: a log line carries the sentence, the group and the raw call; say
     assert.deepEqual(entry, { kind: 'activity', text: 'button "Senden" geklickt', group: 'click', item: 'button "Senden"', raw: 'click button "Senden"' });
     assert.equal(parseClaudeLog('[+2.1s] > mcp__caw__caw: {"args":["say","Hallo"]}'), null);
     assert.equal(parseClaudeLog('[+3s] > Grep: {"pattern":"x"}').raw, 'Grep: {"pattern":"x"}');
+});
+
+test('activity: the commands of an attached session read like the lines of a log, without what they enter or a snapshot reference', () => {
+    const text = (command) => { const line = sessionLine(command); return line === null ? null : parseClaudeLog(line).text; };
+    assert.equal(text({ action: 'task' }), 'Auftrag gelesen');
+    assert.equal(text({ action: 'click', target: 'e12' }), 'Geklickt');
+    assert.equal(text({ action: 'click', target: "getByRole('button', { name: 'Save' })" }), "getByRole('button', { name: 'Save' }) geklickt");
+    assert.equal(text({ action: 'fill', target: 'f1e3', value: 'geheim' }), 'Feld ausgefüllt');
+    assert.equal(text({ action: 'fill', target: 'textbox "Titel"', value: 'geheim' }), 'textbox "Titel" ausgefüllt');
+    assert.equal(text({ action: 'type', target: 'e4', value: 'geheim' }), 'Getippt');
+    assert.equal(text({ action: 'goto', url: '/todos' }), '/todos geöffnet');
+    assert.equal(text({ action: 'dragTo', target: 'e1', to: 'e2' }), 'Element gezogen');
+    for (const action of ['say', 'chat', 'plan', 'constructor', undefined]) assert.equal(text({ action }), null);
 });

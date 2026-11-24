@@ -87,6 +87,7 @@ export default {
     'run.attach.factLost': '● Nicht verbunden',
     'run.attach.waiting': 'Warte auf {agent}: in {agent} /caw-attach eingeben oder den Monitor deiner Session starten. Das Fenster verbindet sich von selbst.',
     'run.attach.several': 'Mehrere Sessions hören zu ({keys}). Mit --attach <key> neu starten, um eine zu wählen.',
+    'run.attach.handed': 'Auftrag an {agent} übergeben',
     'run.attach.connected': '{agent} verbunden (Session {key}). Sie antwortet hier im Chat.',
     'run.attach.lost': '{agent} ist nicht mehr verbunden. In {agent} /caw-attach eingeben, um neu zu verbinden; der Chat bleibt, wie er ist.',
     'run.attach.back': '{agent} wieder verbunden (Session {key}).',

@@ -15,7 +15,7 @@ import { resolveCredentials } from '../shared/credentials.mjs';
 import { agentHosts, effectiveEnvironment, startPath, usesTotp } from '../shared/environments.mjs';
 import { browserLaunch, buildDevlinkConfig, todoFields, claudeLimits, isLoopback, navigationHosts, sessionPath } from '../shared/config.mjs';
 import { CawError, EXIT } from '../shared/errors.mjs';
-import { actionOf, actionText, foldAction } from './activity.mjs';
+import { actionOf, actionText, foldAction, sessionLine } from './activity.mjs';
 import { DEFAULT_KEEP_RUNS, REPRODUCE_RUN, markRunAlive, pruneRuns, runsWithResult } from './runs.mjs';
 import { AGENT_NAME, inLanguage, language, languageSource, t, teamLanguage } from '../shared/i18n.mjs';
 import { cawCommand } from '../shared/invocation.mjs';
@@ -721,7 +721,9 @@ ${text}`) ?? 0;
                     session.workbench?.facts(withLink(shownFacts)).catch(() => {});
                     const line = state === 'waiting' ? t(candidates.length > 1 ? 'run.attach.several' : 'run.attach.waiting', { keys: candidates.join(', ') })
                         : t(`run.attach.${state}`, { key });
-                    if (state !== 'waiting' || candidates.length > 1 || chat !== null) chat?.notice(line);
+                    // In the guided flow the panel's line says what runs, the link too.
+                    if (flow !== undefined) chat?.progress?.(line);
+                    else if (state !== 'waiting' || candidates.length > 1 || chat !== null) chat?.notice(line);
                     if (state === 'lost') chat?.working?.(false);
                     ui.info(line);
                     for (const announced of announcedAgents) if (key !== undefined && key !== null) announced.rebind(key);
@@ -880,6 +882,8 @@ ${text}`) ?? 0;
      */
     // The agent's latest activity in the step list; it is done once the agent speaks or waits for the person.
     let closeActivity = () => {};
+    // An attached session writes no log: what it does shows from its commands.
+    let sessionDoes = () => {};
     const forClaude = (handler) => async (command) => {
         // Commands with which the agent waits for the person: a chat answer or a question to show in the browser.
         // Commands with which the agent waits for the person. caw's own agent answers with say and waits with chat. An attached
@@ -891,6 +895,7 @@ ${text}`) ?? 0;
         if (command?.action === 'say' || waits) closeActivity();
         // The chat shows "working" until the agent waits for the person again.
         if (typeof command?.action === 'string' && (!attached || waits)) chat?.working?.(!waits);
+        if (attached) sessionDoes(command);
         if (signingIn && !['task', 'say', 'chat'].includes(command?.action)) throw new CawError('signing-in', t('run.agent.signingIn'));
         let value;
         try {
@@ -954,6 +959,10 @@ ${text}`) ?? 0;
         };
         if (box.kind === 'session') {
             linkSession(box);
+            sessionDoes = (command) => {
+                const line = sessionLine(command);
+                if (line !== null) onLine(line);
+            };
             const hint = sessionHint(mode, runId, { creating });
             // The session reads these topics with caw_guide; caw_status names them. Its Monitor hears of the task at once.
             const agent = announceSessionAgent({ root, runId, agentDir, mode, hint, guide: [...runTopics(mode, { creating, config }), 'attach'], attach: link?.key() ?? null });
@@ -962,11 +971,13 @@ ${text}`) ?? 0;
             else link?.tell(t('run.attach.event', { runId, mode, hint }));
             // Without a link (it could not start) the chat at least says whom it waits for; with one, its waiting line says so.
             if (link === null) chat?.progress?.(t('run.waitingForSession'));
+            else if (flow !== undefined) chat?.progress?.(t(['connected', 'back'].includes(link.state()) ? 'run.attach.handed' : 'run.attach.waiting', { keys: '' }));
             return {
                 ended: agent.ended,
                 log: () => '',
                 stopTail: () => {},
                 stop: async () => {
+                    sessionDoes = () => {};
                     announcedAgents.delete(agent);
                     await agent.stop();
                 },
