@@ -632,7 +632,7 @@ body:has(#card:not(:empty)) #work,[data-state=closed] #work{display:none}
 #lines li>span{overflow-wrap:anywhere}#lines .mk .i{width:12px;height:12px;color:var(--pass)}#lines small{font:400 11px/1 var(--font-mono);color:var(--faint)}
 #lines li:last-child{color:var(--text)}
 :is([data-state=running],[data-state=advising],[data-state=testing],[data-state=verifying],[data-state=preparing],[data-state=handing]) #lines li:last-child .mk .i{display:none}
-:is([data-state=running],[data-state=advising],[data-state=testing],[data-state=verifying],[data-state=preparing],[data-state=handing]) #lines li:last-child .mk::before{content:"";display:block;width:8px;height:8px;margin-top:2px;border-radius:50%;border:2px solid var(--run);border-right-color:transparent;animation:caw-spin .9s linear infinite}
+:is([data-state=running],[data-state=advising],[data-state=testing],[data-state=verifying],[data-state=preparing],[data-state=handing]) #lines li:last-child .mk::before{content:"";display:block;width:8px;height:8px;margin-top:2px;border-radius:50%;border:2px solid var(--run);border-right-color:transparent;animation:caw-spin .9s linear var(--turn,0ms) infinite}
 [data-state=showing] #lines .mk .i{color:var(--fail)}
 /* The guided flow: only the current activity, with its time. */
 .flow #lines{padding:12px;border:1px solid var(--line);border-radius:var(--r3);font-size:13px}.flow #lines:empty,.flow #lines li:not(:last-child){display:none}
@@ -957,7 +957,7 @@ const elapsed=(row)=>{const s=Math.max(0,Math.floor((Date.now()-Number(row.datas
 // In the guided flow the current line always counts.
 setInterval(()=>{if(starting)elapsed(starting);const last=lines.lastElementChild;if(inFlow()&&last?.dataset.t0&&last!==starting)elapsed(last);},1000);
 const started=()=>{if(!starting)return;elapsed(starting);starting=null;};
-const workLine=(text,merge,t0)=>{let li=merge?lines.lastElementChild:null;if(!li){li=el('li');const mk=el('span','mk');mk.append(ic('check'));const time=el('small');time.setAttribute('aria-hidden','true');li.append(mk,el('span'),time);lines.append(li);}
+const workLine=(text,merge,t0)=>{let li=merge?lines.lastElementChild:null;if(!li){li=el('li');const mk=el('span','mk');mk.style.setProperty('--turn','-'+Math.round(performance.now()%900)+'ms');mk.append(ic('check'));const time=el('small');time.setAttribute('aria-hidden','true');li.append(mk,el('span'),time);lines.append(li);}
   li.children[1].textContent=text;if(inFlow()&&!t0&&!li.dataset.t0){li.dataset.t0=String(Date.now());elapsed(li);}if(t0){li.dataset.t0=String(t0);elapsed(li);starting=li;}while(lines.childElementCount>MAX_LINES)lines.firstElementChild.remove();};
 const toThread=(node)=>{thread.append(node);while(thread.childElementCount>MAX_THREAD)thread.firstElementChild.remove();now.scrollTop=now.scrollHeight;};
 const bubble=(who,text,about,at)=>{const item=el('div','message '+who);

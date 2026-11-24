@@ -2077,3 +2077,28 @@ test('chat: a choice marked beside stays a secondary button next to the one main
     assert.equal(await second, 'self');
     return undefined;
 });
+
+test('workbench: updates keep the running spinner turning, a new row takes over its angle', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench } = await chatReady(t);
+    const page = bench.page;
+    await bench.steps([{ id: 'S1', name: 'Eins', kind: 'step' }, { id: 'claude', name: 'Zwei', kind: 'step' }, { id: 'S2', name: 'Drei', kind: 'step' }]);
+    await bench.step('S1', 'running');
+    await page.evaluate(() => { document.body.classList.remove('fold-steps'); for (const li of document.querySelectorAll('#steps>li')) li.classList.add('open'); });
+    await bench.point('claude', 'c1', 'running', { label: 'a' });
+    await page.evaluate(() => { for (const s of document.querySelectorAll('#steps .spinner')) s.dataset.kept = '1'; });
+    const count = await page.locator('#steps .spinner').count();
+    assert.ok(count > 0, 'something turns');
+    await bench.point('claude', 'c1', 'running', { label: 'b' });
+    assert.equal(await page.locator('#steps .spinner[data-kept]').count(), count, 'the same spinners after an update');
+    const turn = () => page.evaluate(() => { const s = [...document.querySelectorAll('#steps .spinner')].find((one) => one.getAnimations().length > 0); return { at: performance.now() / 900, progress: s.getAnimations()[0].effect.getComputedTiming().progress, id: s.closest('li').dataset.id }; });
+    await page.waitForTimeout(350);
+    const first = await turn();
+    await bench.step('S2', 'running');
+    const next = await turn();
+    assert.notEqual(next.id, first.id, 'another row turns now');
+    // Both as the angle a spinner turning since the page opened would have.
+    const apart = Math.abs(((next.progress - next.at) - (first.progress - first.at)) % 1);
+    assert.ok(Math.min(apart, 1 - apart) < 0.1, `one angle: ${JSON.stringify({ first, next })}`);
+    return undefined;
+});

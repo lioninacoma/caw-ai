@@ -555,9 +555,10 @@ const duration=(ms)=>ms<1000?Math.round(ms)+' ms':(ms/1000).toFixed(1).replace('
 const cell=(text,cls)=>{const td=document.createElement('td');td.textContent=text;if(cls)td.className=cls;td.title=text;return td;};
 const still=()=>document.body.classList.contains('still');
 const settingsOn=()=>document.body.classList.contains('settings-on');
-// The marks as icons (static SVG from the host); running is a CSS spinner.
+// The marks as icons (static SVG from the host); running is a CSS spinner. An update keeps the one that turns already, and a new
+// one starts at the angle the one before it has: the turn goes on from row to row.
 const ICON=${json({ ok: icon('check'), fail: icon('x'), open: icon('circle'), skip: icon('dash'), chev: icon('chev-r'), chevL: icon('chev-l'), file: icon('file'), more: icon('more'), shield: icon('shield'), lock: icon('lock'), agent: icon('agent') })};
-const markInto=(el,kind)=>{if(kind==='run'){const s=document.createElement('span');s.className='spinner';el.replaceChildren(s);}else el.innerHTML=ICON[kind]??ICON.open;};
+const markInto=(el,kind)=>{if(kind==='run'){if(el.firstElementChild?.classList.contains('spinner'))return;const s=document.createElement('span');s.className='spinner';s.style.animationDelay='-'+Math.round(performance.now()%900)+'ms';el.replaceChildren(s);}else el.innerHTML=ICON[kind]??ICON.open;};
 const render=()=>{
   const panel=$('panel');panel.replaceChildren();
   const empty=(key)=>{const div=document.createElement('div');div.className='empty';div.textContent=T[key];panel.append(div);};
