@@ -8,7 +8,8 @@ agent of its own: runs you start are attached to you (`--attach`, topic `attach`
    with a plan: see 7.), `learn` and `promote` (only `run`; each only when the person asks), `strict` (only `run`: exit 4 while steps
    are pending), `design` (only `open` with `test` and `step`: the comparison with the step's target design, topic `design`), `start`, `reset`; for `reproduce` `bug`, `from`, `role`, `ref` (topic `reproduce`). Or
    `args` as on the command line, not both. You are the agent: caw asks neither about tokens nor who demonstrates. `record`
-   follows an existing plan without a demonstration; a new test without a plan starts with the person's demonstration.
+   follows an existing plan without a demonstration; a new test without a plan starts with the person's demonstration,
+   or with `description` from that text (topic `delta`).
 2. **Wait:** `caw_status` with `wait: 120`, again and again, until the run waits for you or ends. It returns early as soon as
    something changes, so don't poll without `wait` or read the log in between. With `run` it only waits for you once the person
    chooses "{{label:run.button.fix}}" or asks in the chat. While the window waits for a decision, `caw_status` shows it as

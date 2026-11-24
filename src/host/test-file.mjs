@@ -436,8 +436,11 @@ const dirtyOk = (entry) => isObject(entry) && Object.keys(entry).every((key) => 
  * Reads the agent's plan: only `notes` and `steps`. Metadata and recordings it sends anyway are dropped, because role, environments
  * and write access stay with the human.
  */
-/** What became of a human note: a step's `note`, a step's `retry`, the test's `notes`, or only this recording. */
-export const HEARD_AS = ['note', 'retry', 'notes', 'run'];
+/**
+ * What became of a human note: a step proves it (`step`), a step's `note` or `retry`, the test's `notes`, only this recording
+ * (`run`), or the test does not prove it (`open`).
+ */
+export const HEARD_AS = ['step', 'note', 'retry', 'notes', 'run', 'open'];
 const HEARD_ID = /^H\d+$/;
 
 /** The plan's `heard` list: one entry per human note, `{ note: H<n>, as, step? }`. */
@@ -449,7 +452,7 @@ const readHeard = (raw, problems, lineOf) => {
         return [];
     }
     const ok = raw.every((entry) => isObject(entry) && HEARD_ID.test(String(entry.note)) && HEARD_AS.includes(entry.as)
-        && (['note', 'retry'].includes(entry.as) ? STEP_ID.test(String(entry.step)) : entry.step === undefined));
+        && (['step', 'note', 'retry'].includes(entry.as) ? STEP_ID.test(String(entry.step)) : entry.step === undefined));
     if (!ok) wrong();
     return ok ? raw.map(({ note, as, step }) => ({ note, as, ...(step === undefined ? {} : { step }) })) : [];
 };

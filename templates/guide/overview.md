@@ -27,7 +27,7 @@ caw is not a load test, not a crawler and not a test generator for apps the team
 ## Where you are
 
 - **The developer's session** (you have the `caw_*` tools): you set up the project, write plans, start runs, answer the
-  decisions a run waits for (`caw_decide`) and, when a run waits for you, act as its agent. Topics `setup`, `tests`, `run`, `reproduce`, `session`, `attach`, `design`.
+  decisions a run waits for (`caw_decide`) and, when a run waits for you, act as its agent. Topics `setup`, `tests`, `run`, `reproduce`, `delta`, `session`, `attach`, `design`.
 - **The agent of a run** (you have only the `caw` tool or `caw agent <command>` in a container): you drive the browser for
   one task. Topics `agent`, `plan`, `record`, `chat`, `cause`, `fix`, `advise`, `talk`, `reproduce`, `rules`.
 

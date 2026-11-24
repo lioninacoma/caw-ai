@@ -200,6 +200,9 @@ Nur auf Umgebungen, auf denen der Agent arbeiten darf (`"agent": true`). Gibt es
 | `--max-actions <n>` | Grenze für die Browser-Aktionen des Agenten, Standard `maxActions` oder 100. |
 | `--step-timeout <dauer>` | Zeitgrenze je Schritt im Prüflauf, Standard `30s`. |
 | `--headless` | Ohne Fenster, für einen Test mit Plan; siehe [Ohne Fenster](#ohne-fenster). |
+| `--file <datei>` | Was der Test belegen soll, als Text (bis 8000 Zeichen): Der Agent legt daraus den Plan vor statt aus deiner Vorführung, und du gibst ihn frei. Jeder Listenpunkt und Absatz ist eine Notiz (`H1`, `H2` …); Plan, `report.md` und `result.json` (`heard`) nennen den Schritt, der sie belegt, oder dass sie offen bleibt. Nicht mit `@<schritt>` oder `--headless`. |
+| `--delta <base>..<head>` | Die getesteten Commits, oder ein Commit gegen seinen Vorgänger. Abgelehnt (`delta-mismatch`), wenn `<head>` nicht in `HEAD` ist, Dateien des Deltas davon abweichen oder die Umgebung nicht auf diesem Rechner läuft (oder mit lokalem Code, `--overlay`). Welchen Ordner der Dev-Server ausliefert, sieht caw nicht. Steht in `report.md` und `result.json` (`delta`), mit nicht committeten Änderungen daneben. |
+| `--ref <id>` | Wie bei `reproduce`; steht in `report.md` und `result.json` (`ref`). |
 
 ### Ohne Fenster
 
@@ -242,6 +245,7 @@ Ein Test, der mit [offenen Schritten](test-files.de.md#offene-schritte) endet (g
 | `--no-chat` | Sichtbares Fenster, kein Chat, kein Agent. Wie in der CI. |
 | `--headless` | Kein Fenster, kein Chat. In der aufgenommenen Größe (sonst 1920×1080). |
 | `--learn` | In CI: fehlende Vergleichswerte und Effekte bestandener Schritte lernen, wie es jeder Lauf außerhalb von CI ohnehin tut. Effekte und Aussehen zählen in `.caw/learning`, bis sie eingefroren sind; ein Job allein friert sie nie ein, darum den Ordner zwischen den Jobs erhalten (ein CI-Cache), wenn CI sie lernen soll. |
+| `--delta`, `--ref` | Wie bei `record`, mit einem Test. |
 | `--promote` | Nur für einen Entwurf in `caw/drafts`: siehe [Einen Entwurf übernehmen](#einen-entwurf-übernehmen). |
 | `--strict` | Offene Schritte lassen den Lauf mit Exit 4 scheitern, statt dass er ohne sie besteht, etwa in einer Release-Pipeline. |
 | `--step-timeout <dauer>` | Zeitgrenze je Schritt, Standard `30s`. |
@@ -534,6 +538,7 @@ Bricht caw ab oder endet ein Lauf mit `error`, nennt es zuerst den Grund und dan
 | `host-blocked` | 3 | `goto` zu einem Host, der kein Host der Anwendung ist: in `allowHosts` eintragen, wenn die Anwendung wirklich dorthin navigiert. In einem Lauf ist dieselbe Sperre ein Fehler des Schritts |
 | `env-certificate` | 2 | Dem Zertifikat der Umgebung wird nicht vertraut: bei einer internen Zertifizierungsstelle `environments.<env>.insecureTls: true` setzen |
 | `write-protected` | 3 | Aufnehmen und schreibende Tests brauchen `agent` / `writable` an der Umgebung |
+| `delta-mismatch` | 3 | `--delta`: Kopf des Deltas auschecken, Änderungen in seinen Dateien committen oder zurücknehmen, eine Umgebung auf diesem Rechner nehmen |
 | `git-missing`, `git-ref` | 3 | `audit`: Git installieren, im Repository aufrufen, eine Ref nennen, die Git kennt; in CI die Geschichte holen (`fetch-depth: 0`) |
 | `skill-foreign` | 3 | `caw skill`: `.claude/skills/caw-attach/SKILL.md` gibt es, nicht von caw geschrieben |
 | `auth-missing` | 3 | Keine gespeicherte Sitzung, oder sie ist abgelaufen: `caw role login <rolle> --env <env>` (die Meldung nennt ihn) |

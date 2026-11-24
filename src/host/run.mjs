@@ -34,7 +34,7 @@ import { liveListeners } from '../shared/attach.mjs';
 import { describeCode } from './code-source.mjs';
 import { CONFIG_FILE, CONTEXT_FILE, DRAFT_DIR, ENV_FILE, PROJECT_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
 import { checkRedStep, humanFields, renderPlan, renderTest, retryProblems, writeTest } from './test-file.mjs';
-import { PLAN_FILE, composeTest, heardProblems, planView, readPlan, replaceStep, samePlanStep, sessionFollowsOwnPlan, withNoteIds } from './test-plan.mjs';
+import { PLAN_FILE, composeTest, heardOf, heardProblems, planView, readPlan, replaceStep, samePlanStep, sessionFollowsOwnPlan, withNoteIds } from './test-plan.mjs';
 import { codeText, createAgentHandler, hiddenAnswer, hiddenError, locatorFor } from './agent-commands.mjs';
 import { locatorLabel } from './locator.mjs';
 import { recordLocator } from './record-locator.mjs';
@@ -501,7 +501,7 @@ export const sessionHint = (mode, runId, { creating = false } = {}) => {
     return `${task} ${asked}`;
 };
 
-export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true, reproduce, withDesign = false, suggestLooks = false, terminal, snapshot, autoDecide = [], flow, seams = {} }) => {
+export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true, reproduce, withDesign = false, suggestLooks = false, terminal, snapshot, autoDecide = [], flow, about = {}, seams = {} }) => {
     // Tests only: the browser session, the chat, the playback and the design comparison without Chrome (test/run-seam.test.mjs).
     const { openRunSession: openSession = openRunSession, openChat: openWindowChat = openChat, playReplay: replayWith = playReplay, designComparison: compareWith = designComparison } = seams;
     // Mutable: repairing in the same browser turns the test run into a run that fixes exactly this step.
@@ -603,7 +603,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
 
     // `code`: the same words as the CLI line, e.g. "dev server localhost:5173, your current version" instead of just "deployed".
     // The pending tail (replayOf) did not play: result.json and report.md name it, the verdict only covers the recorded steps.
-    const reportBase = { testId: runName, target, source: checked.source, testedCode: codeLine, expectations: spec.expectations, ...(note === undefined ? {} : { note }), ...(replay?.pending === undefined ? {} : { pending: replay.pending }) };
+    const reportBase = { testId: runName, target, source: checked.source, testedCode: codeLine, expectations: spec.expectations, ...(note === undefined ? {} : { note }), ...(replay?.pending === undefined ? {} : { pending: replay.pending }), ...about };
     // A reproduction's report shows the bug report and the run's rules also when it ends early; finish adds Claude's verdict.
     if (reproduce !== undefined) reportBase.reproduce = { ...(reproduce.ref === undefined ? {} : { ref: reproduce.ref }), bug: reproduce.bug, writable: reproduce.writes, ...(reproduce.from === undefined ? {} : { from: reproduce.from }) };
     let verdict = null;
@@ -844,6 +844,8 @@ ${text}`) ?? 0;
             },
         }),
         ...(demonstration === undefined ? {} : { demonstration: withNoteIds(demonstration.items) }),
+        ...(about.ref === undefined ? {} : { ref: about.ref }),
+        ...(about.delta === undefined ? {} : { delta: about.delta }),
     };
     // The human's notes, H1, H2 …: the plan says in `heard` what became of each, and the card shows it.
     const humanNotes = demonstration === undefined ? [] : withNoteIds(demonstration.items).filter(({ action }) => action === 'note');
@@ -1049,7 +1051,7 @@ ${text}`) ?? 0;
                 const view = adviceView(item, result.spec, session?.failures?.() ?? [], config);
                 // A cause outside the project has nothing to apply here: the card only says where it is.
                 const applicable = item.side === 'app' && item.edits !== undefined;
-                const about = {
+                const facts = {
                     side: item.side,
                     title: item.title,
                     ...(item.change?.kind === undefined ? {} : { change: item.change.kind }),
@@ -1057,8 +1059,8 @@ ${text}`) ?? 0;
                     ...(item.where === undefined ? {} : { where: item.where }),
                 };
                 const atOnce = applyApp && applicable;
-                if (atOnce) chat.notice(t('run.advice.appliedAtOnce', { title: item.title, files: about.files.join(', ') }));
-                const answer = atOnce ? APPLY.id : await decide(chat, { id: 'advice.item', via: 'advice', context: about, card: view, options: item.side === 'test' ? [ACCEPT, REJECT] : applicable ? [APPLY, { ...NEXT, primary: false }] : [NEXT] });
+                if (atOnce) chat.notice(t('run.advice.appliedAtOnce', { title: item.title, files: facts.files.join(', ') }));
+                const answer = atOnce ? APPLY.id : await decide(chat, { id: 'advice.item', via: 'advice', context: facts, card: view, options: item.side === 'test' ? [ACCEPT, REJECT] : applicable ? [APPLY, { ...NEXT, primary: false }] : [NEXT] });
                 if (item.side === 'outside' && answer !== null) result.outside.push({ where: item.where, title: item.title });
                 let decision = 'shown';
                 if (answer === null) decision = 'open';
@@ -1815,6 +1817,11 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             const restored = fitting.length === 0 ? [] : recorder.restoreChecks(fitting);
             forgotten = { entries: forgotten.entries.filter((entry) => !restored.includes(entry.step.id)), checks: checksNow() };
             plan = composed;
+            // What became of each note of the human: the check run names it in its result too (it has the same `about`).
+            if (repairing === undefined && humanNotes.length > 0) {
+                about.heard = heardOf(parsed.heard, humanNotes);
+                reportBase.heard = about.heard;
+            }
             writeFileSync(join(runDir, PLAN_FILE), text.replaceAll('\r\n', '\n'));
             spec = composed;
             run.expectations = composed.expectations;

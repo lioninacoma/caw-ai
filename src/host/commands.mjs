@@ -28,6 +28,7 @@ import { decide } from './decisions.mjs';
 import { promptTerminal } from './decision-prompt.mjs';
 import { textMatcher } from './patterns.mjs';
 import { projectPath } from './project-path.mjs';
+import { aboutRun, descriptionItems, readDescription } from './delta.mjs';
 import { changedFiles, changedLines, dirtyFiles, shortHead } from './git.mjs';
 import { brokenChain, checkTest, draftIds, draftPath, environmentProblems, isDesignDraft, loadDraft, loadTest, pendingSteps, recordingHints, setStepLooks, staleSteps, testExists, testPath, withDefaults, writeTest } from './test-file.mjs';
 import { DESIGN_REPORT, FIX_REPORT, designMet, designOf, deviationsOf, fixState } from './bugfix.mjs';
@@ -1117,7 +1118,7 @@ export const runOne = async (root, options, deps = {}, loaded = undefined) => {
     // promoting run it as before.
     const guiding = canFix && guided && !handover && entry === undefined && through === undefined && spec.draft === true;
     const { flowOf, reproductionOf } = await import('./bugfix.mjs');
-    const runs = claudeRuns(root, config, { spec, checked, target, ...(guiding ? { flow: flowOf(root, spec) } : {}), timeoutMin: timeoutMin ?? CLAUDE_TIMEOUT_MIN, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, conversation, headless, withDesign: design, ...(snapshot === undefined ? {} : { snapshot, command: 'open' }) });
+    const runs = claudeRuns(root, config, { spec, checked, target, about: aboutRun(root, options, checked), ...(guiding ? { flow: flowOf(root, spec) } : {}), timeoutMin: timeoutMin ?? CLAUDE_TIMEOUT_MIN, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, conversation, headless, withDesign: design, ...(snapshot === undefined ? {} : { snapshot, command: 'open' }) });
     const { execute } = runs;
     // A design not met: "Open with design" opens the window at that step with the design beside the app, as open <test>@S<n>
     // --design does (the step passed its check, so it is played through), in this process with the chat so far.
@@ -1470,7 +1471,7 @@ const recordFrom = async (root, options, deps = {}) => {
         const { fixFlow } = await import('./flows.mjs');
         const sandbox = await openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent, attach });
         const { flowOf } = await import('./bugfix.mjs');
-        const { execute, conversation } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, conversation: options.conversation, ...(spec.draft === true ? { flow: flowOf(root, spec) } : {}) });
+        const { execute, conversation } = claudeRuns(root, config, { spec, checked, target, about: aboutRun(root, options, checked), timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, conversation: options.conversation, ...(spec.draft === true ? { flow: flowOf(root, spec) } : {}) });
         return fixFlow({
             draft: spec,
             env: target,
@@ -1517,9 +1518,10 @@ const fixGuide = async (root, options, deps, { spec, target, lifecycle, conversa
  */
 const recordTest = async (root, options, deps = {}) => {
     const { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive } = deps;
-    const { test, step, target: given, timeoutMin, stepTimeoutSec, maxActions, role, readOnly, agent, attach, overlay, start, headless = false } = options;
+    const { test, step, target: given, timeoutMin, stepTimeoutSec, maxActions, role, readOnly, agent, attach, overlay, start, headless = false, file } = options;
     // In CI nobody demonstrates or decides: said first, before --role or the environment. Without a window nobody is needed.
     if (!headless) requireHuman('record', interactive);
+    const description = file === undefined ? undefined : readDescription(root, file);
     const config = loadConfig(root);
     // A draft in caw/drafts records like a test; its last step must then fail while the bug is there.
     const exists = testExists(root, test);
@@ -1541,6 +1543,7 @@ const recordTest = async (root, options, deps = {}) => {
         const checked = checkTest(spec, target, config, { overlay, start });
         requireTestUser(root, config, spec.role, target);
         requireAgent(config, checked, target, t('cli.verbRecord'));
+        const about = aboutRun(root, options, checked);
 
         const { recordFlow } = await import('./flows.mjs');
         // Before the demonstration: if Docker failed only afterwards, the human's work would be wasted.
@@ -1552,12 +1555,14 @@ const recordTest = async (root, options, deps = {}) => {
         // like a run without a window does; the person's clicks are fixing and adopting.
         const guidedDraft = spec.draft === true && !headless;
         const { flowOf } = await import('./bugfix.mjs');
-        const { execute, conversation, undecided } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, previous, conversation: options.conversation, headless, ...(guidedDraft ? { autoDecide: ['plan.approve', 'red.proof'], flow: flowOf(root, spec) } : {}), ...(terminal === undefined ? {} : { terminal }) });
+        const { execute, conversation, undecided } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, previous, about, conversation: options.conversation, headless, ...(guidedDraft ? { autoDecide: ['plan.approve', 'red.proof'], flow: flowOf(root, spec) } : {}), ...(terminal === undefined ? {} : { terminal }) });
         if (headless) ui.info(t('cli.recordHeadless', { test, env: target }));
         // Driven from the developer's Claude Code session: it follows an existing test plan without asking the human first.
         // A new test without a plan still starts with the human's demonstration; without a window the agent follows the plan.
         // A draft follows its own plan (from reproduce or the person): nothing to show or describe first.
-        const demonstration = ((attach !== undefined || (agent === undefined && agentMode(config) === 'session')) && exists) || headless || guidedDraft ? undefined : await startRecording(root, config, spec, checked, { exists, conversation });
+        // A description (--file) stands for what the person would describe in the chat: the plan comes from it.
+        const described = description === undefined ? undefined : { items: descriptionItems(description) };
+        const demonstration = described ?? (((attach !== undefined || (agent === undefined && agentMode(config) === 'session')) && exists) || headless || guidedDraft ? undefined : await startRecording(root, config, spec, checked, { exists, conversation }));
         const code = await recordFlow({
             sandbox,
             env: target,

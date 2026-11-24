@@ -93,6 +93,8 @@ export default {
     'chat.page.expect': 'Result',
     'chat.page.note': 'Note',
     'chat.page.heard': 'From you',
+    'chat.page.heardAs.step': 'proven by this step',
+    'chat.page.heardAs.open': 'not proven by this test',
     'chat.page.heardAs.note': 'taken over as this step\'s note',
     'chat.page.heardAs.retry': 'taken over as this step\'s retry',
     'chat.page.heardAs.notes': 'taken over into the test\'s notes',

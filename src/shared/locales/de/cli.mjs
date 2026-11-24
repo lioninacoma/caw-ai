@@ -33,6 +33,9 @@ Befehle:`,
       [--role <rolle>]                   Nur beim ersten Mal, nicht mit @<S4>; entfällt, wenn die Config nur eine kennt
       [--read-only]                      Nur beim ersten Mal: Der Test schreibt nicht (writes: false); schreibt er doch,
                                          wird er schreibend
+      [--file <datei>]                   Was der Test belegen soll, als Text: Daraus entsteht der Plan
+      [--delta <base>..<head>]           Die getesteten Commits oder einer; muss ausgecheckt sein
+      [--ref <id>]                       Eine ID aus einem anderen Werkzeug, etwa ein Ticket
       [--headless]                       Ohne Fenster, für einen Test mit Plan, nicht mit @<S4>: {agent} folgt dem Plan,
                                          caw nimmt nur, was nichts an den Prüfungen ändert; alles andere hält mit Exit 5
                                          an und schreibt nichts
@@ -48,6 +51,8 @@ Befehle:`,
       [--explain]                        Bei Fehlern oder Warnungen erklärt {agent} von sich aus, verbraucht Token; nur auf
                                          Umgebungen, auf denen {agent} arbeiten darf
       [--no-chat]                        Ohne Chat und ohne {agent}, wie in CI
+      [--delta <base>..<head>]           Die getesteten Commits oder einer; muss ausgecheckt sein
+      [--ref <id>]                       Eine ID aus einem anderen Werkzeug, etwa ein Ticket
       [--headless]                       Ohne Fenster und ohne Chat
       [--learn]                          In CI: fehlende Vergleichswerte und Effekte in caw/recordings/ lernen (außerhalb
                                          von CI tut das jeder Lauf)
@@ -178,6 +183,13 @@ Browser:
     'cli.synopsis.export': 'caw export <test> [--env <name>] [--out <ordner>]',
     'cli.synopsis.design': 'caw design snapshot <test>@<S4> [--env <name>] [--name <name>] [--replace] [--json]',
     'cli.synopsis.reproduce': 'caw reproduce "<fehlerbericht>" | --file <datei> | -  [--env <name>] [--role <rolle>] [--from <test>[@<S4>]] [--ref <id>] [--headless] [--agent local|docker] [--attach [<key>]]',
+    'cli.descriptionMissing': 'Die Beschreibung ist leer. Sie sagt, was der Test belegen soll.',
+    'cli.descriptionLong': 'Die Beschreibung ist länger als {max} Zeichen.',
+    'cli.descriptionControl': 'Die Beschreibung enthält Steuerzeichen.',
+    'cli.delta.form': '--delta {delta}: „<base>..<head>“ mit gemeinsamer Geschichte nennen, oder einen Commit mit Vorgänger.',
+    'cli.delta.notCheckedOut': 'Das Delta {delta} ist nicht ausgecheckt: HEAD enthält {head} nicht. Auschecken (git checkout <branch>), dann erneut.',
+    'cli.delta.differs': 'Der ausgecheckte Code weicht in Dateien des Deltas von {head} ab: {files}. Diese Änderungen committen oder zurücknehmen, oder den aktuellen Stand als Delta nennen.',
+    'cli.delta.notLocal': '--delta vergleicht mit dem hier ausgecheckten Code; {env} läuft nicht auf diesem Rechner.',
     'cli.reproduceOneSource': 'Den Fehlerbericht entweder als Argument, mit --file oder mit - von stdin, nicht mehrfach.',
     'cli.reproduceBugMissing': 'Welchen Fehler? {caw} reproduce "Nach dem Speichern zeigt die Liste den Eintrag nicht" (oder --file <datei>, oder - für stdin).',
     'cli.reproduceBugLong': 'Der Fehlerbericht ist länger als {max} Zeichen. Kürze ihn auf das, was passiert und was du erwartest.',

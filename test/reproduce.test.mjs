@@ -158,7 +158,7 @@ test('ref: an opaque id, checked on the command line and in caw_start, never res
     assert.throws(() => parseReproduceArgs(['Bug.', '--ref']), (error) => error.code === 'usage');
     assert.deepEqual(startArgs({ command: 'reproduce', bug: 'x', ref: 'TCK-1' }), ['--file', BUG_FILE, '--ref=TCK-1']);
     assert.throws(() => startArgs({ command: 'reproduce', bug: 'x', ref: 'a b' }), /keine Referenz/);
-    assert.throws(() => startArgs({ command: 'run', test: 't', ref: 'TCK-1' }), /ref/);
+    assert.throws(() => startArgs({ command: 'open', test: 't', ref: 'TCK-1' }), /ref/);
     const { text } = draftTestPlan({ id: 'bug-x', role: 'tester', environment: 'local', writes: false, runId: 'r1', ref: 'TCK-1234', steps: [{ name: 'Search', do: 'Search.', expect: 'One result.' }] });
     assert.match(parseTest(text).notes, /Lauf r1, Referenz TCK-1234/);
 });

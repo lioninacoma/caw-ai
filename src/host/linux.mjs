@@ -2,6 +2,7 @@ import { isAttachValue } from '../shared/attach.mjs';
 import { parseDuration } from '../shared/duration.mjs';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
+import { REF_PATTERN } from '../shared/names.mjs';
 
 /**
  * Windows path to Linux path, including \\wsl.localhost\<distro>\... Leaves Linux paths unchanged. Also yields the
@@ -46,9 +47,9 @@ const CLAUDE_OPTIONS = ['--env', '--agent-timeout', '--max-actions', '--step-tim
 const COMMAND_OPTIONS = {
     // --agent-timeout and --max-actions apply to Claude when clarifying, explaining and fixing; playback itself is limited by
     // --step-timeout.
-    run: ['--env', '--explain', '--headless', '--no-chat', '--learn', '--strict', '--promote', '--all', '--report', '--retry-env', '--step-timeout', '--agent-timeout', '--max-actions', '--agent', '--attach', '--overlay', '--start', '--reset', '--no-reset'],
+    run: ['--env', '--explain', '--headless', '--no-chat', '--learn', '--strict', '--promote', '--all', '--report', '--retry-env', '--step-timeout', '--agent-timeout', '--max-actions', '--agent', '--attach', '--overlay', '--start', '--reset', '--no-reset', '--delta', '--ref'],
     // --headless: no window, for a test that has a plan; caw takes only what changes nothing the test checks.
-    record: [...CLAUDE_OPTIONS, '--role', '--read-only', '--headless'],
+    record: [...CLAUDE_OPTIONS, '--role', '--read-only', '--headless', '--file', '--delta', '--ref'],
     open: ['--env', '--role', '--overlay', '--start', '--reset', '--agent', '--attach', '--agent-timeout', '--max-actions', '--step-timeout', '--design'],
     // bisect always runs headless, without chat and learning, and always starts the environment: nothing to switch.
     bisect: ['--env', '--tests-from', '--step-timeout'],
@@ -62,7 +63,7 @@ const SWITCHES = new Set(['--json', '--replace', '--explain', '--headless', '--n
 const VALUE_EXAMPLES = {
     '--env': 'local', '--role': 'admin', '--agent': 'local', '--agent-timeout': '60m',
     '--max-actions': '100', '--step-timeout': '30s', '--report': 'junit=caw-junit.xml', '--retry-env': '1', '--url': 'http://localhost:5173', '--from': 'caw/.explore.json',
-    '--tests-from': 'refs/bisect/bad', '--name': 'order-form',
+    '--tests-from': 'refs/bisect/bad', '--name': 'order-form', '--file': 'acceptance.md', '--delta': 'main..HEAD', '--ref': 'TCK-1234',
 };
 /** Where Claude works: started locally, in Docker or as the developer's Claude Code session. */
 /** Where caw starts its own agent; the person's own session answers with --attach instead. */
@@ -169,6 +170,12 @@ export const parseRunArgs = (command, args) => {
         else if (flag === '--role') options.role = value;
         else if (flag === '--tests-from') options.testsFrom = value;
         else if (flag === '--name') options.name = value;
+        else if (flag === '--file') options.file = value;
+        else if (flag === '--delta') options.delta = value;
+        else if (flag === '--ref') {
+            if (!REF_PATTERN.test(value)) throw new CawError('usage', t('cli.reproduceRef', { ref: value.slice(0, 80) }));
+            options.ref = value;
+        }
         else if (flag === '--json') options.json = true;
         else if (flag === '--replace') options.replace = true;
         else if (flag === '--step-timeout') options.stepTimeoutSec = parseDuration(flag, value) / 1000;
@@ -206,6 +213,14 @@ export const parseRunArgs = (command, args) => {
     if (command === 'record' && options.step !== undefined) {
         const clash = [['--role', options.role], ['--read-only', options.readOnly]].find(([, value]) => value !== undefined);
         if (clash !== undefined) throw new CawError('usage', t('session.args.recordStepMeta', { flag: clash[0] }));
+    }
+    // A description is a new plan, which the person approves: from a step on and without a window there is none.
+    for (const [other, given] of [['--headless', options.headless === true], ['@<step>', options.step !== undefined]]) {
+        if (options.file !== undefined && given) throw new CawError('usage', t('session.args.clash', { without: '--file', other }));
+    }
+    // What one run is about: several tests, or the regression tests of --promote, are not.
+    for (const [flag, given] of [['--delta', options.delta], ['--ref', options.ref]]) {
+        if (given !== undefined && command === 'run' && (options.all || options.promote || options.tests.length > 1 || options.reports !== undefined || options.retryEnv !== undefined)) throw new CawError('usage', t('session.args.oneRun', { flag }));
     }
     if (options.maxActions !== undefined && (!Number.isInteger(options.maxActions) || options.maxActions <= 0)) throw new CawError('usage', t('session.args.maxActions'));
     // Several tests are meant for CI: no chat, otherwise every test would wait for a human.

@@ -199,6 +199,9 @@ Runs only on environments where the agent may work (`"agent": true`). `--env` ca
 | `--max-actions <n>` | Limit on the agent's browser actions, default `maxActions` or 100. |
 | `--step-timeout <duration>` | Time limit per step in the check run, default `30s`. |
 | `--headless` | No window, for a test that has a plan; see [Without a window](#without-a-window). |
+| `--file <file>` | What the test shall prove, as text (up to 8000 characters): the agent presents the plan from it instead of your demonstration, and you approve it. Every list entry and paragraph is a note (`H1`, `H2` …); the plan, `report.md` and `result.json` (`heard`) say which step proves it or that it stays open. Not with `@<step>` or `--headless`. |
+| `--delta <base>..<head>` | The commits under test, or one commit against its parent. Refused (`delta-mismatch`) unless `<head>` is in `HEAD`, the delta's files are as it left them and the environment runs on this machine (or with local code, `--overlay`). caw does not see which folder the dev server serves. Named in `report.md` and `result.json` (`delta`), with uncommitted changes besides it. |
+| `--ref <id>` | As for `reproduce`; stands in `report.md` and `result.json` (`ref`). |
 
 ### Without a window
 
@@ -243,6 +246,7 @@ A test that ends in [pending steps](test-files.md#pending-steps) (written, not r
 | `--learn` | In CI: learn missing baselines and effects from passed steps, as every run outside CI does anyway. Effects and looks count in `.caw/learning` until they freeze; one job alone never freezes them, so keep that folder between jobs (a CI cache) if CI is to learn them. |
 | `--strict` | Pending steps fail the run with exit 4 instead of passing without them, e.g. for a release pipeline. |
 | `--promote` | Only for a draft in `caw/drafts`: see [Promoting a draft](#promoting-a-draft). |
+| `--delta`, `--ref` | As for `record`, with one test. |
 | `--step-timeout <duration>` | Time limit per step, default `30s`. |
 | `--agent-timeout <duration>` | Time limit for the agent when it investigates or fixes, default `60m`. |
 | `--max-actions <n>` | Limit on the agent's actions when fixing. |
@@ -527,6 +531,7 @@ When caw stops, or a run ends with `error`, it prints the reason and then the co
 | `host-blocked` | 3 | `goto` to a host that is no app host: add it to `allowHosts` if the app really navigates there. In a run the same block is a failure of the step |
 | `env-certificate` | 2 | The environment's certificate is not trusted: for an internal certificate authority set `environments.<env>.insecureTls: true` |
 | `write-protected` | 3 | Recording and writing tests need `agent` / `writable` on the environment |
+| `delta-mismatch` | 3 | `--delta`: check out the delta's head, commit or undo changes in its files, use an environment on this machine |
 | `git-missing`, `git-ref` | 3 | `audit`: install Git, run it inside the repository, name a ref Git knows; in CI fetch the history (`fetch-depth: 0`) |
 | `skill-foreign` | 3 | `caw skill`: `.claude/skills/caw-attach/SKILL.md` exists and was not written by caw |
 | `auth-missing` | 3 | No stored session, or it expired: `caw role login <role> --env <env>` (the message names it) |

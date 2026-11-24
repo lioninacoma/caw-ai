@@ -224,3 +224,37 @@ export const workingBlobIds = (root, paths) => {
     const ids = git(root, ['hash-object', '--stdin-paths'], { input }).toString('utf8').trim().split('\n');
     return new Map(paths.map((path, index) => [path, ids[index]]));
 };
+
+/**
+ * A delta under test: `<base>..<head>` (or `...`; what head changed since it left base, like a PR) or one commit (against its
+ * parent; a branch name is its newest commit only). Paths relative to the project like changedFiles.
+ * @returns { base, head (short hashes), files, contained: HEAD has head, differing: the delta's files that differ from head in
+ *          the working tree, dirty: other tracked files with uncommitted changes, without caw/ and .caw/ }
+ */
+export const deltaOf = (root, value) => {
+    const bad = () => new CawError('git-ref', t('cli.delta.form', { delta: String(value) }));
+    const range = /^(.+?)\.{2,3}(.+)$/.exec(value);
+    const head = resolveCommit(root, range === null ? value : range[2]);
+    let base;
+    if (range !== null) {
+        const from = resolveCommit(root, range[1]);
+        if (!succeeds(root, ['merge-base', from, head])) throw bad();
+        base = git(root, ['merge-base', from, head]).toString('utf8').trim();
+    } else {
+        if (!succeeds(root, ['rev-parse', '--verify', '--quiet', `${head}^1`])) throw bad();
+        base = resolveCommit(root, `${head}^1`);
+    }
+    const prefix = git(root, ['rev-parse', '--show-prefix']).toString('utf8').trim();
+    const up = '../'.repeat(prefix.split('/').filter(Boolean).length);
+    const shown = (path) => (path.startsWith(prefix) ? path.slice(prefix.length) : `${up}${path}`);
+    const names = (args) => git(root, args).toString('utf8').split('\0').filter((path) => path !== '' && !path.includes('\n'));
+    const touched = names(['diff', '--name-only', '--no-renames', '-z', base, head, '--', ':/']);
+    const changed = new Set(names(['diff', '--name-only', '--no-renames', '-z', head, '--', ':/']));
+    // A deleted file that is there again is untracked, which no diff against head shows: looked up itself.
+    const gone = new Set(names(['diff', '--name-only', '--no-renames', '--diff-filter=D', '-z', base, head, '--', ':/']));
+    const top = git(root, ['rev-parse', '--show-toplevel']).toString('utf8').trim();
+    const differing = touched.filter((path) => changed.has(path) || (gone.has(path) && existsSync(join(top, path))));
+    const dirty = dirtyFiles(root).map(({ file }) => file).filter((path) => !touched.includes(path));
+    const short = (commit) => git(root, ['rev-parse', '--short', commit]).toString('utf8').trim();
+    return { base: short(base), head: short(head), files: touched.map(shown).sort(), contained: succeeds(root, ['merge-base', '--is-ancestor', head, 'HEAD']), differing: differing.map(shown).sort(), dirty: dirty.map(shown).sort() };
+};

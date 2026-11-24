@@ -94,6 +94,8 @@ export default {
     'chat.page.expect': 'Ergebnis',
     'chat.page.note': 'Hinweis',
     'chat.page.heard': 'Von dir',
+    'chat.page.heardAs.step': 'durch diesen Schritt belegt',
+    'chat.page.heardAs.open': 'durch diesen Test nicht belegt',
     'chat.page.heardAs.note': 'als Hinweis an diesem Schritt übernommen',
     'chat.page.heardAs.retry': 'als Wiederholung an diesem Schritt übernommen',
     'chat.page.heardAs.notes': 'in die Notizen des Tests übernommen',

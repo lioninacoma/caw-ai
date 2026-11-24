@@ -1,6 +1,7 @@
 // N1–N15: native Playwright locators against the fixture site e2e/native (nested frames, shadow DOM, a dialog transition, a
 // virtual list, repeated rows, a select inside its label). The tests come from native/project.mjs; N1, N2 and N5 record their
 // own (rec-*) with a scripted agent and a scripted human.
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -1929,5 +1930,83 @@ ${finishOf(ids)}`;
     } finally {
         await restyleSwitch(false).catch(() => {});
         rmSync(snapRoot, { recursive: true, force: true });
+    }
+});
+
+// ---- N26: a test for a delta (guide topic delta): no plan file and no demonstration; the plan comes from the description
+// (caw_start description), says in `heard` which step proves each note, the person approves and adopts; result.json, report.md
+// and caw_status name reference, delta and tested commit. A delta that is not checked out is refused before anything starts.
+
+const DELTA_ID = 'rec-delta';
+const deltaRoot = join(native, 'delta');
+
+scenario('N26', 'A test for a delta: plan from the description instead of a demonstration, heard per note, approved and adopted in the window; ref, delta and proof in result, report and caw_status; another checkout is refused', async () => {
+    const git = (...args) => execFileSync('git', args, { cwd: deltaRoot, stdio: ['ignore', 'pipe', 'pipe'] }).toString('utf8').trim();
+    const plan = 'steps:\n  - id: S1\n    name: Besorgung anlegen\n    do: Lege die Besorgung "Feed the raven {{runTag}}" an.\n    expect: Die Besorgung steht in der Liste.\nheard:\n  - {note: H1, as: step, step: S1}\n  - {note: H2, as: open}';
+    const agent = `A='caw agent'
+${tag}
+$A task > /tmp/task.txt
+grep -c '"H2"' /tmp/task.txt | sed 's/^/NOTES=/'
+grep -c 'src/app.js' /tmp/task.txt | sed 's/^/DELTA=/'
+${planOf(plan)}
+$A plan --file /tmp/p.yaml > /dev/null
+${S1_COMMANDS}
+${finishOf(['S1'])}`;
+    rmSync(deltaRoot, { recursive: true, force: true });
+    mkdirSync(join(deltaRoot, 'src'), { recursive: true });
+    try {
+        writeFileSync(join(deltaRoot, 'caw.config.json'), readFileSync(join(native, 'caw.config.json')));
+        writeFileSync(join(deltaRoot, '.gitignore'), '.caw/\n');
+        git('init', '-q', '-b', 'main');
+        git('config', 'user.email', 'delta@example.test');
+        git('config', 'user.name', 'Delta');
+        writeFileSync(join(deltaRoot, 'src/app.js'), 'alt');
+        git('add', '-A');
+        git('commit', '-q', '-m', 'Start');
+        git('checkout', '-q', '-b', 'feature');
+        writeFileSync(join(deltaRoot, 'src/app.js'), 'neu');
+        git('commit', '-q', '-am', 'Feature');
+        const mcp = sessionMcpHandler({ root: deltaRoot });
+        await mcp({ jsonrpc: '2.0', id: 0, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {} } });
+        const tool = async (name, args) => (await mcp({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } })).result;
+        const about = ['--delta', 'main..feature', '--ref', 'TCK-26'];
+
+        // Another checkout: refused for the session and on the command line, nothing started.
+        git('checkout', '-q', 'main');
+        const refused = await tool('caw_start', { command: 'record', test: DELTA_ID, env: 'test', description: '- eins', delta: 'main..feature' });
+        verify('caw_start: a delta that is not checked out is refused', refused.isError === true && /nicht ausgecheckt/.test(refused.content[0].text), refused.content[0].text);
+        writeFileSync(join(deltaRoot, '.caw-description.md'), '# Besorgungen\n\n- Eine neue Besorgung steht in der Liste.\n- Der Server protokolliert sie.\n');
+        const early = await record(deltaRoot, [DELTA_ID, ...recordArgs, '--file', '.caw-description.md', ...about], { interactive: true, containerCommand: ['bash', '-c', agent] }).catch((error) => error.code);
+        verify('record: delta-mismatch before a window', early === 'delta-mismatch', String(early));
+        git('checkout', '-q', 'feature');
+
+        // Windows: the recording (no question how to start: the plan card comes right away), the check run.
+        let heardOnCard = '';
+        const planCard = async (chat) => {
+            const card = chat.locator('body[data-state=planning] #approve');
+            await card.waitFor({ state: 'visible', timeout: 120000 });
+            heardOnCard = await chat.locator('body').innerText();
+            await card.click();
+        };
+        const h = humans(planCard, followAndAdopt);
+        const code = await record(deltaRoot, [DELTA_ID, ...recordArgs, '--file', '.caw-description.md', ...about], { interactive: true, containerCommand: ['bash', '-c', agent], onChatOpen: h.onChatOpen });
+        verify('two windows: recording and check run, no demonstration', await h.done() === 2);
+        verify('recorded: exit 0, plan and recording written', code === 0 && existsSync(join(deltaRoot, 'caw/tests', `${DELTA_ID}.yaml`)) && existsSync(join(deltaRoot, 'caw/recordings', `${DELTA_ID}.yaml`)), String(code));
+        verify('the card shows what became of each note', /durch diesen Schritt belegt/.test(heardOnCard) && /durch diesen Test nicht belegt/.test(heardOnCard), heardOnCard.slice(-400));
+        const checked = newestRunOf(deltaRoot, DELTA_ID);
+        const head = git('rev-parse', '--short', 'feature');
+        verify('check run: ref, delta and heard in result.json', checked.result?.ref === 'TCK-26' && checked.result.delta?.head === head && JSON.stringify(checked.result.delta.files) === '["src/app.js"]'
+            && checked.result.heard?.map(({ as }) => as).join() === 'step,open', JSON.stringify({ ref: checked.result?.ref, delta: checked.result?.delta, heard: checked.result?.heard }));
+
+        // The proof as the session passes it on: a run of its own on the delta.
+        const proofRun = await runQuietly(DELTA_ID, ['--headless', ...about], deltaRoot);
+        const status = (await tool('caw_status', {})).structuredContent;
+        verify('run: exit 0; caw_status proof names step, expectation, files and report', proofRun.code === 0 && status.proof?.steps?.[0]?.status === 'pass' && status.proof.steps[0].expect === 'Die Besorgung steht in der Liste.'
+            && JSON.stringify(status.proof.files) === JSON.stringify([`caw/tests/${DELTA_ID}.yaml`, `caw/recordings/${DELTA_ID}.yaml`]), `${proofRun.code} ${JSON.stringify(status.proof)}`);
+        verify('caw_status: ref and tested commit', status.result?.ref === 'TCK-26' && status.result.delta?.head === head, JSON.stringify(status.result));
+        const report = readFileSync(join(deltaRoot, status.proof.report), 'utf8');
+        verify('report.md: reference, delta, tested commit', report.includes('TCK-26') && report.includes(`main..feature`) && report.includes(head), report.slice(0, 400));
+    } finally {
+        rmSync(deltaRoot, { recursive: true, force: true });
     }
 });

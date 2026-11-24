@@ -19,6 +19,8 @@ import { contextSummary } from './decisions.mjs';
 import { fingerprint, isPublicKey, newKeyPair, signAnswer, spawnerHandover } from './decision-proof.mjs';
 import { cawCommand } from '../shared/invocation.mjs';
 import { cawTool, createMcpHandler } from '../sandbox/mcp.mjs';
+import { checkDelta, checkDescription } from './delta.mjs';
+import { recordingPath, testPath } from './test-file.mjs';
 import { SESSION_INSTRUCTIONS, activeExtensions, guideIndex, guideTopic, listedTopics } from './guide.mjs';
 
 const BIN = fileURLToPath(new URL('../../bin/caw.mjs', import.meta.url));
@@ -26,6 +28,8 @@ const START_COMMANDS = ['run', 'record', 'open', 'reproduce'];
 /** caw_start reproduce: the bug report goes to the command as a file, so no text of it can read as an option. */
 export const BUG_FILE = '.caw/reproduce-bug.md';
 const MAX_BUG = 8000;
+/** caw_start record: the description a new test is planned from, as a file for the same reason. */
+export const DESCRIPTION_FILE = '.caw/record-description.md';
 const LOG_PREFIX = 'session-';
 const TAIL_LINES = 40;
 const EXPLORE_FILE = 'caw/.explore.json';
@@ -36,15 +40,15 @@ const OVERLAY_CHECK_TIMEOUT_MS = 180_000;
 const SNAPSHOT_TIMEOUT_MS = 15 * 60_000;
 /** Typed fields of caw_start: which command takes which, and which it needs. A step goes with its test as `<test>@<step>`. */
 const FIELDS = {
-    run: { needs: ['test'], takes: ['test', 'env', 'overlay', 'headless', 'learn', 'promote', 'strict', 'start', 'reset'] },
-    record: { needs: ['test'], takes: ['test', 'step', 'env', 'overlay', 'start', 'reset', 'headless'] },
+    run: { needs: ['test'], takes: ['test', 'env', 'overlay', 'headless', 'learn', 'promote', 'strict', 'start', 'reset', 'delta', 'ref'] },
+    record: { needs: ['test'], takes: ['test', 'step', 'env', 'overlay', 'start', 'reset', 'headless', 'description', 'delta', 'ref'] },
     open: { needs: [], takes: ['test', 'step', 'env', 'overlay', 'design', 'start', 'reset'] },
     reproduce: { needs: ['bug'], takes: ['bug', 'from', 'env', 'role', 'ref', 'headless'] },
 };
-const TYPED = ['test', 'env', 'step', 'overlay', 'headless', 'learn', 'promote', 'strict', 'design', 'start', 'reset', 'bug', 'from', 'role', 'ref'];
+const TYPED = ['test', 'env', 'step', 'overlay', 'headless', 'learn', 'promote', 'strict', 'design', 'start', 'reset', 'bug', 'from', 'role', 'ref', 'description', 'delta'];
 /** Switches of caw_start: true adds the flag, false is the same as leaving it out. */
 const SWITCH_FLAGS = { headless: '--headless', learn: '--learn', promote: '--promote', strict: '--strict', design: '--design', start: '--start', reset: '--reset' };
-const RESULT_FIELDS = ['status', 'code', 'reason', 'results', 'failures', 'warnings', 'decisions', 'pending', 'needs', 'pendingDesign'];
+const RESULT_FIELDS = ['status', 'code', 'reason', 'ref', 'delta', 'heard', 'results', 'failures', 'warnings', 'decisions', 'pending', 'needs', 'pendingDesign'];
 const RUN_ARTEFACTS = ['report.md', 'result.json', 'fix-report.md', 'chat.log', 'failures.json', 'network.json', 'demonstration.json'];
 
 // Whatever comes from the application (snapshot, eval, console, selected element) is page content and may contain text
@@ -195,7 +199,8 @@ export const startArgs = (input) => {
     const missing = needs.find((field) => !given.includes(field));
     if (missing !== undefined) throw new Error(t('run.mcp.fieldMissing', { field: missing, command }));
     if (input.bug !== undefined && (typeof input.bug !== 'string' || input.bug.trim() === '' || input.bug.length > MAX_BUG)) throw new Error(t('run.mcp.bugText', { max: MAX_BUG }));
-    for (const field of ['test', 'env', 'step', 'from', 'role']) {
+    if (input.description !== undefined) checkDescription(input.description);
+    for (const field of ['test', 'env', 'step', 'from', 'role', 'delta']) {
         if (input[field] !== undefined && (typeof input[field] !== 'string' || input[field] === '' || input[field].startsWith('-'))) throw new Error(t('run.mcp.fieldText', { field }));
     }
     // A step without its test: open would open without a test and drop it.
@@ -211,8 +216,10 @@ export const startArgs = (input) => {
     if (command === 'reproduce') args.push('--file', BUG_FILE);
     if (input.from !== undefined) args.push('--from', input.from);
     if (input.role !== undefined) args.push('--role', input.role);
-    if (input.ref !== undefined) args.push(`--ref=${input.ref}`);
     if (input.test !== undefined) args.push(input.step === undefined ? input.test : `${input.test}@${input.step}`);
+    if (input.description !== undefined) args.push('--file', DESCRIPTION_FILE);
+    if (input.delta !== undefined) args.push(`--delta=${input.delta}`);
+    if (input.ref !== undefined) args.push(`--ref=${input.ref}`);
     if (input.env !== undefined) args.push('--env', input.env);
     if (given.includes('overlay')) args.push(input.overlay === true ? '--overlay' : `--overlay=${input.overlay}`);
     for (const [field, flag] of Object.entries(SWITCH_FLAGS)) if (input[field] === true) args.push(flag);
@@ -364,6 +371,15 @@ const statusData = (root, { waiting, running, log, fixState }) => {
             }
             // A run without a window stopped at a decision only a person takes: which, and what it offered.
             if (result.openDecision !== undefined) data.openDecision = result.openDecision;
+            // What the test proves, for whoever passes it on: plain expectations and their result, no evidence or values.
+            if (result.reproduce === undefined && typeof run.test === 'string') {
+                const status = new Map((Array.isArray(result.results) ? result.results : []).map((item) => [item.id, item.status]));
+                data.proof = {
+                    steps: (Array.isArray(result.expectations) ? result.expectations : []).map(({ id, text }) => ({ id, expect: text, status: status.get(id) ?? (result.pending?.includes(id) === true ? 'pending' : 'open') })),
+                    files: [testPath(root, run.test), recordingPath(root, run.test)].filter((file) => existsSync(file)).map((file) => shown(root, file)),
+                    report: shown(root, join(run.runDir, 'report.md')),
+                };
+            }
             const last = Array.isArray(result.results) ? result.results.at(-1) : undefined;
             if (last !== undefined) data.lastStep = { id: last.id, status: last.status, ...(last.note === undefined ? {} : { note: last.note }) };
         }
@@ -440,7 +456,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             + 'learn (run: write missing baselines into the recording; only when the human asks), promote (run of a draft from caw/drafts: green and run --all green, then it moves to caw/tests with a fix report, fix-report.md, or of a design draft design-report.md; only when the human asks), start (run the environment\'s configured start command if it does not '
             + 'answer and stop it afterwards; not with overlay), reset (run the environment\'s configured reset first). '
             + 'Or args as on the command line, not both. You are the agent, so no extra tokens and no token question; record follows an existing '
-            + 'test plan (caw/tests/<test>.yaml) without asking the human to demonstrate; a new test without a plan starts with their demonstration. '
+            + 'test plan (caw/tests/<test>.yaml) without asking the human to demonstrate; a new test without a plan starts with their demonstration, or with description (a test for a ticket or a delta: topic delta). '
             + 'With overlay the local code server is checked first (as caw_overlay status): down, wrong-app or stale returns state, url, start '
             + 'and partDir instead of starting; then ask the human, start the project\'s start command in your own session in the background '
             + 'and poll caw_overlay status until ready. moved starts against the found URL and reports it. Then call caw_status until the run waits for you. '
@@ -455,7 +471,9 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                 bug: { type: 'string', description: 'reproduce: the bug report as the person wrote it (what they did, saw and expected)' },
                 from: { type: 'string', description: 'reproduce: start in a test\'s state, "<test>" or "<test>@S3" (its steps up to the entry of S3)' },
                 role: { type: 'string', description: 'reproduce without from: the test role to sign in as (not needed with one role)' },
-                ref: { type: 'string', description: 'reproduce: an id from another tool (a ticket), up to 64 of letters, digits and . _ # : / -; caw never looks it up' },
+                description: { type: 'string', description: 'record: what the test shall prove, as text (up to 8000 characters; each list entry and paragraph is one note H1, H2 …). You present the plan from it, the person approves it; nobody demonstrates. Not with step or headless. Topic delta' },
+                delta: { type: 'string', description: 'record, run: the commits under test, "<base>..<head>" or one commit. Refused unless head is what is checked out; result and report name it. Topic delta' },
+                ref: { type: 'string', description: 'record, run, reproduce: an id from another tool (a ticket), up to 64 of letters, digits and . _ # : / -; caw never looks it up' },
                 env: { type: 'string', description: 'The environment (--env); without it caw picks the only fitting one or says which to choose' },
                 step: { type: 'string', description: 'record: re-record from this step to the end; open: hand over at the entry of this step. E.g. S3, needs test' },
                 overlay: { type: ['boolean', 'string'], description: 'true (every part), "build", "dev", a dev server URL (the only part) or parts like "orders,admin:dev"' },
@@ -490,6 +508,12 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                 mkdirSync(join(root, RUN_DIR), { recursive: true });
                 writeFileSync(join(root, BUG_FILE), input.bug.replaceAll('\r\n', '\n'));
             }
+            // record: the description the same way. A delta that is not checked out is refused here, not first in the log.
+            if (input.command === 'record' && input.description !== undefined) {
+                mkdirSync(join(root, RUN_DIR), { recursive: true });
+                writeFileSync(join(root, DESCRIPTION_FILE), checkDescription(input.description));
+            }
+            if (input.delta !== undefined) checkDelta(root, input.delta);
             const given = fromArgs(args);
             // The overlay is an extension: without its block in the config there is nothing to lay over.
             if (given.overlay && config.overlay === undefined) throw new Error(t('run.mcp.overlayInactive'));

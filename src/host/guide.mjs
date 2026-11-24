@@ -29,6 +29,7 @@ export const GUIDE_TOPICS = [
     { name: 'advise', about: 'run agent: recommendations after a run' },
     { name: 'talk', about: 'run agent: clarify a failure or help while the person develops' },
     { name: 'reproduce', about: 'reproduce a bug report: as run agent on your own, or start it for the person' },
+    { name: 'delta', about: 'a test for a ticket or a delta (branch, commit): from a description to the proven test' },
     { name: 'design', about: 'develop against a target design: draft from a snapshot of the app (caw_design snapshot) or fetch it, write it with caw_design, build until the step meets it' },
     { name: 'rules', about: 'run agent: the rules' },
     { name: 'overlay', about: 'local code on a deployed environment', extension: 'overlay' },
@@ -91,7 +92,7 @@ Read caw_guide before acting, with the topic that fits:
   "setup"   no caw.config.json yet, or the user wants to set up caw
   "tests"   write or change a test plan
   "run"     run, record, re-record, or reach a state ("take me to where ...")
-  "reproduce" reproduce a reported bug yourself, signed in, and get a report and a draft test
+  "reproduce" reproduce a reported bug yourself, signed in; "delta" a test for a ticket or a delta (branch, commit)
   "attach"  look into the app with the person, answer its chat (caw_attach), reproduce a bug together
   "session" a run waits for you (caw_status says so and names further topics)
 An unchanged expectation keeps its check: never weaken a test to make a run pass; when a failure points to the app, find its cause first.

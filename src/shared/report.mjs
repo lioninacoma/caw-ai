@@ -187,7 +187,7 @@ const decisionLines = (decisions, openDecision, ignoredAnswers = []) => {
     }
     return lines;
 };
-export const renderReport = ({ status, reason, note, testId, target, testedCode, expectations = [], results = [], failures = [], warnings = [], writes = [], thirdParty = [], dropped = [], effectsDropped = [], advice, diagnosis, overlay, personalContext, afterHandover = [], pending = [], steps = [], decisions = [], openDecision, ignoredAnswers = [] }) => {
+export const renderReport = ({ status, reason, note, testId, target, testedCode, expectations = [], results = [], failures = [], warnings = [], writes = [], thirdParty = [], dropped = [], effectsDropped = [], advice, diagnosis, overlay, personalContext, afterHandover = [], pending = [], steps = [], decisions = [], openDecision, ignoredAnswers = [], ref, delta, heard = [] }) => {
     const lines = [
         t('config.report.title', { testId: String(testId), target: String(target), status: String(status) }),
         '',
@@ -195,6 +195,11 @@ export const renderReport = ({ status, reason, note, testId, target, testedCode,
         t('config.report.source', { source: String(testedCode) }),
         ...(overlay === undefined ? [] : [t('config.report.overlay', { label: String(overlay.label), local: String(overlay.local), server: String(overlay.server), swapped: t(overlay.swapped ? 'config.report.overlay.yes' : 'config.report.overlay.no') })]),
     ];
+    if (ref !== undefined) lines.push(t('config.report.ref', { ref: String(ref) }));
+    if (delta !== undefined) {
+        lines.push(t('config.report.delta', { range: String(delta.range), base: String(delta.base), head: String(delta.head), count: delta.files.length }));
+        if (delta.dirty.length > 0) lines.push(t('config.report.deltaDirty', { files: delta.dirty.map((file) => `\`${cell(file)}\``).join(', ') }));
+    }
     // Claude also had the human's personal notes: where they are, never what they say.
     if (personalContext !== undefined) lines.push(t('config.report.personalContext', { path: String(personalContext.path), lines: String(personalContext.lines) }));
     if (reason !== undefined) lines.push('', t('config.report.reason', { reason: String(reason) }));
@@ -209,6 +214,11 @@ export const renderReport = ({ status, reason, note, testId, target, testedCode,
             const met = item?.status === 'pass' && design?.verdict === 'met' ? t('config.report.designMet', { file: String(design.file) }) : undefined;
             lines.push(`| ${id} | ${cell(text)} | ${skipped ? 'skipped' : item?.status ?? '-'} | ${skipped ? '-' : evidenceCell(item?.evidence, item?.kind)} | ${cell([item?.note, met].filter(Boolean).join(' · '))} |`);
         }
+    }
+    // What became of each part of the description.
+    if (heard.length > 0) {
+        lines.push('', `## ${t('config.report.heard')}`, '');
+        for (const { id, text, as, step } of heard) lines.push(`- ${id}: ${cell(text)} → ${t(`config.report.heardAs.${as}`, { step: String(step ?? '') })}`);
     }
     // Not part of the verdict: the steps still to be recorded did not run.
     if (pending.length > 0) lines.push('', t('config.report.pending', { ids: pending.join(', '), count: pending.length }));

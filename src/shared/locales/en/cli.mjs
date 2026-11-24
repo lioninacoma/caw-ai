@@ -33,6 +33,9 @@ Commands:`,
       [--role <role>]                    First time only, not with @<S4>; not needed if the config has just one
       [--read-only]                      First time only: the test doesn't write (writes: false); if it does, it's
                                          marked as writing
+      [--file <file>]                    What the test shall prove, as text: the plan comes from it
+      [--delta <base>..<head>]           The commits under test, or one; must be what is checked out
+      [--ref <id>]                       An id from another tool, e.g. a ticket
       [--headless]                       No window, for a test that has a plan, not with @<S4>: {agent} follows the plan,
                                          caw takes only what changes nothing the test checks; anything else stops with
                                          exit 5 and writes nothing
@@ -48,6 +51,8 @@ Commands:`,
       [--explain]                        On errors or warnings {agent} explains unasked, uses tokens; only on
                                          environments where {agent} may work
       [--no-chat]                        No chat and no {agent}, like in CI
+      [--delta <base>..<head>]           The commits under test, or one; must be what is checked out
+      [--ref <id>]                       An id from another tool, e.g. a ticket
       [--headless]                       No window and no chat
       [--learn]                          In CI: learn missing baselines and effects into caw/recordings/ (outside CI
                                          every run does)
@@ -174,6 +179,13 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.synopsis.export': 'caw export <test> [--env <name>] [--out <dir>]',
     'cli.synopsis.design': 'caw design snapshot <test>@<S4> [--env <name>] [--name <name>] [--replace] [--json]',
     'cli.synopsis.reproduce': 'caw reproduce "<bug report>" | --file <file> | -  [--env <name>] [--role <role>] [--from <test>[@<S4>]] [--ref <id>] [--headless] [--agent local|docker] [--attach [<key>]]',
+    'cli.descriptionMissing': 'The description is empty. It says what the test shall prove.',
+    'cli.descriptionLong': 'The description is longer than {max} characters.',
+    'cli.descriptionControl': 'The description contains control characters.',
+    'cli.delta.form': '--delta {delta}: name "<base>..<head>" with a common history, or one commit with a parent.',
+    'cli.delta.notCheckedOut': 'The delta {delta} is not checked out: HEAD does not contain {head}. Check it out (git checkout <branch>), then again.',
+    'cli.delta.differs': 'The checked-out code differs from {head} in files of the delta: {files}. Commit or undo these changes, or name the current head as delta.',
+    'cli.delta.notLocal': '--delta compares with the code checked out here; {env} does not run on this machine.',
     'cli.reproduceOneSource': 'Give the bug report as the argument, with --file or with - from stdin, only once.',
     'cli.reproduceBugMissing': 'Which bug? {caw} reproduce "After saving, the list does not show the entry" (or --file <file>, or - for stdin).',
     'cli.reproduceBugLong': 'The bug report is longer than {max} characters. Cut it down to what happens and what you expect.',

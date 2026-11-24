@@ -89,9 +89,10 @@ export const heardProblems = ({ heard = [], steps }, notes) => {
     const missing = ids.filter((id) => !named.includes(id));
     if (unknown.length > 0) problems.push(`heard names notes that do not exist: ${unknown.join(', ')}.`);
     if (twice.length > 0) problems.push(`heard names a note more than once: ${[...new Set(twice)].join(', ')}.`);
-    if (missing.length > 0) problems.push(`heard must say for every note of the human what became of it (note, retry, notes or run); missing: ${missing.join(', ')}.`);
+    if (missing.length > 0) problems.push(`heard must say for every note of the human what became of it (step, note, retry, notes, run or open); missing: ${missing.join(', ')}.`);
     for (const { note, as, step } of heard) {
         const target = steps.find(({ id }) => id === step);
+        if (as === 'step' && target === undefined) problems.push(`${note} is heard as step ${step}, but the plan has no ${step}.`);
         if (as === 'note' && target?.note === undefined) problems.push(`${note} is heard as note of ${step}, but ${step} has no note.`);
         if (as === 'retry' && target?.retry === undefined) problems.push(`${note} is heard as retry of ${step}, but ${step} has no retry.`);
     }
@@ -99,7 +100,7 @@ export const heardProblems = ({ heard = [], steps }, notes) => {
 };
 
 /** The human's notes with what became of them, for the card. */
-const heardOf = (heard = [], notes = []) => heard.map(({ note, as, step }) => ({ text: notes.find(({ id }) => id === note)?.text ?? note, as, step }))
+export const heardOf = (heard = [], notes = []) => heard.map(({ note, as, step }) => ({ id: note, text: notes.find(({ id }) => id === note)?.text ?? note, as, step }))
     .filter(({ text }) => text !== undefined);
 
 export const planView = ({ notes, steps, heard }, { repairing = false, rerecord = false, from, previous, humanNotes = [] } = {}) => ({
